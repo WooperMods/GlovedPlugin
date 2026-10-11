@@ -1,4 +1,4 @@
 name: GlovedPlugin
-version: '0.0.1'
+version: '0.1.0'
 main: dev.gloved.glovedplugin.GlovedPlugin
 api-version: '26.3'
