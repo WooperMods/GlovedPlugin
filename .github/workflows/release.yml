@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag matches build.gradle
+        shell: bash
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          GRADLE_VER="$(grep -m1 "^version" build.gradle | grep -o "'[^']*'" | tr -d "'")"
+          if [ "$TAG_VER" != "$GRADLE_VER" ]; then
+            echo "Tag version ($TAG_VER) does not match build.gradle ($GRADLE_VER)"
+            exit 1
+          fi
+          echo "Version OK: $GRADLE_VER"
+
+      - name: Set up JDK 17 (Gradle runner)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up JDK 25 (compile toolchain)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build plugin jar
+        run: ./gradlew clean build --no-daemon
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all jars
+        uses: actions/download-artifact@v4
+
+      - name: Create draft release
+        # Draft-first flow per GitHub docs: create (or reuse) the draft,
+        # upload assets, then publish. Avoids the flaky all-in-one upload
+        # actions on large files.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES_FILE="changelogs/${{ github.ref_name }}.md"
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists, reusing it"
+          else
+            ARGS=(--draft --generate-notes)
+            if [[ "${{ github.ref_name }}" == *"-"* ]]; then ARGS+=(--prerelease); fi
+            if [ -f "$NOTES_FILE" ]; then ARGS+=(--notes-file "$NOTES_FILE"); fi
+            gh release create "${{ github.ref_name }}" "${ARGS[@]}"
+          fi
+
+      - name: Upload jars
+        # Collect exact paths with find: artifact nesting varies —
+        # globs here silently match nothing. One invocation per file
+        # with a timeout: a stalled upload fails fast with visible
+        # context instead of hanging the whole batch silently.
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mapfile -t DIRS < <(ls -d jars/ build/ 2>/dev/null || true)
+          if [ "${#DIRS[@]}" -eq 0 ]; then
+            echo "No artifact directories were downloaded:"
+            ls -la
+            exit 1
+          fi
+          mapfile -t FILES < <(find "${DIRS[@]}" -type f -name '*.jar' | sort)
+          echo "Uploading ${#FILES[@]} files:"
+          printf '  %s\n' "${FILES[@]}"
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "Expected at least 1 jar file, found 0"
+            exit 1
+          fi
+          # One file at a time with retries: GitHub asset uploads are
+          # intermittently slow/stalled, so a single hung stream must
+          # fail loudly and retry instead of hanging silent.
+          ATTEMPTS=3
+          for f in "${FILES[@]}"; do
+            attempt=1
+            while true; do
+              echo "Uploading $f (attempt $attempt/$ATTEMPTS) ..."
+              if timeout 30s gh release upload "${{ github.ref_name }}" "$f" --clobber; then
+                break
+              fi
+              if [ "$attempt" -ge "$ATTEMPTS" ]; then
+                echo "FAILED $f after $ATTEMPTS attempts"
+                exit 1
+              fi
+              wait_secs=$((attempt * 30))
+              echo "Retrying $f in ${wait_secs}s ..."
+              sleep "$wait_secs"
+              attempt=$((attempt + 1))
+            done
+          done
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES_FILE="changelogs/${{ github.ref_name }}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            gh release edit "${{ github.ref_name }}" --notes-file "$NOTES_FILE" --draft=false
+          else
+            gh release edit "${{ github.ref_name }}" --draft=false
+          fi
