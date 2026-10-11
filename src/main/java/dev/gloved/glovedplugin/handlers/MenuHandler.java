@@ -1,6 +1,7 @@
-package org.wooper.wooperplugin.handlers;
+package dev.gloved.glovedplugin.handlers;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -10,15 +11,13 @@ import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.wooper.wooperplugin.Menus.MenuInv;
-import org.wooper.wooperplugin.WooperPlugin;
-
-import java.util.Objects;
+import org.bukkit.plugin.java.JavaPlugin;
+import dev.gloved.glovedplugin.MenuConfig;
+import dev.gloved.glovedplugin.Menus.MenuInv;
+import dev.gloved.glovedplugin.GlovedPlugin;
 
 import static org.bukkit.Bukkit.getPluginManager;
-import static org.bukkit.Material.CHEST;
-import static org.wooper.wooperplugin.WooperPlugin.logInfo;
-import static org.wooper.wooperplugin.commands.Menu.menuComponent;
+import static dev.gloved.glovedplugin.GlovedPlugin.logInfo;
 
 /**
  * The MenuHandler class implements the Listener interface.
@@ -28,6 +27,8 @@ import static org.wooper.wooperplugin.commands.Menu.menuComponent;
  */
 public class MenuHandler implements Listener {
 
+    private final GlovedPlugin plugin;
+
     /**
      * Constructor for the MenuHandler class.
      * It registers the MenuHandler as a listener for events in the Bukkit server.
@@ -35,9 +36,10 @@ public class MenuHandler implements Listener {
      * The method takes two parameters: the listener (this) and the plugin instance.
      * After the event registration, it logs a message indicating that the MenuHandler has been registered.
      *
-     * @param plugin The instance of the WooperPlugin.
+     * @param plugin The instance of the GlovedPlugin.
      */
-    public MenuHandler(WooperPlugin plugin) {
+    public MenuHandler(GlovedPlugin plugin) {
+        this.plugin = plugin;
         getPluginManager().registerEvents(this, plugin);
         logInfo("Registered MenuHandler!");
     }
@@ -57,68 +59,29 @@ public class MenuHandler implements Listener {
      */
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        Player player = (Player) event.getWhoClicked();
+        if (!(event.getWhoClicked() instanceof Player player)) return;
         Inventory inventory = event.getClickedInventory();
+        if (inventory == null) return;
+        MenuConfig config = plugin.getMenuConfig();
+        if (config == null) return;
         Component title = event.getView().title();
-        int slot = event.getSlot();
-        assert inventory != null;
-        if (title != menuComponent) {
+        if (!title.equals(config.titleComponent())) {
             return;
         }
-        
-        if ((Objects.requireNonNull(event.getClickedInventory()).getType().equals(InventoryType.CHEST)) && ((title == menuComponent))) {
-
-            if (slot == 20) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("warps");
-
-            } else if (slot == 21) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("shop");
-
-            } else if (slot == 22) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("spawn");
-
-            } else if (slot == 23) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("homes");
-
-            } else if (slot == 24) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("rtp");
-
-            } else if (slot == 30) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("craft");
-
-            } else if (slot == 31) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("skills");
-
-            } else if (slot == 32) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("ender");
-
-            } else if (slot == 13) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-                player.closeInventory();
-                player.performCommand("jobs browse");
-            } else {
-                event.setCancelled(true);
-            }
-            
+        if (!inventory.getType().equals(InventoryType.CHEST)) {
+            return;
         }
-        
-        
+
+        int slot = event.getSlot();
+        event.setCancelled(true);
+
+        String command = config.commandForSlot(slot);
+        if (command == null) return;
+
+        Sound sound = config.sound();
+        player.playSound(player.getLocation(), sound, 1, 1);
+        player.closeInventory();
+        player.performCommand(command);
     }
 
     /**
@@ -131,12 +94,18 @@ public class MenuHandler implements Listener {
      *
      * @param event The player join event.
      */
+    public static void giveMenuOpener(Player player) {
+        GlovedPlugin plugin = JavaPlugin.getPlugin(GlovedPlugin.class);
+        MenuConfig config = plugin.getMenuConfig();
+        int slot = config != null ? config.openerSlot() : 17;
+        player.getInventory().setItem(slot, MenuInv.createMenuOpener());
+        player.updateInventory();
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        Inventory inv = player.getInventory();
-        inv.setItem(17, MenuInv.getItem(new ItemStack(CHEST), "&b&lMenu", "&aClick to Open the Menu!"));
-        logInfo("Menu Item added to " + player.getName() + " inventory.");
+        giveMenuOpener(event.getPlayer());
+        logInfo("Menu Item added to " + event.getPlayer().getName() + " inventory.");
     }
 
     /**
@@ -151,15 +120,36 @@ public class MenuHandler implements Listener {
      */
     @EventHandler
     public void onPlayerClick(InventoryClickEvent event) {
-        Player player = (Player) event.getWhoClicked();
-        Inventory inv = event.getView().getBottomInventory();
-        int slot = event.getSlot();
-        if ((slot == 17) && (inv == event.getClickedInventory())) {
-            event.setCancelled(true);
-            player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1, 1);
-            player.closeInventory();
-            player.performCommand("menu");
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        Inventory clicked = event.getClickedInventory();
+        if (clicked == null) return;
+        Inventory bottom = event.getView().getBottomInventory();
+        if (clicked != bottom) return;
+
+        MenuConfig config = plugin.getMenuConfig();
+        int openerSlot = config != null ? config.openerSlot() : 17;
+        Material openerMaterial = config != null ? config.openerMaterial() : Material.CHEST;
+
+        ItemStack current = event.getCurrentItem();
+        boolean isOpenerSlot = event.getSlot() == openerSlot;
+        boolean isOpenerItem = MenuInv.isMenuOpener(current) || MenuInv.isMenuOpener(event.getCursor());
+
+        // Fallback for legacy items created before the PDC tag existed:
+        // treat the configured opener material in the opener slot as the opener
+        // so old broken items still work until they are replaced on re-enable.
+        if (!isOpenerItem && !(isOpenerSlot && current != null && current.getType() == openerMaterial)) {
+            return;
         }
+
+        event.setCancelled(true);
+        player.setItemOnCursor(null);
+        // Re-assert the correct opener in case the player was holding a stale copy
+        // (fixes "chest stuck on cursor when reopening" after hot-reload).
+        giveMenuOpener(player);
+        Sound sound = config != null ? config.sound() : Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
+        player.playSound(player.getLocation(), sound, 1, 1);
+        player.closeInventory();
+        player.performCommand("menu");
     }
 
 }

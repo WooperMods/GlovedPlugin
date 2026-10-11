@@ -1,8 +1,4 @@
-name: WooperPlugin
+name: GlovedPlugin
 version: '0.0.1'
-main: org.wooper.wooperplugin.WooperPlugin
-api-version: '1.20'
-commands:
-  menu:
-    description: Custom menu for Commands
-    usage: /menu
+main: dev.gloved.glovedplugin.GlovedPlugin
+api-version: '26.3'

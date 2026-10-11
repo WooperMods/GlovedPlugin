@@ -1,13 +1,13 @@
-package org.wooper.wooperplugin.handlers;
+package dev.gloved.glovedplugin.handlers;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.wooper.wooperplugin.WooperPlugin;
+import dev.gloved.glovedplugin.GlovedPlugin;
 
-import static org.wooper.wooperplugin.WooperPlugin.logInfo;
+import static dev.gloved.glovedplugin.GlovedPlugin.logInfo;
 
 /**
  * The TorchHandler class implements the Listener interface.
@@ -24,9 +24,9 @@ public class TorchHandler implements Listener {
      * Then, it registers this instance of TorchHandler as an event listener with the plugin manager.
      * After registering the event listener, it logs a message indicating that the TorchHandler has been registered.
      *
-     * @param plugin The instance of the WooperPlugin that this TorchHandler is associated with.
+     * @param plugin The instance of the GlovedPlugin that this TorchHandler is associated with.
      */
-    public TorchHandler(WooperPlugin plugin) {
+    public TorchHandler(GlovedPlugin plugin) {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         logInfo("Registered TorchHandler!");
     }
