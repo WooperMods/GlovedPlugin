@@ -1,0 +1,54 @@
+menu:
+  title: "GlovedMenu"
+  rows: 6
+  items-per-row: 5
+  sound: ENTITY_EXPERIENCE_ORB_PICKUP
+  items:
+    - material: NETHER_STAR
+      name: "&b&lWarps"
+      lore: ["&a/warps"]
+      command: "warps"
+    - material: GRASS_BLOCK
+      name: "&3&lSpawn"
+      lore: ["&a/spawn"]
+      command: "spawn"
+    - material: RED_BED
+      name: "&4&lHomes"
+      lore: ["&a/homes"]
+      command: "homes"
+    - material: COMPASS
+      name: "&2&lRTP"
+      lore: ["&a/rtp"]
+      command: "rtp"
+    - material: CRAFTING_TABLE
+      name: "&6&lCraft"
+      lore: ["&a/craft"]
+      command: "craft"
+    - material: WRITABLE_BOOK
+      name: "&4&lSkills"
+      lore: ["&a/skills"]
+      command: "skills"
+    - material: ENDER_CHEST
+      name: "&5&lEnder Chest"
+      lore: ["&a/ender"]
+      command: "ender"
+    # Anchor example (optional per item):
+    # - material: BARRIER
+    #   name: "&cClose"
+    #   lore: ["&7Click to close"]
+    #   command: "menu"
+    #   enabled: true        # false hides the item without deleting it
+    #   anchor: bottomright   # topleft, top, topright, left, center, right, bottomleft, bottom, bottomright
+    #   offset-x: 0           # shift columns (+right / -left), clamped to 0-8
+    #   offset-y: 0           # shift rows (+down / -up), clamped to menu bounds
+    # Explicit slot override (optional, wins over anchor and auto-center):
+    # - material: EMERALD
+    #   name: "&aJobs"
+    #   lore: ["&a/jobs browse"]
+    #   command: "jobs browse"
+    #   slot: 13
+opener:
+  material: CHEST
+  slot: 17
+  name: "&b&lMenu"
+  lore: ["&aClick to Open the Menu!"]
