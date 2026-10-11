@@ -3,7 +3,7 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '7.1.2'
 }
 
-group = 'org.wooper'
+group = 'dev.gloved.glovedplugin'
 version = '0.0.1'
 
 repositories {
@@ -23,16 +23,12 @@ repositories {
 }
 
 dependencies {
-    implementation 'dev.vankka:enhancedlegacytext:1.0.0'
-    compileOnly "io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT"
-    implementation 'fr.mrmicky:FastInv:3.0.4'
+    compileOnly "io.papermc.paper:paper-api:26.3.build.+"
 }
 
-shadowJar {
-    relocate 'fr.mrmicky.fastinv', 'org.wooper.fastinv'
-}
 
-def targetJavaVersion = 17
+
+def targetJavaVersion = 25
 java {
     def javaVersion = JavaVersion.toVersion(targetJavaVersion)
     sourceCompatibility = javaVersion
