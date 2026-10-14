@@ -44,6 +44,15 @@ public class MenuInv implements InventoryHolder {
     }
 
     public Inventory createMenuInventory() {
+        return buildMenuInventory(true, true);
+    }
+
+    public Inventory createMenuInventory(Player viewer) {
+        return buildMenuInventory(viewer != null && viewer.isOp(),
+                viewer != null && viewer.hasPermission("gloved.edit"));
+    }
+
+    private Inventory buildMenuInventory(boolean isOp, boolean canEdit) {
         GlovedPlugin plugin = JavaPlugin.getPlugin(GlovedPlugin.class);
         MenuConfig config = plugin.getMenuConfig();
         if (config == null) {
@@ -52,7 +61,24 @@ public class MenuInv implements InventoryHolder {
         Inventory inventory = this.plugin.getServer().createInventory(this, config.rows() * 9, config.titleComponent());
         for (Map.Entry<Integer, MenuConfig.MenuItem> entry : config.layout().entrySet()) {
             MenuConfig.MenuItem mi = entry.getValue();
-            inventory.setItem(entry.getKey(), getItem(new ItemStack(mi.material()), mi.name(), mi.lore().toArray(new String[0])));
+            // Operator-only buttons are skipped for non-operators; the filler
+            // below covers the gap so positions stay stable for everyone.
+            if (!mi.visibleTo(isOp)) continue;
+            List<String> lore = new ArrayList<>(buttonLore(mi));
+            if (canEdit) {
+                lore.add("");
+                lore.add("&eShift Click to Edit");
+            }
+            inventory.setItem(entry.getKey(), getItem(new ItemStack(mi.material()), mi.name(),
+                    lore.toArray(new String[0])));
+        }
+        if (config.fillerEnabled()) {
+            ItemStack filler = getItem(new ItemStack(config.fillerMaterial()), config.fillerName(),
+                    config.fillerLore().toArray(new String[0]));
+            int size = config.rows() * 9;
+            for (int i = 0; i < size; i++) {
+                if (inventory.getItem(i) == null) inventory.setItem(i, filler.clone());
+            }
         }
         return inventory;
     }
@@ -68,7 +94,7 @@ public class MenuInv implements InventoryHolder {
     }
 
     public void openMenu(Player player) {
-        player.openInventory(createMenuInventory());
+        player.openInventory(createMenuInventory(player));
     }
 
     public static ItemStack createMenuOpener() {
@@ -91,6 +117,20 @@ public class MenuInv implements InventoryHolder {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
         return meta.getPersistentDataContainer().has(menuKey(), PersistentDataType.BYTE);
+    }
+
+    /**
+     * The full lore for a menu button: the command auto-shown as the first
+     * line (like the old defaults), then the configured descriptive lines.
+     * Blank commands show no auto line.
+     */
+    public static List<String> buttonLore(MenuConfig.MenuItem mi) {
+        List<String> lore = new ArrayList<>();
+        if (mi.command() != null && !mi.command().isBlank()) {
+            lore.add("&a/" + mi.command().strip());
+        }
+        lore.addAll(mi.lore());
+        return lore;
     }
 
     /**

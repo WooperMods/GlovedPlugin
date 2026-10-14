@@ -1,29 +1,42 @@
 package dev.gloved.glovedplugin.handlers;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import dev.gloved.glovedplugin.MenuConfig;
 import dev.gloved.glovedplugin.Menus.MenuInv;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.editor.EditSession;
+import dev.gloved.glovedplugin.editor.EditSessionCache;
+import dev.gloved.glovedplugin.editor.MenuEditorInv;
+import dev.gloved.glovedplugin.editor.PendingInput;
+import io.papermc.paper.event.player.AsyncChatEvent;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import static org.bukkit.Bukkit.getPluginManager;
 import static dev.gloved.glovedplugin.GlovedPlugin.logInfo;
 
 /**
- * The MenuHandler class implements the Listener interface.
- * This class is responsible for handling various events related to the game menu.
- * It includes methods to handle events such as a player joining the game, a player clicking on an inventory, etc.
- * Each of these methods is annotated with the @EventHandler annotation to indicate that they are event handlers.
+ * Handles the menu GUI and its opener item.
+ *
+ * <p>All clicks and drags touching the menu are cancelled so items can never
+ * be inserted into (and lost in) the ephemeral menu inventory. Opener handling
+ * is strictly PDC-based and never deletes or overwrites player items.
  */
 public class MenuHandler implements Listener {
 
@@ -32,9 +45,6 @@ public class MenuHandler implements Listener {
     /**
      * Constructor for the MenuHandler class.
      * It registers the MenuHandler as a listener for events in the Bukkit server.
-     * This is done by calling the registerEvents method from the PluginManager instance retrieved from the Bukkit server.
-     * The method takes two parameters: the listener (this) and the plugin instance.
-     * After the event registration, it logs a message indicating that the MenuHandler has been registered.
      *
      * @param plugin The instance of the GlovedPlugin.
      */
@@ -45,60 +55,683 @@ public class MenuHandler implements Listener {
     }
 
     /**
-     * Event handler for inventory click events.
-     * This method is triggered when a player clicks on an inventory.
-     * It first checks if the clicked inventory is a MenuInv instance.
-     * If it is not, the method returns immediately.
-     * If it is, the method cancels the event to prevent the default behavior.
-     * Then, it checks if the clicked inventory is a chest.
-     * If it is, it retrieves the clicked slot and performs different actions based on the slot number.
-     * For each slot, it plays a sound, closes the inventory, and performs a command.
-     * If the clicked inventory is not a chest, it logs the clicked slot.
-     *
-     * @param event The inventory click event.
+     * True when the viewed top inventory is our menu. Holder check is primary;
+     * title comparison is a fallback for inventories opened before a hot-reload
+     * (whose holder was loaded by a previous classloader).
      */
-    @EventHandler
-    public void onInventoryClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-        Inventory inventory = event.getClickedInventory();
-        if (inventory == null) return;
-        MenuConfig config = plugin.getMenuConfig();
-        if (config == null) return;
-        Component title = event.getView().title();
-        if (!title.equals(config.titleComponent())) {
-            return;
-        }
-        if (!inventory.getType().equals(InventoryType.CHEST)) {
-            return;
-        }
-
-        int slot = event.getSlot();
-        event.setCancelled(true);
-
-        String command = config.commandForSlot(slot);
-        if (command == null) return;
-
-        Sound sound = config.sound();
-        player.playSound(player.getLocation(), sound, 1, 1);
-        player.closeInventory();
-        player.performCommand(command);
+    private boolean isMenuView(InventoryView view, MenuConfig config) {
+        if (config == null) return false;
+        if (view.getTopInventory().getHolder() instanceof MenuInv) return true;
+        Component title = view.title();
+        Component expected = config.titleComponent();
+        return title != null && title.equals(expected);
     }
 
     /**
-     * Event handler for player join events.
-     * This method is triggered when a player joins the game.
-     * It first retrieves the player and their inventory.
-     * Then, it adds a new item to the 18th slot of the player's inventory.
-     * The new item is a chest with the name "Menu" and the lore "Click to Open the Menu!".
-     * After adding the item, it logs a message indicating that the menu item has been added to the player's inventory.
+     * Single entry point for inventory clicks. Runs at LOWEST so no other
+     * plugin can mutate the cursor before we snapshot it; anything we cancel
+     * here stays cancelled for later listeners.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (event.getView().getTopInventory().getHolder() instanceof MenuEditorInv editor) {
+            handleEditorClick(event, editor, player);
+            return;
+        }
+        MenuConfig config = plugin.getMenuConfig();
+        if (config == null) return;
+
+        if (isMenuView(event.getView(), config)) {
+            handleMenuClick(event, player, config);
+            return;
+        }
+        handleOpenerClick(event, player, config);
+    }
+
+    /**
+     * Editor views are fully locked down like the menu; the editor object
+     * itself handles the click. Permission is re-checked every interaction.
+     */
+    private void handleEditorClick(InventoryClickEvent event, MenuEditorInv editor, Player player) {
+        event.setCancelled(true);
+        if (!player.hasPermission("gloved.edit")) {
+            EditSession.close(player.getUniqueId());
+            player.closeInventory();
+            player.sendMessage(Component.text("You don't have permission to do that."));
+            player.updateInventory();
+            return;
+        }
+        editor.onClick(player, event);
+    }
+
+    /**
+     * Moves the cursor stack into the player's inventory (first empty slot,
+     * merging with partial stacks). Returns true when the cursor is empty and
+     * everything is safe. Returns false when the cursor still holds items that
+     * could not be safeguarded (inventory full) — the caller must then refuse
+     * the window switch entirely: the items stay on the cursor, nothing opens.
+     * A window switch is never allowed with an unsafeguarded cursor, so items
+     * can neither be wiped by the switch nor dropped on the ground to despawn.
+     * TEMPORARY DIAGNOSTIC (DIAG2) logging included.
+     */
+    public static boolean stashCursor(Player player) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (cursor == null || cursor.getType().isAir()) {
+            logInfo("DIAG2 stash player=" + player.getName() + " to=none (cursor already empty)");
+            return true;
+        }
+        ItemStack moving = cursor.clone();
+        player.setItemOnCursor(null);
+        java.util.Map<Integer, ItemStack> leftover = player.getInventory().addItem(moving);
+        if (leftover.isEmpty()) {
+            logInfo("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=slot");
+            return true;
+        }
+        // No room: put the exact stack back and refuse. Nothing was lost,
+        // nothing was duplicated, the cursor is exactly as it was.
+        player.setItemOnCursor(moving);
+        player.updateInventory();
+        logInfo("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=REFUSED_FULL");
+        return false;
+    }
+
+    /**
+     * Menu open: the top (menu) side is fully locked and runs commands.
+     * The bottom (player) side stays usable so players can rearrange their own
+     * items, except for the actions that could leak items into the ephemeral
+     * menu or steal its display items: shift-clicks, double-click collect, and
+     * anything touching the opener item.
      *
-     * @param event The player join event.
+     * <p>A held stack is stashed into the inventory before the menu closes:
+     * closing/opening windows with a full cursor is what loses it.
+     */
+    private void handleMenuClick(InventoryClickEvent event, Player player, MenuConfig config) {
+        Inventory top = event.getView().getTopInventory();
+        int rawSlot = event.getRawSlot();
+        if (rawSlot < 0) return; // click outside the window: let vanilla handle it
+
+        if (rawSlot < top.getSize()) {
+            event.setCancelled(true);
+            // Editors shortcut: shift-click a button to open it in the editor.
+            if (event.isShiftClick() && player.hasPermission("gloved.edit")) {
+                dev.gloved.glovedplugin.editor.MenuEditorInv.openEditorFor(plugin, player);
+                return;
+            }
+            String command = config.commandForSlot(rawSlot, player.isOp());
+            if (command == null || command.isBlank()) {
+                player.updateInventory();
+                return;
+            }
+
+            ItemStack cursor = player.getItemOnCursor();
+            if (cursor != null && !cursor.getType().isAir() && !MenuInv.isMenuOpener(cursor)) {
+                if (!stashCursor(player)) {
+                    player.sendActionBar(Component.text("Free an inventory slot first!"));
+                    player.updateInventory();
+                    return;
+                }
+            }
+
+            Sound sound = config.sound();
+            if (sound != null) player.playSound(player.getLocation(), sound, 1, 1);
+            player.closeInventory();
+            player.updateInventory();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) player.performCommand(command);
+            });
+            return;
+        }
+
+        switch (event.getAction()) {
+            case MOVE_TO_OTHER_INVENTORY, COLLECT_TO_CURSOR -> {
+                event.setCancelled(true);
+                player.updateInventory();
+                return;
+            }
+            default -> {}
+        }
+        if (MenuInv.isMenuOpener(event.getCurrentItem()) || MenuInv.isMenuOpener(event.getCursor())) {
+            event.setCancelled(true);
+            player.updateInventory();
+        }
+        // Any other bottom click is the player's own items: allow it.
+    }
+
+    // TEMPORARY DIAGNOSTIC (DIAG2), remove once the cursor-loss repro is resolved.
+    private static String diagItem(ItemStack item) {
+        if (item == null) return "null";
+        return item.getType() + "x" + item.getAmount() + (MenuInv.isMenuOpener(item) ? "[OPENER]" : "");
+    }
+
+    /**
+     * Opener item in the player inventory. Only PDC-tagged opener items react;
+     * the cursor is only cleared when it actually holds a duplicate opener.
+     * The menu opens next tick (never open inside the click event, which
+     * desyncs the client), and without closing first: openInventory() replaces
+     * the current view atomically.
+     */
+    private void handleOpenerClick(InventoryClickEvent event, Player player, MenuConfig config) {
+        Inventory clicked = event.getClickedInventory();
+        if (clicked == null) return;
+        if (clicked != event.getView().getBottomInventory()) return;
+
+        ItemStack current = event.getCurrentItem();
+        ItemStack cursor = event.getCursor();
+        boolean currentOpener = MenuInv.isMenuOpener(current);
+        boolean cursorOpener = MenuInv.isMenuOpener(cursor);
+        if (!currentOpener && !cursorOpener) return;
+
+        // TEMPORARY DIAGNOSTIC (DIAG2): storedInInv distinguishes a ghost
+        // (stack exists nowhere server-side) from a desync (stack is in storage).
+        int stored = 0;
+        if (cursor != null && !cursor.getType().isAir()) {
+            for (ItemStack it : player.getInventory().getContents()) {
+                if (it != null && it.getType() == cursor.getType()) stored += it.getAmount();
+            }
+        }
+        logInfo("DIAG2 click handler=" + System.identityHashCode(this)
+                + " player=" + player.getName() + " action=" + event.getAction()
+                + " current=" + diagItem(current) + " cursor=" + diagItem(cursor)
+                + " serverCursor=" + diagItem(player.getItemOnCursor())
+                + " storedInInv=" + stored);
+        // TEMPORARY DIAGNOSTIC (DIAG2): event.getCursor() and
+        // player.getItemOnCursor() both read live container state. If they
+        // disagree, the window was switched mid-dispatch by an earlier
+        // listener — compare the views to catch who did it.
+        Inventory eventTop = event.getView().getTopInventory();
+        InventoryView curView = player.getOpenInventory();
+        Inventory curTop = curView.getTopInventory();
+        logInfo("DIAG2 views player=" + player.getName()
+                + " sameTop=" + (eventTop == curTop)
+                + " eventTop=" + eventTop.getType()
+                + " curTop=" + curTop.getType()
+                + " curTitle=" + curView.title());
+
+        event.setCancelled(true);
+        if (cursorOpener) {
+            // Player was holding a duplicate opener: remove it, keep anything else.
+            player.setItemOnCursor(null);
+        } else {
+            // Stash a real held stack before the window switch below.
+            // Full inventory: refuse instead, menu stays closed, items untouched.
+            if (!stashCursor(player)) {
+                player.sendActionBar(Component.text("Free an inventory slot first!"));
+                player.updateInventory();
+                return;
+            }
+        }
+        // NOTE: no inventory rewrite here (no giveMenuOpener). Replacing the
+        // clicked slot mid-click confuses the client's click prediction and
+        // blanks the cursor display until the next window change. The opener
+        // in the slot is already valid; orphans are purged by /gloved reload,
+        // join, respawn and enable instead (no click in flight there).
+        player.updateInventory();
+        Sound sound = config.sound();
+        if (sound != null) player.playSound(player.getLocation(), sound, 1, 1);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            // The click may have been un-cancelled or the inventory changed
+            // after we handled it: only open if the opener is still in place,
+            // otherwise leave the player's inventory exactly as it is.
+            MenuConfig liveConfig = plugin.getMenuConfig();
+            ItemStack openerSlot = liveConfig != null
+                    ? player.getInventory().getItem(liveConfig.openerSlot()) : null;
+            if (!MenuInv.isMenuOpener(openerSlot)) {
+                // TEMPORARY DIAGNOSTIC (DIAG2)
+                logInfo("DIAG2 skipopen player=" + player.getName()
+                        + " openerGoneFromSlot cursor=" + diagItem(player.getItemOnCursor()));
+                player.updateInventory();
+                return;
+            }
+            new MenuInv(plugin).openMenu(player);
+            // TEMPORARY DIAGNOSTIC (DIAG2)
+            logInfo("DIAG2 postopen player=" + player.getName()
+                    + " cursor=" + diagItem(player.getItemOnCursor()));
+            player.updateInventory();
+        });
+    }
+
+    /**
+     * TEMPORARY DIAGNOSTIC (DIAG2): runs after every other listener and reports
+     * the cursor state they left behind. If the cursor is full at our main
+     * handler but empty here, a later listener wiped it.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onInventoryClickTail(InventoryClickEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!MenuInv.isMenuOpener(event.getCurrentItem()) && !MenuInv.isMenuOpener(event.getCursor())) return;
+        logInfo("DIAG2 tail handler=" + System.identityHashCode(this)
+                + " player=" + player.getName() + " cancelled=" + event.isCancelled()
+                + " serverCursor=" + diagItem(player.getItemOnCursor()));
+    }
+
+    /**
+     * Drags touching the menu top are cancelled so players can't drag stacks
+     * into the ephemeral menu and lose them. Drags over the opener slot are
+     * also cancelled (in and out of the menu) so the opener can't be
+     * overwritten; other drags are the player's own items and are allowed.
+     */
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        InventoryView view = event.getView();
+        int topSize = view.getTopInventory().getSize();
+        if (view.getTopInventory().getHolder() instanceof MenuEditorInv) {
+            for (int rawSlot : event.getRawSlots()) {
+                if (rawSlot >= 0 && rawSlot < topSize) {
+                    event.setCancelled(true);
+                    player.updateInventory();
+                    return;
+                }
+            }
+            return;
+        }
+        MenuConfig config = plugin.getMenuConfig();
+        boolean menuView = isMenuView(view, config);
+        for (int rawSlot : event.getRawSlots()) {
+            if (menuView && rawSlot >= 0 && rawSlot < topSize) {
+                event.setCancelled(true);
+                player.updateInventory();
+                return;
+            }
+        }
+        if (config != null && touchesOpenerSlot(event, view, config)) {
+            event.setCancelled(true);
+            player.updateInventory();
+        }
+    }
+
+    private boolean touchesOpenerSlot(InventoryDragEvent event, InventoryView view, MenuConfig config) {
+        int openerRaw = view.getTopInventory().getSize() + config.openerSlot();
+        if (!event.getRawSlots().contains(openerRaw)) return false;
+        return MenuInv.isMenuOpener(view.getBottomInventory().getItem(config.openerSlot()));
+    }
+
+    /**
+     * The opener is a UI element, not a real chest: prevent dropping it.
+     */
+    @EventHandler
+    public void onOpenerDrop(PlayerDropItemEvent event) {
+        if (MenuInv.isMenuOpener(event.getItemDrop().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Keep the opener out of death drops (prevents farming free chests and
+     * scattering UI items); it is re-given on respawn.
+     */
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        event.getDrops().removeIf(MenuInv::isMenuOpener);
+    }
+
+    @EventHandler
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        giveMenuOpener(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        // Keep the memory entry (instant resume on relog); the file covers restarts.
+        PendingInput.cancel(event.getPlayer().getUniqueId());
+        EditSessionCache.storeAll(plugin);
+    }
+
+    /**
+     * Reminds players that closing the editor does not save or discard:
+     * the session resumes on next open. Navigation between editor screens
+     * re-opens windows (OPEN_NEW) and stays silent.
+     */
+    @EventHandler
+    public void onEditorClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) return;
+        if (event.getReason() == org.bukkit.event.inventory.InventoryCloseEvent.Reason.OPEN_NEW) return;
+        if (!(event.getInventory().getHolder() instanceof MenuEditorInv)) return;
+        EditSessionCache.storeAll(plugin);
+        if (event.getReason() == org.bukkit.event.inventory.InventoryCloseEvent.Reason.OPEN_NEW) return;
+        EditSession session = EditSession.get(player.getUniqueId());
+        if (session == null || !session.isDirty()) return;
+        player.sendMessage(Component.text("Unsaved menu edits kept — reopen /gloved edit to continue, Save to apply."));
+    }
+
+    /**
+     * Registers a chat-text request from the menu editor and tells the player
+     * what to type. The next chat message is consumed (never broadcast) and
+     * applied on the main thread; silence for 30 seconds expires it.
+     */
+    public static void askChat(GlovedPlugin plugin, Player player, PendingInput pending, String prompt) {
+        PendingInput.put(player.getUniqueId(), pending);
+        // TEMPORARY DIAGNOSTIC (DIAG3)
+        GlovedPlugin.logInfo("DIAG3 ask player=" + player.getName() + " kind=" + pending.kind);
+        player.sendMessage(GlovedPlugin.makeComponent(prompt));
+        player.sendMessage(Component.text("(Type 'cancel' to go back. A leading / is trimmed for commands.)"));
+        scheduleTimeout(plugin, player, pending);
+    }
+
+    private static void scheduleTimeout(GlovedPlugin plugin, Player player, PendingInput pending) {
+        pending.timeoutTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (PendingInput.removeIfSame(player.getUniqueId(), pending) && player.isOnline()) {
+                player.sendMessage(Component.text("Edit timed out — nothing changed."));
+            }
+        }, 20L * 30);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onEditorChat(AsyncChatEvent event) {
+        Player player = event.getPlayer();
+        PendingInput pending = PendingInput.take(player.getUniqueId());
+        if (pending == null) return;
+        // TEMPORARY DIAGNOSTIC (DIAG3)
+        GlovedPlugin.logInfo("DIAG3 chat player=" + player.getName() + " kind=" + pending.kind);
+        // LOWEST + cancelled: edit input never reaches chat plugins or Discord.
+        event.setCancelled(true);
+        String text = LegacyComponentSerializer.legacySection().serialize(event.message()).replace('§', '&').strip();
+        Bukkit.getScheduler().runTask(plugin, () -> applyChatInput(player, pending, text, text));
+    }
+
+    /**
+     * Commands typed while editing never execute: a message starting with "/"
+     * never reaches the chat listener, so without this, "/stop" typed mid-edit
+     * would stop the server. Both the verbatim text and the once-trimmed form
+     * are passed down: display fields keep every slash exactly as typed, while
+     * commands trim one leading slash (so WorldEdit's //wand works) and
+     * control words match either form ("/cancel" aborts, "//cancel" is text).
+     * Only active while this player has pending input.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onEditorCommandPreprocess(org.bukkit.event.player.PlayerCommandPreprocessEvent event) {
+        Player player = event.getPlayer();
+        PendingInput pending = PendingInput.take(player.getUniqueId());
+        if (pending == null) return;
+        event.setCancelled(true);
+        String message = event.getMessage();
+        String verbatim = message.strip();
+        String stripped = (verbatim.startsWith("/") ? verbatim.substring(1) : verbatim).strip();
+        Bukkit.getScheduler().runTask(plugin, () -> applyChatInput(player, pending, verbatim, stripped));
+    }
+
+    /**
+     * Control words (cancel/done/clear) match the text with or without its
+     * leading slash, so "/cancel" aborts while "//cancel" stays literal text.
+     */
+    public static boolean isControlWord(String verbatim, String stripped, String word) {
+        return word.equalsIgnoreCase(verbatim) || word.equalsIgnoreCase(stripped);
+    }
+
+    private void applyChatInput(Player player, PendingInput pending, String verbatim, String stripped) {
+        if (!player.isOnline()) return;
+        if (!player.hasPermission("gloved.edit")) {
+            EditSession.close(player.getUniqueId());
+            player.closeInventory();
+            player.sendMessage(Component.text("You don't have permission to do that."));
+            return;
+        }
+        EditSession session = EditSession.get(player.getUniqueId());
+        if (session == null) {
+            player.sendMessage(Component.text("Edit session expired — open /gloved edit again."));
+            return;
+        }
+        boolean cancelled = isControlWord(verbatim, stripped, "cancel");
+        switch (pending.kind) {
+            case ITEM_NAME -> {
+                if (cancelled || verbatim.isBlank()) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+                    return;
+                }
+                replaceItem(session, pending.itemIndex,
+                        withName(session, pending.itemIndex, verbatim));
+                reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+            }
+            case ITEM_COMMAND -> {
+                if (cancelled || stripped.isBlank()) {
+                    if (!cancelled) player.sendMessage(Component.text("Commands can't be blank."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+                    return;
+                }
+                MenuConfig.MenuItem mi = itemAt(session, pending.itemIndex);
+                if (mi == null) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.PREVIEW, -1);
+                    return;
+                }
+                replaceItem(session, pending.itemIndex,
+                        new MenuConfig.MenuItem(mi.material(), mi.name(), new java.util.ArrayList<>(mi.lore()),
+                                stripped, mi.anchor(), mi.offsetX(), mi.offsetY(), mi.slot(), mi.opOnly(), mi.enabled()));
+                reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+            }
+            case ITEM_MATERIAL -> {
+                if (cancelled) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+                    return;
+                }
+                Material mat = Material.matchMaterial(stripped);
+                if (mat == null || mat.isAir()) {
+                    player.sendMessage(Component.text("Unknown material — try DIAMOND_SWORD."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+                    return;
+                }
+                MenuConfig.MenuItem mi = itemAt(session, pending.itemIndex);
+                if (mi == null) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.PREVIEW, -1);
+                    return;
+                }
+                replaceItem(session, pending.itemIndex, MenuEditorInv.withMaterial(mi, mat));
+                reopenEditor(player, session, MenuEditorInv.Screen.ITEM, pending.itemIndex);
+            }
+            case ADD_BUTTON_MATERIAL -> {
+                if (cancelled) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.CONTROLS, -1);
+                    return;
+                }
+                Material mat = Material.matchMaterial(stripped);
+                if (mat == null || mat.isAir()) {
+                    player.sendMessage(Component.text("Unknown material — try DIAMOND_SWORD."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.CONTROLS, -1);
+                    return;
+                }
+                session.items.add(new MenuConfig.MenuItem(mat, "&f" + mat.name(), new java.util.ArrayList<>(),
+                        "", null, 0, 0, null, false, true));
+                // TEMPORARY DIAGNOSTIC (DIAG3)
+                GlovedPlugin.logInfo("DIAG3 created player=" + player.getName() + " material=" + mat.name()
+                        + " index=" + (session.items.size() - 1));
+                reopenEditor(player, session, MenuEditorInv.Screen.ITEM, session.items.size() - 1);
+            }
+            case ITEM_LORE -> applyLoreInput(player, session, pending, verbatim, stripped, true);
+            case ITEM_LORE_LINE, OPENER_LORE_LINE -> {
+                boolean forItem = pending.kind == PendingInput.Kind.ITEM_LORE_LINE;
+                if (cancelled || verbatim.isBlank()) {
+                    if (!cancelled) player.sendMessage(Component.text("Lines can't be blank."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.LORE,
+                            forItem ? pending.itemIndex : -1);
+                    return;
+                }
+                java.util.List<String> current = forItem
+                        ? (itemAt(session, pending.itemIndex) == null ? null
+                                : new java.util.ArrayList<>(itemAt(session, pending.itemIndex).lore()))
+                        : new java.util.ArrayList<>(session.openerLore);
+                if (current == null || pending.lineIndex < 0 || pending.lineIndex >= current.size()) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.LORE,
+                            forItem ? pending.itemIndex : -1);
+                    return;
+                }
+                current.set(pending.lineIndex, verbatim);
+                if (forItem) {
+                    MenuConfig.MenuItem mi = itemAt(session, pending.itemIndex);
+                    if (mi != null) replaceItem(session, pending.itemIndex,
+                            new MenuConfig.MenuItem(mi.material(), mi.name(), current, mi.command(),
+                                    mi.anchor(), mi.offsetX(), mi.offsetY(), mi.slot(), mi.opOnly(), mi.enabled()));
+                } else {
+                    session.openerLore = current;
+                }
+                reopenEditor(player, session, MenuEditorInv.Screen.LORE,
+                        forItem ? pending.itemIndex : -1);
+            }
+            case MENU_TITLE -> {
+                if (cancelled || verbatim.isBlank()) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+                    return;
+                }
+                session.title = verbatim;
+                reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+            }
+            case MENU_SOUND -> {
+                if (cancelled) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+                    return;
+                }
+                Sound sound = MenuConfig.parseSound(stripped);
+                if (sound == null) {
+                    player.sendMessage(Component.text("Unknown sound — try ENTITY_EXPERIENCE_ORB_PICKUP."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+                    return;
+                }
+                session.soundName = stripped;
+                player.playSound(player.getLocation(), sound, 1, 1);
+                reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+            }
+            case OPENER_NAME -> {
+                if (cancelled || verbatim.isBlank()) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.OPENER, -1);
+                    return;
+                }
+                session.openerName = verbatim;
+                reopenEditor(player, session, MenuEditorInv.Screen.OPENER, -1);
+            }
+            case FILLER_MATERIAL -> {
+                if (cancelled) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+                    return;
+                }
+                Material mat = Material.matchMaterial(stripped);
+                if (mat == null || mat.isAir()) {
+                    player.sendMessage(Component.text("Unknown material — try BLACK_STAINED_GLASS_PANE."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+                    return;
+                }
+                session.fillerMaterial = mat;
+                reopenEditor(player, session, MenuEditorInv.Screen.SETTINGS, -1);
+            }
+            case OPENER_MATERIAL -> {
+                if (cancelled) {
+                    reopenEditor(player, session, MenuEditorInv.Screen.OPENER, -1);
+                    return;
+                }
+                Material mat = Material.matchMaterial(stripped);
+                if (mat == null || mat.isAir()) {
+                    player.sendMessage(Component.text("Unknown material — try CHEST."));
+                    reopenEditor(player, session, MenuEditorInv.Screen.OPENER, -1);
+                    return;
+                }
+                session.openerMaterial = mat;
+                reopenEditor(player, session, MenuEditorInv.Screen.OPENER, -1);
+            }
+            case OPENER_LORE -> applyLoreInput(player, session, pending, verbatim, stripped, false);
+        }
+    }
+
+    private MenuConfig.MenuItem itemAt(EditSession session, int index) {
+        if (index < 0 || index >= session.items.size()) return null;
+        return session.items.get(index);
+    }
+
+    private void replaceItem(EditSession session, int index, MenuConfig.MenuItem replacement) {
+        if (replacement == null || index < 0 || index >= session.items.size()) return;
+        session.items.set(index, replacement);
+    }
+
+    private MenuConfig.MenuItem withName(EditSession session, int index, String name) {
+        MenuConfig.MenuItem mi = itemAt(session, index);
+        if (mi == null) return null;
+        return new MenuConfig.MenuItem(mi.material(), name, new java.util.ArrayList<>(mi.lore()),
+                mi.command(), mi.anchor(), mi.offsetX(), mi.offsetY(), mi.slot(), mi.opOnly(), mi.enabled());
+    }
+
+    private void applyLoreInput(Player player, EditSession session, PendingInput pending,
+                                String verbatim, String stripped, boolean item) {
+        if (isControlWord(verbatim, stripped, "cancel")) {
+            if (pending.originalLore != null) {
+                if (item) {
+                    MenuConfig.MenuItem mi = itemAt(session, pending.itemIndex);
+                    if (mi != null) replaceItem(session, pending.itemIndex,
+                            new MenuConfig.MenuItem(mi.material(), mi.name(),
+                                    new java.util.ArrayList<>(pending.originalLore), mi.command(),
+                                    mi.anchor(), mi.offsetX(), mi.offsetY(), mi.slot(), mi.opOnly(), mi.enabled()));
+                } else {
+                    session.openerLore = new java.util.ArrayList<>(pending.originalLore);
+                }
+            }
+            reopenEditor(player, session, item ? MenuEditorInv.Screen.ITEM : MenuEditorInv.Screen.OPENER,
+                    item ? pending.itemIndex : -1);
+            return;
+        }
+        java.util.List<String> lore = item
+                ? new java.util.ArrayList<>(itemAt(session, pending.itemIndex) == null
+                        ? java.util.List.of() : itemAt(session, pending.itemIndex).lore())
+                : new java.util.ArrayList<>(session.openerLore);
+        if (isControlWord(verbatim, stripped, "done")) {
+            reopenEditor(player, session, item ? MenuEditorInv.Screen.ITEM : MenuEditorInv.Screen.OPENER,
+                    item ? pending.itemIndex : -1);
+            return;
+        }
+        if (isControlWord(verbatim, stripped, "clear")) {
+            lore.clear();
+        } else {
+            if (lore.size() >= 16) {
+                player.sendMessage(Component.text("Lore is full (16 lines) — 'done' to finish."));
+            } else {
+                lore.add(verbatim);
+                player.sendActionBar(Component.text("Line " + lore.size() + " added ('done' finishes)."));
+            }
+        }
+        if (item) {
+            MenuConfig.MenuItem mi = itemAt(session, pending.itemIndex);
+            if (mi != null) replaceItem(session, pending.itemIndex,
+                    new MenuConfig.MenuItem(mi.material(), mi.name(), lore, mi.command(),
+                            mi.anchor(), mi.offsetX(), mi.offsetY(), mi.slot(), mi.opOnly(), mi.enabled()));
+        } else {
+            session.openerLore = lore;
+        }
+        PendingInput.put(player.getUniqueId(), new PendingInput(pending.kind, pending.itemIndex,
+                pending.originalLore, pending.returnTo));
+        armTimeout(player);
+    }
+
+    private void armTimeout(Player player) {
+        // Re-arms the just-registered pending input (lore multi-line flow).
+        PendingInput pending = PendingInput.get(player.getUniqueId());
+        if (pending == null) return;
+        scheduleTimeout(plugin, player, pending);
+    }
+
+    private void reopenEditor(Player player, EditSession session, MenuEditorInv.Screen screen, int index) {
+        new MenuEditorInv(plugin, session, screen, index).open(player);
+    }
+
+    /**
+     * Places the opener without ever overwriting player loot. If the configured
+     * slot holds a real item, the opener goes to the first free slot instead.
      */
     public static void giveMenuOpener(Player player) {
         GlovedPlugin plugin = JavaPlugin.getPlugin(GlovedPlugin.class);
         MenuConfig config = plugin.getMenuConfig();
         int slot = config != null ? config.openerSlot() : 17;
-        player.getInventory().setItem(slot, MenuInv.createMenuOpener());
+        // Purge stale openers anywhere in storage (e.g. the slot was changed and
+        // the old one was orphaned). Only PDC-tagged openers are touched.
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            if (MenuInv.isMenuOpener(contents[i])) player.getInventory().setItem(i, null);
+        }
+        if (MenuInv.isMenuOpener(player.getItemOnCursor())) player.setItemOnCursor(null);
+        ItemStack opener = MenuInv.createMenuOpener();
+        ItemStack existing = player.getInventory().getItem(slot);
+        if (existing == null || existing.getType().isAir() || MenuInv.isMenuOpener(existing)) {
+            player.getInventory().setItem(slot, opener);
+        } else if (player.getInventory().firstEmpty() != -1) {
+            player.getInventory().addItem(opener);
+        } else {
+            return;
+        }
         player.updateInventory();
     }
 
@@ -106,50 +739,6 @@ public class MenuHandler implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         giveMenuOpener(event.getPlayer());
         logInfo("Menu Item added to " + event.getPlayer().getName() + " inventory.");
-    }
-
-    /**
-     * Event handler for inventory click events.
-     * This method is triggered when a player clicks on an inventory.
-     * It first retrieves the player who clicked and the bottom inventory of the clicked view.
-     * Then, it checks if the clicked slot is not 17 and if the clicked inventory is not the bottom inventory.
-     * If either of these conditions is true, the method returns immediately.
-     * If both conditions are false, it plays a sound at the player's location, closes the player's inventory, cancels the event to prevent the default behavior, and performs the "menu" command.
-     *
-     * @param event The inventory click event.
-     */
-    @EventHandler
-    public void onPlayerClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-        Inventory clicked = event.getClickedInventory();
-        if (clicked == null) return;
-        Inventory bottom = event.getView().getBottomInventory();
-        if (clicked != bottom) return;
-
-        MenuConfig config = plugin.getMenuConfig();
-        int openerSlot = config != null ? config.openerSlot() : 17;
-        Material openerMaterial = config != null ? config.openerMaterial() : Material.CHEST;
-
-        ItemStack current = event.getCurrentItem();
-        boolean isOpenerSlot = event.getSlot() == openerSlot;
-        boolean isOpenerItem = MenuInv.isMenuOpener(current) || MenuInv.isMenuOpener(event.getCursor());
-
-        // Fallback for legacy items created before the PDC tag existed:
-        // treat the configured opener material in the opener slot as the opener
-        // so old broken items still work until they are replaced on re-enable.
-        if (!isOpenerItem && !(isOpenerSlot && current != null && current.getType() == openerMaterial)) {
-            return;
-        }
-
-        event.setCancelled(true);
-        player.setItemOnCursor(null);
-        // Re-assert the correct opener in case the player was holding a stale copy
-        // (fixes "chest stuck on cursor when reopening" after hot-reload).
-        giveMenuOpener(player);
-        Sound sound = config != null ? config.sound() : Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
-        player.playSound(player.getLocation(), sound, 1, 1);
-        player.closeInventory();
-        player.performCommand("menu");
     }
 
 }

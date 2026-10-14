@@ -8,6 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import dev.gloved.glovedplugin.MenuConfig;
 import dev.gloved.glovedplugin.Menus.MenuInv;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.handlers.MenuHandler;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -30,6 +31,12 @@ public class Menu implements BasicCommand {
             return;
         }
         GlovedPlugin plugin = JavaPlugin.getPlugin(GlovedPlugin.class);
+        // Opening a window discards the carried stack: stash it first.
+        // Full inventory: refuse instead, menu stays closed, items untouched.
+        if (!MenuHandler.stashCursor(player)) {
+            player.sendMessage("Free an inventory slot first!");
+            return;
+        }
         new MenuInv(plugin).openMenu(player);
     }
 }

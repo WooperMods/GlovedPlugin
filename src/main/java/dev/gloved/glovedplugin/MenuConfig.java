@@ -2,14 +2,22 @@ package dev.gloved.glovedplugin;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import io.papermc.paper.registry.RegistryAccess;
+import io.papermc.paper.registry.RegistryKey;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 public class MenuConfig {
 
@@ -37,13 +45,20 @@ public class MenuConfig {
     }
 
     public record MenuItem(Material material, String name, List<String> lore, String command,
-                           Anchor anchor, int offsetX, int offsetY, Integer slot) {}
+                           Anchor anchor, int offsetX, int offsetY, Integer slot, boolean opOnly,
+                           boolean enabled) {
+        /** Operator-only buttons are visible (and clickable) solely to server operators. */
+        public boolean visibleTo(boolean isOp) {
+            return !opOnly || isOp;
+        }
+    }
 
     private Component titleComponent;
     private String rawTitle;
     private int rows;
     private int itemsPerRow;
     private Sound sound;
+    private String soundName;
     private List<MenuItem> items;
     private Map<Integer, MenuItem> layout;
 
@@ -52,21 +67,32 @@ public class MenuConfig {
     private String openerName;
     private List<String> openerLore;
 
+    private boolean fillerEnabled;
+    private Material fillerMaterial;
+    private String fillerName;
+    private List<String> fillerLore;
+
     public Component titleComponent() { return titleComponent; }
     public String rawTitle() { return rawTitle; }
     public int rows() { return rows; }
     public int itemsPerRow() { return itemsPerRow; }
     public Sound sound() { return sound; }
+    public String soundName() { return soundName; }
     public List<MenuItem> items() { return items; }
     public Map<Integer, MenuItem> layout() { return layout; }
     public Material openerMaterial() { return openerMaterial; }
     public int openerSlot() { return openerSlot; }
     public String openerName() { return openerName; }
     public List<String> openerLore() { return openerLore; }
+    public boolean fillerEnabled() { return fillerEnabled; }
+    public Material fillerMaterial() { return fillerMaterial; }
+    public String fillerName() { return fillerName; }
+    public List<String> fillerLore() { return fillerLore; }
 
-    public String commandForSlot(int slot) {
+    public String commandForSlot(int slot, boolean isOp) {
         MenuItem item = layout.get(slot);
-        return item == null ? null : item.command();
+        if (item == null || !item.visibleTo(isOp)) return null;
+        return item.command();
     }
 
     public static MenuConfig load(GlovedPlugin plugin) {
@@ -89,20 +115,18 @@ public class MenuConfig {
         }
 
         String soundName = cfg.getString("menu.sound", "ENTITY_EXPERIENCE_ORB_PICKUP");
-        try {
-            mc.sound = Sound.valueOf(soundName);
-        } catch (IllegalArgumentException e) {
-            GlovedPlugin.logWarning("Unknown sound '" + soundName + "', defaulting to ENTITY_EXPERIENCE_ORB_PICKUP");
-            mc.sound = Sound.ENTITY_EXPERIENCE_ORB_PICKUP;
-        }
+        mc.sound = parseSound(soundName);
+        mc.soundName = soundName;
 
         mc.items = new ArrayList<>();
         List<?> rawItems = cfg.getList("menu.items", List.of());
         for (Object obj : rawItems) {
             if (!(obj instanceof Map<?, ?> map)) continue;
             Object enabledObj = map.get("enabled");
+            // Disabled items are kept (the editor can re-enable them); only the
+            // layout skips them. Blank-command or unknown-material entries are
+            // still dropped as unusable.
             boolean enabled = enabledObj == null || toBoolean(enabledObj, true);
-            if (!enabled) continue;
             Object matObj = map.get("material");
             String matName = matObj != null ? String.valueOf(matObj) : "STONE";
             Material mat;
@@ -138,7 +162,8 @@ public class MenuConfig {
             Object slotObj = map.get("slot");
             Integer slot = slotObj != null ? toInt(slotObj, -1) : null;
             if (slot != null && slot < 0) slot = null;
-            mc.items.add(new MenuItem(mat, name, lore, command, anchor, offsetX, offsetY, slot));
+            boolean opOnly = toBoolean(map.get("op"), false);
+            mc.items.add(new MenuItem(mat, name, lore, command, anchor, offsetX, offsetY, slot, opOnly, enabled));
         }
 
         ConfigurationSection opener = cfg.getConfigurationSection("opener");
@@ -154,12 +179,66 @@ public class MenuConfig {
         mc.openerLore = opener != null ? opener.getStringList("lore") : List.of("&aClick to Open the Menu!");
         if (mc.openerLore.isEmpty()) mc.openerLore = List.of("&aClick to Open the Menu!");
 
+        mc.fillerEnabled = cfg.getBoolean("menu.filler.enabled", true);
+        String fillerMatName = cfg.getString("menu.filler.material", "BLACK_STAINED_GLASS_PANE");
+        try {
+            mc.fillerMaterial = Material.valueOf(fillerMatName);
+        } catch (IllegalArgumentException e) {
+            GlovedPlugin.logWarning("Unknown filler material '" + fillerMatName + "', defaulting to BLACK_STAINED_GLASS_PANE");
+            mc.fillerMaterial = Material.BLACK_STAINED_GLASS_PANE;
+        }
+        mc.fillerName = cfg.getString("menu.filler.name", " ");
+        if (mc.fillerName == null) mc.fillerName = " ";
+        mc.fillerLore = cfg.getStringList("menu.filler.lore");
+
         mc.layout = buildLayout(mc.rows, mc.itemsPerRow, mc.items);
         return mc;
     }
 
-    private static int toInt(Object o, int def) {
-        if (o == null) return def;
+    /**
+     * Resolves a sound by namespaced key ({@code minecraft:entity.experience_orb.pickup})
+     * or legacy enum-style name ({@code ENTITY_EXPERIENCE_ORB_PICKUP}) via the
+     * Paper registry, avoiding the deprecated-for-removal {@code Sound.valueOf}.
+     */
+    public static Sound parseSound(String raw) {
+        String fallback = "ENTITY_EXPERIENCE_ORB_PICKUP";
+        if (raw == null || raw.isBlank()) {
+            GlovedPlugin.logWarning("Missing menu.sound, defaulting to " + fallback);
+            return resolveSound(fallback);
+        }
+        Sound sound = resolveSound(raw.trim());
+        if (sound == null) {
+            GlovedPlugin.logWarning("Unknown sound '" + raw + "', defaulting to " + fallback);
+            return resolveSound(fallback);
+        }
+        return sound;
+    }
+
+    private static Sound resolveSound(String input) {
+        Registry<Sound> sounds = RegistryAccess.registryAccess().getRegistry(RegistryKey.SOUND_EVENT);
+        NamespacedKey key = NamespacedKey.fromString(input.toLowerCase(Locale.ROOT));
+        if (key != null) {
+            Sound byKey = sounds.get(key);
+            if (byKey != null) return byKey;
+        }
+        // Legacy UPPER_SNAKE names (e.g. ENTITY_EXPERIENCE_ORB_PICKUP) match the
+        // registry's public constants. Compared reflectively: the enum-style
+        // accessors (valueOf/values/getKey/key) are all deprecated for removal.
+        for (Field field : Sound.class.getFields()) {
+            if (Modifier.isStatic(field.getModifiers())
+                    && Sound.class.isAssignableFrom(field.getType())
+                    && field.getName().equalsIgnoreCase(input)) {
+                try {
+                    return (Sound) field.get(null);
+                } catch (IllegalAccessException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static int toInt(Object o, int def) {        if (o == null) return def;
         if (o instanceof Number n) return n.intValue();
         try {
             return Integer.parseInt(String.valueOf(o).trim());
@@ -213,27 +292,37 @@ public class MenuConfig {
         return cols;
     }
 
-    static Map<Integer, MenuItem> buildLayout(int rows, int perRow, List<MenuItem> items) {
+    static List<Integer> colsFor(int count, int anchorCol) {
+        List<Integer> cols = new ArrayList<>();
+        if (count <= 0) return cols;
+        if (count >= 9) {
+            for (int c = 0; c < 9; c++) cols.add(c);
+            return cols;
+        }
+        if (anchorCol <= 2) {
+            for (int c = 0; c < count; c++) cols.add(c);
+            return cols;
+        }
+        if (anchorCol >= 6) {
+            for (int c = 8 - count + 1; c <= 8; c++) cols.add(c);
+            return cols;
+        }
+        return centeredCols(count);
+    }
+
+    public static Map<Integer, MenuItem> buildLayout(int rows, int perRow, List<MenuItem> items) {
         Map<Integer, MenuItem> layout = new HashMap<>();
+        items = items.stream().filter(MenuItem::enabled).toList();
         if (items.isEmpty()) return layout;
         int size = rows * 9;
 
-        List<MenuItem> flow = new ArrayList<>();
-
-        // 1. Pinned items first: explicit slot wins, then anchor + offsets.
+        // Explicit slots pin first. Everything else resolves an anchor
+        // (default CENTER) plus offsets to a candidate slot; items sharing a
+        // candidate arrange around it as a block instead of overwriting.
+        Map<Integer, List<MenuItem>> groups = new LinkedHashMap<>();
         for (MenuItem mi : items) {
-            Integer pinned = null;
             if (mi.slot() != null) {
-                pinned = mi.slot();
-            } else if (mi.anchor() != null) {
-                int base = anchorBaseSlot(mi.anchor(), rows);
-                int baseRow = base / 9;
-                int baseCol = base % 9;
-                int row = Math.min(rows - 1, Math.max(0, baseRow + mi.offsetY()));
-                int col = Math.min(8, Math.max(0, baseCol + mi.offsetX()));
-                pinned = row * 9 + col;
-            }
-            if (pinned != null) {
+                int pinned = mi.slot();
                 if (pinned < 0 || pinned >= size) {
                     GlovedPlugin.logWarning("Pinned slot " + pinned + " out of bounds, skipping " + mi.material());
                     continue;
@@ -242,52 +331,70 @@ public class MenuConfig {
                     GlovedPlugin.logWarning("Slot collision at " + pinned + ", overwriting with " + mi.material());
                 }
                 layout.put(pinned, mi);
-            } else {
-                flow.add(mi);
+                continue;
             }
+            Anchor anchor = mi.anchor() != null ? mi.anchor() : Anchor.CENTER;
+            int base = anchorBaseSlot(anchor, rows);
+            int row = Math.min(rows - 1, Math.max(0, base / 9 + mi.offsetY()));
+            int col = Math.min(8, Math.max(0, base % 9 + mi.offsetX()));
+            int candidate = row * 9 + col;
+            groups.computeIfAbsent(candidate, k -> new ArrayList<>()).add(mi);
         }
 
-        if (flow.isEmpty()) return layout;
-
-        // 2. Flow items: centered block, every row symmetric.
-        // Odd counts fill contiguously (e.g. 3 -> cols 3,4,5).
-        // Even counts skip the middle column (e.g. 2 -> cols 3,5) so
-        // left/right empty slots stay equal and the row reads as centered.
-        // Vertical block uses ceil so a remainder pushes down one row
-        // instead of sitting high.
-        int usedRows = (int) Math.ceil(flow.size() / (double) perRow);
-        if (usedRows > rows) usedRows = rows;
-        int firstRow = (rows - usedRows + 1) / 2;
-        List<Integer> candidates = new ArrayList<>();
-        for (int r = 0; r < usedRows; r++) {
-            int remaining = Math.min(perRow, flow.size() - r * perRow);
-            for (int col : centeredCols(remaining)) {
-                candidates.add((firstRow + r) * 9 + col);
+        for (Map.Entry<Integer, List<MenuItem>> groupEntry : groups.entrySet()) {
+            int candidate = groupEntry.getKey();
+            List<MenuItem> group = groupEntry.getValue();
+            if (group.size() == 1 && !layout.containsKey(candidate)) {
+                layout.put(candidate, group.get(0));
+                continue;
             }
-        }
-        int candIdx = 0;
-        for (MenuItem mi : flow) {
-            while (candIdx < candidates.size() && layout.containsKey(candidates.get(candIdx))) {
-                candIdx++;
+            // Shared anchor: block centered on the anchor row, columns
+            // justified to the anchor side (middle anchors center, edge
+            // anchors align outward). Taken spots are skipped.
+            int candRow = candidate / 9;
+            int candCol = candidate % 9;
+            int usedRows = Math.min(rows, (int) Math.ceil(group.size() / (double) perRow));
+            int firstRow = Math.min(rows - usedRows, Math.max(0, candRow - (usedRows - 1) / 2));
+            List<Integer> spots = new ArrayList<>();
+            for (int r = 0; r < usedRows; r++) {
+                int remaining = Math.min(perRow, group.size() - r * perRow);
+                for (int col : colsFor(remaining, candCol)) {
+                    spots.add((firstRow + r) * 9 + col);
+                }
             }
-            if (candIdx >= candidates.size()) {
-                // Fallback: next free slot inside the block, else skip.
-                boolean placedFallback = false;
-                for (int r = 0; r < usedRows && !placedFallback; r++) {
-                    for (int c = 0; c < 9 && !placedFallback; c++) {
+            int idx = 0;
+            for (MenuItem mi : group) {
+                while (idx < spots.size() && layout.containsKey(spots.get(idx))) idx++;
+                if (idx < spots.size()) {
+                    layout.put(spots.get(idx++), mi);
+                    continue;
+                }
+                // Fallback: nearest free slot in the group rows by column
+                // distance, then anywhere, then skip with a warning.
+                Integer free = null;
+                int bestDist = Integer.MAX_VALUE;
+                for (int r = 0; r < usedRows; r++) {
+                    for (int c = 0; c < 9; c++) {
                         int slot = (firstRow + r) * 9 + c;
-                        if (!layout.containsKey(slot)) {
-                            layout.put(slot, mi);
-                            placedFallback = true;
+                        if (layout.containsKey(slot)) continue;
+                        int dist = Math.abs(c - candCol) + Math.abs((firstRow + r) - candRow) * 2;
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            free = slot;
                         }
                     }
                 }
-                if (!placedFallback) {
+                if (free == null) {
+                    for (int s = 0; s < size && free == null; s++) {
+                        if (!layout.containsKey(s)) free = s;
+                    }
+                }
+                if (free != null) {
+                    layout.put(free, mi);
+                } else {
                     GlovedPlugin.logWarning("Menu full, skipping " + mi.material());
                 }
-                continue;
             }
-            layout.put(candidates.get(candIdx++), mi);
         }
         return layout;
     }

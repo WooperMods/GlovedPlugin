@@ -10,6 +10,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import dev.gloved.glovedplugin.Menus.MenuInv;
 import dev.gloved.glovedplugin.commands.GlovedCommand;
 import dev.gloved.glovedplugin.commands.Menu;
+import dev.gloved.glovedplugin.editor.EditSessionCache;
 import dev.gloved.glovedplugin.handlers.MenuHandler;
 import dev.gloved.glovedplugin.handlers.TorchHandler;
 
@@ -72,6 +73,7 @@ public final class GlovedPlugin extends JavaPlugin {
     public void onEnable() {
         // Plugin startup logic
         saveDefaultConfig();
+        ensureConfigDefaults();
         this.menuConfig = MenuConfig.load(this);
         Menu.refreshTitle(this.menuConfig);
 
@@ -96,6 +98,7 @@ public final class GlovedPlugin extends JavaPlugin {
         }
 
         logInfo("GlovedPlugin has been loaded!");
+        EditSessionCache.loadAll(this);
 
     }
 
@@ -105,8 +108,84 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public void reloadMenuConfig() {
         reloadConfig();
+        ensureConfigDefaults();
         this.menuConfig = MenuConfig.load(this);
         Menu.refreshTitle(this.menuConfig);
+    }
+
+    /**
+     * Writes any missing options from the bundled default config.yml into the
+     * server's config file (present values are never overwritten). Keeps older
+     * config files complete after updates add new options. Note: Bukkit cannot
+     * preserve comments when saving, so the file loses its comments the first
+     * time this fills something in; the full reference lives in README.md.
+     */
+    public void ensureConfigDefaults() {
+        try {
+            org.bukkit.configuration.file.FileConfiguration cfg = getConfig();
+            cfg.options().copyDefaults(true);
+            backfillItemOptions(cfg);
+            purgeRedundantCommandLore(cfg);
+            saveConfig();
+        } catch (Exception e) {
+            getLogger().warning("GlovedPlugin could not write missing config defaults: " + e);
+        }
+    }
+
+    /**
+     * Removes a leading lore line that merely repeats the button's command,
+     * since the menu now renders the command as the first lore line
+     * automatically. Only exact matches (ignoring color codes and a leading
+     * slash) on the FIRST line are removed; everything else is untouched, so
+     * running this twice changes nothing the second time.
+     */
+    public static void purgeRedundantCommandLore(org.bukkit.configuration.file.FileConfiguration cfg) {
+        java.util.List<?> items = cfg.getList("menu.items");
+        if (items == null) return;
+        for (Object obj : items) {
+            if (!(obj instanceof java.util.Map)) continue;
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> item = (java.util.Map<String, Object>) obj;
+            Object cmdObj = item.get("command");
+            if (cmdObj == null || String.valueOf(cmdObj).isBlank()) continue;
+            String cmd = String.valueOf(cmdObj).strip();
+            Object loreObj = item.get("lore");
+            if (!(loreObj instanceof java.util.List) || ((java.util.List<?>) loreObj).isEmpty()) continue;
+            Object first = ((java.util.List<?>) loreObj).get(0);
+            if (first == null) continue;
+            String stripped = String.valueOf(first).replaceAll("[&§](?i)[0-9a-fk-or]", "").strip();
+            String bare = stripped.startsWith("/") ? stripped.substring(1).strip() : stripped;
+            if (bare.equalsIgnoreCase(cmd)) {
+                java.util.List<Object> lore = new java.util.ArrayList<>((java.util.List<?>) loreObj);
+                lore.remove(0);
+                item.put("lore", lore);
+            }
+        }
+    }
+
+    /**
+     * Adds missing per-item option keys to every entry of {@code menu.items}.
+     * Bukkit's defaults-merge cannot reach inside existing lists, so this fills
+     * them explicitly. Every written value matches the loader's fallback
+     * exactly (enabled=true, offsets=0, empty lore, blank anchor/slot meaning
+     * auto layout), so files change but behavior never does. Identity keys
+     * (material/name/command) are left alone.
+     */
+    public static void backfillItemOptions(org.bukkit.configuration.file.FileConfiguration cfg) {
+        java.util.List<?> items = cfg.getList("menu.items");
+        if (items == null) return;
+        for (Object obj : items) {
+            if (!(obj instanceof java.util.Map)) continue;
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> item = (java.util.Map<String, Object>) obj;
+            if (!item.containsKey("enabled")) item.put("enabled", true);
+            if (!item.containsKey("anchor")) item.put("anchor", null);
+            if (!item.containsKey("offset-x") && !item.containsKey("offsetX")) item.put("offset-x", 0);
+            if (!item.containsKey("offset-y") && !item.containsKey("offsetY")) item.put("offset-y", 0);
+            if (!item.containsKey("slot")) item.put("slot", null);
+            if (!item.containsKey("lore")) item.put("lore", java.util.List.of());
+            if (!item.containsKey("op")) item.put("op", false);
+        }
     }
 
     /**
@@ -115,17 +194,28 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
+        EditSessionCache.storeAll(this);
         // Close any open menu views so a hot-reload doesn't leave ghost
-        // inventories / cursor items attached.
-        Component title = menuConfig != null ? menuConfig.titleComponent() : Menu.menuComponent;
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getOpenInventory().title().equals(title)) {
-                player.closeInventory();
+        // inventories / cursor items attached. Fully guarded: an exception
+        // here would abort the disable and orphan our listeners, leaving a
+        // stale handler wiping cursors after reload.
+        try {
+            Component title = menuConfig != null ? menuConfig.titleComponent() : Menu.menuComponent;
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                try {
+                    if (player.getOpenInventory().title().equals(title)) {
+                        player.closeInventory();
+                    }
+                    ItemStack cursor = player.getItemOnCursor();
+                    if (cursor != null && cursor.getType() != Material.AIR && MenuInv.isMenuOpener(cursor)) {
+                        player.setItemOnCursor(null);
+                    }
+                } catch (Exception e) {
+                    getLogger().warning("GlovedPlugin onDisable cleanup failed for a player: " + e);
+                }
             }
-            ItemStack cursor = player.getItemOnCursor();
-            if (cursor != null && cursor.getType() != Material.AIR && MenuInv.isMenuOpener(cursor)) {
-                player.setItemOnCursor(null);
-            }
+        } catch (Exception e) {
+            getLogger().warning("GlovedPlugin onDisable failed: " + e);
         }
         logInfo("GlovedPlugin has been disabled!");
     }

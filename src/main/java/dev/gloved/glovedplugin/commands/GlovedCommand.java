@@ -2,6 +2,8 @@ package dev.gloved.glovedplugin.commands;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.Menus.MenuInv;
+import dev.gloved.glovedplugin.editor.EditSession;
+import dev.gloved.glovedplugin.editor.MenuEditorInv;
 import dev.gloved.glovedplugin.handlers.MenuHandler;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -29,7 +31,26 @@ public class GlovedCommand implements BasicCommand {
                 source.getSender().sendMessage("Only players can open the menu.");
                 return;
             }
+            // Opening a window discards the carried stack: stash it first.
+            // Full inventory: refuse instead, menu stays closed, items untouched.
+            if (!MenuHandler.stashCursor(player)) {
+                player.sendMessage("Free an inventory slot first!");
+                return;
+            }
             new MenuInv(plugin).openMenu(player);
+            return;
+        }
+
+        if (args[0].equalsIgnoreCase("edit")) {
+            if (!(source.getSender() instanceof Player player)) {
+                source.getSender().sendMessage("Only players can edit the menu.");
+                return;
+            }
+            if (!source.getSender().hasPermission("gloved.edit")) {
+                source.getSender().sendMessage(Component.text("You don't have permission to do that."));
+                return;
+            }
+            MenuEditorInv.openEditorFor(plugin, player);
             return;
         }
 
@@ -62,13 +83,13 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
-        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset>"));
+        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit>"));
     }
 
     @Override
     public Collection<String> suggest(@NotNull CommandSourceStack source, @NotNull String[] args) {
         if (args.length <= 1) {
-            return List.of("menu", "reload", "reset");
+            return List.of("menu", "reload", "reset", "edit");
         }
         return List.of();
     }
