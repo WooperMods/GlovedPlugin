@@ -17,17 +17,28 @@ public final class TrailFX {
     private TrailFX() {}
 
     public static void play(Player player, AttackStage stage) {
-        Particle particle = parseParticle(stage.particles(), Particle.SWEEP_ATTACK);
+        String particleRaw = stage.particles();
+        if (particleRaw != null && particleRaw.trim().equalsIgnoreCase("NONE")) {
+            playSoundOnly(player, stage);
+            return;
+        }
+        Particle particle = parseParticle(particleRaw, Particle.SWEEP_ATTACK);
         try {
             var eye = player.getEyeLocation();
             var dir = eye.getDirection();
             // Slash marker slightly in front of the eyes so first-person sees it.
             var at = eye.add(dir.multiply(1.2));
-            player.getWorld().spawnParticle(particle, at, 6, 0.35, 0.25, 0.35, 0.02);
+            player.getWorld().spawnParticle(particle, at, 2, 0.3, 0.2, 0.3, 0.01);
         } catch (Exception ignored) {
             // Old clients / odd particles must never break damage handling.
         }
-        Sound sound = parseSound(stage.swingSound(), Sound.ENTITY_PLAYER_ATTACK_SWEEP);
+        playSoundOnly(player, stage);
+    }
+
+    private static void playSoundOnly(Player player, AttackStage stage) {
+        String soundRaw = stage.swingSound();
+        if (soundRaw != null && soundRaw.trim().equalsIgnoreCase("NONE")) return;
+        Sound sound = parseSound(soundRaw, Sound.ENTITY_PLAYER_ATTACK_SWEEP);
         try {
             player.getWorld().playSound(player.getLocation(), sound, 0.8f, 1.0f);
         } catch (Exception ignored) {

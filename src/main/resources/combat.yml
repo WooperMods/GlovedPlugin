@@ -4,6 +4,9 @@ enabled: true
 
 # Hold attack to queue the next combo stage once cooldown is ready.
 hold_to_spam: true
+# Swing particles + sounds on every swing (set a stage's particles/swing_sound
+# to NONE to silence it individually).
+trail_fx: true
 # Alternate main/off-hand when both hold one-handed weapons.
 dual_wield: true
 # Unused for now (needs attribute API per MC version); kept for parity.

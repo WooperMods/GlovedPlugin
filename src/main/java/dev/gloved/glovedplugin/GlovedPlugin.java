@@ -124,6 +124,11 @@ public final class GlovedPlugin extends JavaPlugin {
         Menu.refreshTitle(this.menuConfig);
         this.weaponRegistry.load(this);
         FmmBridge.invalidate();
+        if (this.combatListener != null) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                this.combatListener.applyReach(player);
+            }
+        }
     }
 
     public WeaponRegistry getWeaponRegistry() {

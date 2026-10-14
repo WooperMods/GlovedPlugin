@@ -26,6 +26,7 @@ public final class WeaponRegistry {
 
     private boolean enabled = true;
     private boolean holdToSpam = true;
+    private boolean trailFx = true;
     private boolean dualWield = true;
     private double dualWieldSpeedBonus = 0.2;
     private double sweepFalloff = 0.5;
@@ -41,6 +42,7 @@ public final class WeaponRegistry {
 
         enabled = cfg.getBoolean("enabled", true);
         holdToSpam = cfg.getBoolean("hold_to_spam", true);
+        trailFx = cfg.getBoolean("trail_fx", true);
         dualWield = cfg.getBoolean("dual_wield", true);
         dualWieldSpeedBonus = cfg.getDouble("dual_wield_speed_bonus", 0.2);
         sweepFalloff = cfg.getDouble("sweep_falloff_multiplier", 0.5);
@@ -176,6 +178,7 @@ public final class WeaponRegistry {
 
     public boolean isEnabled() { return enabled; }
     public boolean isHoldToSpam() { return holdToSpam; }
+    public boolean isTrailFx() { return trailFx; }
     public boolean isDualWield() { return dualWield; }
     public double getDualWieldSpeedBonus() { return dualWieldSpeedBonus; }
     public double getSweepFalloff() { return sweepFalloff; }

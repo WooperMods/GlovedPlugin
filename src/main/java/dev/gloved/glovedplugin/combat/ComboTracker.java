@@ -17,6 +17,12 @@ public final class ComboTracker {
         public boolean nextIsOffhand;
         public boolean pendingQueued;
         public long pendingTick;
+        /** Stage armed by the last arm swing, consumed by the damage event. */
+        public int armedStage = -1;
+        public long armedTick = Long.MIN_VALUE;
+        public boolean armedOffhand;
+        /** Swings in the current burst window (hold-to-spam detection). */
+        public int burst;
     }
 
     private final Map<UUID, State> states = new ConcurrentHashMap<>();
