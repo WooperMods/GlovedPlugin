@@ -6,7 +6,6 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -75,49 +74,19 @@ public final class CombatListener implements Listener {
         lastArcTick.put(id, now);
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-        // Wide angle for swing arc
         AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
         if (hits.isEmpty()) return;
 
-        float cooled = 1.0f;
-        try { cooled = player.getCooledAttackStrength(0.5f); } catch (Exception ignored) {}
-
-        double base = estimateBase(mainHand) * cooled;
-        int sweeping = mainHand.getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
-        boolean fullCleave = sweeping > 0;
-
+        // Use vanilla attack for each target in arc
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
-            double amount = base;
-            if (!fullCleave) amount *= registry.getSweepFalloff();
-            target.damage(amount, player);
+            if (target == null || target.isDead()) continue;
+            // Let the server run full melee damage calculation
+            try {
+                player.attack(target);
+            } catch (Exception ignored) {}
         }
-    }
-
-    static double estimateBase(ItemStack weapon) {
-        if (weapon == null) return 1.0;
-        double base = baseDamage(weapon.getType());
-        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
-        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
-        return base;
-    }
-
-    static double baseDamage(org.bukkit.Material mat) {
-        return switch (mat) {
-            case WOODEN_SWORD, GOLDEN_SWORD -> 4.0;
-            case STONE_SWORD -> 4.0;
-            case IRON_SWORD -> 6.0;
-            case DIAMOND_SWORD -> 7.0;
-            case NETHERITE_SWORD -> 8.0;
-            case WOODEN_AXE -> 7.0;
-            case GOLDEN_AXE -> 7.0;
-            case STONE_AXE -> 9.0;
-            case IRON_AXE -> 9.0;
-            case DIAMOND_AXE -> 9.0;
-            case NETHERITE_AXE -> 10.0;
-            default -> 1.0;
-        };
     }
 
     private NamespacedKey reachKey() {
