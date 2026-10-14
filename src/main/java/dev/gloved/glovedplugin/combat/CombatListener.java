@@ -460,7 +460,6 @@ public final class CombatListener implements Listener {
                 if (tick(player) - state.pendingTick > 20) state.pendingQueued = false;
                 continue;
             }
-            if (player.getCooledAttackStrength(0.5f) < 1.0f) continue;
             var target = player.getTargetEntity(6);
             if (!(target instanceof LivingEntity le) || le.isDead()) {
                 // Nobody in front: drop the queue, don't whiff air forever.
@@ -468,6 +467,12 @@ public final class CombatListener implements Listener {
                     state.pendingQueued = false;
                 }
                 continue;
+            }
+            float cooled = 1.0f;
+            try {
+                cooled = player.getCooledAttackStrength(0.5f);
+            } catch (Exception e) {
+                cooled = 1.0f;
             }
             state.pendingQueued = false;
             state.burst = 1;
@@ -483,9 +488,10 @@ public final class CombatListener implements Listener {
                     : attrs;
             AttackStage stage = useAttrs.stage(stageIdx);
             state.armedStage = -1; // synthetic damage skips the armed path
-            double base = baseDamage((useOffhand
+            double base = estimateBase(useOffhand
                     ? player.getInventory().getItemInOffHand()
-                    : main).getType()) + 1.0;
+                    : main);
+            base *= cooled; // vanilla attack strength scaling
             if (stage.upswingTicks() > 0) {
                 scheduleUpswing(player, le, useAttrs, stage, base);
             } else {
