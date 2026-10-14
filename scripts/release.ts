@@ -471,14 +471,15 @@ async function undoRelease(dryRun = false, force = false) {
 
 function findBuiltJar(next: string): string {
   const candidates = [
+    `build/libs/GlovedPlugin.jar`,
     `build/libs/GlovedPlugin-${next}.jar`,
   ];
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
-  // Fallback: newest GlovedPlugin-*.jar
+  // Fallback: newest GlovedPlugin*.jar
   try {
-    const out = execSync('ls -t build/libs/GlovedPlugin-*.jar', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const out = execSync('ls -t build/libs/GlovedPlugin*.jar', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
     if (out.length) return out[0];
   } catch {}
   fail(`Built jar not found. Expected ${candidates[0]} — run ./gradlew build first.`);
@@ -819,7 +820,7 @@ and re-run: ./scripts/release.ts ${bumpArg} ${noPush ? '--no-push' : ''}
   }
 
   buildJar(dryRun);
-  const jarPath = dryRun ? `build/libs/GlovedPlugin-${next}.jar` : findBuiltJar(next);
+  const jarPath = dryRun ? `build/libs/GlovedPlugin.jar` : findBuiltJar(next);
 
   step('Creating release commit');
 

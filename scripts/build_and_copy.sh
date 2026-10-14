@@ -14,17 +14,21 @@ export PATH="${JAVA_HOME}/bin:${PATH}"
 
 ./gradlew clean build --no-daemon
 
-JAR_PATH=$(find "${PROJECT_DIR}/build/libs" -maxdepth 1 -type f -name 'GlovedPlugin-*.jar' | head -n1)
+JAR_PATH="${PROJECT_DIR}/build/libs/GlovedPlugin.jar"
 
-if [[ -z "${JAR_PATH}" ]]; then
-  echo "Error: Build jar not found"
+if [[ ! -f "${JAR_PATH}" ]]; then
+  echo "Error: Build jar not found at ${JAR_PATH}"
   exit 1
 fi
 
 echo "[GlovedPlugin] Copying ${JAR_PATH} to ${DOWNLOADS_DIR}"
 cp -v "${JAR_PATH}" "${DOWNLOADS_DIR}/"
+echo "[GlovedPlugin] Removing stale versioned jars from ${DOWNLOADS_DIR}"
+find "${DOWNLOADS_DIR}" -maxdepth 1 -type f -name 'GlovedPlugin-*.jar' -delete -print
 
 mkdir -p "${PLUGIN_DIR}"
+echo "[GlovedPlugin] Removing stale jars from ${PLUGIN_DIR}"
+find "${PLUGIN_DIR}" -maxdepth 1 -type f -name 'GlovedPlugin-*.jar' ! -name "$(basename "${JAR_PATH}")" -delete -print
 echo "[GlovedPlugin] Copying ${JAR_PATH} to ${PLUGIN_DIR}"
 cp -v "${JAR_PATH}" "${PLUGIN_DIR}/"
 

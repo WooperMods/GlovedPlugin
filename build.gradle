@@ -6,6 +6,14 @@ plugins {
 group = 'dev.gloved.glovedplugin'
 version = '0.1.0'
 
+// Stable jar filename without the version (GlovedPlugin.jar)
+tasks.named('jar') {
+    archiveFileName = 'GlovedPlugin.jar'
+}
+tasks.named('shadowJar') {
+    archiveFileName = 'GlovedPlugin.jar'
+}
+
 repositories {
     mavenCentral()
     maven {
