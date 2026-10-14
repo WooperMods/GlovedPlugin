@@ -72,13 +72,38 @@ public final class CombatListener implements Listener {
         }
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
+        // Play FX
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-            // Use a default stage for FX
             AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
             TrailFX.play(player, stage);
         }
         FmmBridge.onSwing(player, false);
+        // Proactive arc hit: damage all entities in weapon arc on swing, enabling off-angle hits.
+        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL || player.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                ItemStack hand = player.getInventory().getItemInMainHand();
+                if (hand.getType().isAir()) return;
+                WeaponAttributes attrs = registry.forMaterial(hand.getType());
+                // Use wide angle for swing assist to ensure off-angle hits register
+                AttackStage stage = new AttackStage(1.0, 1.0, 180.0, 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+                List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
+                if (hits.isEmpty()) return;
+                float cooled = 1.0f;
+                try { cooled = player.getCooledAttackStrength(0.5f); } catch (Exception ignored2) {}
+                double base = estimateBase(hand) * cooled;
+                int sweeping = hand.getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
+                boolean fullCleave = sweeping > 0;
+                for (ArcHitbox.ArcHit hit : hits) {
+                    LivingEntity target = hit.entity();
+                    double amount = base;
+                    if (!fullCleave) {
+                        amount *= registry.getSweepFalloff();
+                    }
+                    guardedDamage(target, amount, player);
+                }
+            }, 1L);
+        }
     }
 
     // Primary vanilla hit -> add arc secondaries
@@ -131,6 +156,37 @@ public final class CombatListener implements Listener {
         } finally {
             syntheticTargets.remove(id);
         }
+    }
+
+    static double estimateBase(ItemStack weapon) {
+        if (weapon == null) return 1.0;
+        double base = baseDamage(weapon.getType());
+        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
+        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
+        return base;
+    }
+
+    static double baseDamage(Material mat) {
+        return switch (mat) {
+            case Material.WOODEN_SWORD, Material.STONE_SWORD -> 4.0;
+            case Material.GOLDEN_SWORD -> 4.0;
+            case Material.IRON_SWORD -> 6.0;
+            case Material.DIAMOND_SWORD -> 7.0;
+            case Material.NETHERITE_SWORD -> 8.0;
+            case Material.WOODEN_AXE -> 7.0;
+            case Material.STONE_AXE -> 9.0;
+            case Material.GOLDEN_AXE -> 7.0;
+            case Material.IRON_AXE -> 9.0;
+            case Material.DIAMOND_AXE -> 9.0;
+            case Material.NETHERITE_AXE -> 10.0;
+            case Material.WOODEN_SHOVEL, Material.WOODEN_PICKAXE -> 1.0;
+            case Material.STONE_SHOVEL, Material.STONE_PICKAXE -> 1.0;
+            case Material.IRON_SHOVEL, Material.IRON_PICKAXE -> 1.0;
+            case Material.DIAMOND_SHOVEL, Material.DIAMOND_PICKAXE -> 1.0;
+            case Material.NETHERITE_SHOVEL, Material.NETHERITE_PICKAXE -> 1.0;
+            case Material.GOLDEN_SHOVEL, Material.GOLDEN_PICKAXE -> 1.0;
+            default -> 1.0;
+        };
     }
 
     // Per-weapon reach
