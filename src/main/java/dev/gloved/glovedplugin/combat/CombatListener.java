@@ -2,7 +2,6 @@ package dev.gloved.glovedplugin.combat;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -24,28 +23,19 @@ import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.HashMap;
 
-/**
- * Server-side arc cleave for Paper 26.3.
- * <p>
- * Primary hit is 100% vanilla: we never cancel or re-deal it.
- * We only add secondary targets within the weapon's angle/range arc.
- * All damage for secondaries uses the same base amount as the primary
- * (event.getDamage()) so enchants/effects from EliteMobs etc. still apply
- * via the standard {@link EntityDamageByEntityEvent} pipeline.
- */
 public final class CombatListener implements Listener {
 
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
-    private final Map<UUID, Long> lastArcTick = new HashMap<>();
     private final Set<UUID> syntheticTargets = new HashSet<>();
+    private final Map<UUID, Long> lastArcTick = new HashMap<>();
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
@@ -60,7 +50,6 @@ public final class CombatListener implements Listener {
         return player.getWorld().getFullTime();
     }
 
-    // Swing FX only (no combo)
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onSwing(PlayerArmSwingEvent event) {
         if (!registry.isEnabled()) return;
@@ -68,51 +57,22 @@ public final class CombatListener implements Listener {
         Player player = event.getPlayer();
         try {
             if (player.isHandRaised() || player.isBlocking()) return;
-        } catch (NoSuchMethodError ignored) {
-        }
+        } catch (NoSuchMethodError ignored) {}
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
-        // Play FX
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
             AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
             TrailFX.play(player, stage);
         }
         FmmBridge.onSwing(player, false);
-        // Proactive arc hit: damage all entities in weapon arc on swing, enabling off-angle hits.
-        if (player.getGameMode() == org.bukkit.GameMode.SURVIVAL || player.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                ItemStack hand = player.getInventory().getItemInMainHand();
-                if (hand.getType().isAir()) return;
-                WeaponAttributes attrs = registry.forMaterial(hand.getType());
-                // Use wide angle for swing assist to ensure off-angle hits register
-                AttackStage stage = new AttackStage(1.0, 1.0, 180.0, 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
-                List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
-                if (hits.isEmpty()) return;
-                float cooled = 1.0f;
-                try { cooled = player.getCooledAttackStrength(0.5f); } catch (Exception ignored2) {}
-                double base = estimateBase(hand) * cooled;
-                int sweeping = hand.getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
-                boolean fullCleave = sweeping > 0;
-                for (ArcHitbox.ArcHit hit : hits) {
-                    LivingEntity target = hit.entity();
-                    double amount = base;
-                    if (!fullCleave) {
-                        amount *= registry.getSweepFalloff();
-                    }
-                    guardedDamage(target, amount, player);
-                }
-            }, 1L);
-        }
     }
 
-    // Primary vanilla hit -> add arc secondaries
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onAttack(EntityDamageByEntityEvent event) {
         if (!registry.isEnabled()) return;
         if (!(event.getDamager() instanceof Player attacker)) return;
         if (!(event.getEntity() instanceof LivingEntity primary)) return;
-        // Skip synthetic secondary hits
         if (syntheticTargets.contains(primary.getUniqueId())) return;
 
         ItemStack mainHand = attacker.getInventory().getItemInMainHand();
@@ -120,29 +80,23 @@ public final class CombatListener implements Listener {
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         long now = tick(attacker);
-        Long lastArc = lastArcTick.get(attacker.getUniqueId());
-        if (lastArc != null && now - lastArc < 2) {
-            return;
-        }
+        Long last = lastArcTick.get(attacker.getUniqueId());
+        if (last != null && now - last < 2) return;
 
-        // Arc secondaries
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(
-                attacker, primary, attrs.rangeBonus(),
-                new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK"),
-                attrs.hitbox());
+        AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(attacker, primary, attrs.rangeBonus(), stage, attrs.hitbox());
 
-        int sweeping = attacker.getInventory().getItemInMainHand()
-                .getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
+        int sweeping = mainHand.getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
         boolean fullCleave = sweeping > 0;
+        double baseDamage = event.getDamage();
 
         lastArcTick.put(attacker.getUniqueId(), now);
+
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target.equals(primary)) continue;
-            double amount = event.getDamage();
-            if (!fullCleave) {
-                amount *= registry.getSweepFalloff();
-            }
+            double amount = baseDamage;
+            if (!fullCleave) amount *= registry.getSweepFalloff();
             guardedDamage(target, amount, attacker);
         }
     }
@@ -152,44 +106,11 @@ public final class CombatListener implements Listener {
         syntheticTargets.add(id);
         try {
             target.damage(amount, attacker);
-        } catch (Exception ignored) {
         } finally {
             syntheticTargets.remove(id);
         }
     }
 
-    static double estimateBase(ItemStack weapon) {
-        if (weapon == null) return 1.0;
-        double base = baseDamage(weapon.getType());
-        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
-        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
-        return base;
-    }
-
-    static double baseDamage(Material mat) {
-        return switch (mat) {
-            case Material.WOODEN_SWORD, Material.STONE_SWORD -> 4.0;
-            case Material.GOLDEN_SWORD -> 4.0;
-            case Material.IRON_SWORD -> 6.0;
-            case Material.DIAMOND_SWORD -> 7.0;
-            case Material.NETHERITE_SWORD -> 8.0;
-            case Material.WOODEN_AXE -> 7.0;
-            case Material.STONE_AXE -> 9.0;
-            case Material.GOLDEN_AXE -> 7.0;
-            case Material.IRON_AXE -> 9.0;
-            case Material.DIAMOND_AXE -> 9.0;
-            case Material.NETHERITE_AXE -> 10.0;
-            case Material.WOODEN_SHOVEL, Material.WOODEN_PICKAXE -> 1.0;
-            case Material.STONE_SHOVEL, Material.STONE_PICKAXE -> 1.0;
-            case Material.IRON_SHOVEL, Material.IRON_PICKAXE -> 1.0;
-            case Material.DIAMOND_SHOVEL, Material.DIAMOND_PICKAXE -> 1.0;
-            case Material.NETHERITE_SHOVEL, Material.NETHERITE_PICKAXE -> 1.0;
-            case Material.GOLDEN_SHOVEL, Material.GOLDEN_PICKAXE -> 1.0;
-            default -> 1.0;
-        };
-    }
-
-    // Per-weapon reach
     private NamespacedKey reachKey() {
         return new NamespacedKey(plugin, "weapon_reach");
     }
@@ -198,22 +119,17 @@ public final class CombatListener implements Listener {
         AttributeInstance inst;
         try {
             inst = player.getAttribute(Attribute.ENTITY_INTERACTION_RANGE);
-        } catch (NoSuchFieldError | Exception e) {
+        } catch (Exception e) {
             return;
         }
         if (inst == null) return;
         NamespacedKey key = reachKey();
-        try {
-            inst.removeModifier(key);
-        } catch (Exception ignored) {
-        }
+        try { inst.removeModifier(key); } catch (Exception ignored) {}
         if (!registry.isEnabled()) return;
-        double bonus = registry.forMaterial(
-                player.getInventory().getItemInMainHand().getType()).rangeBonus();
+        double bonus = registry.forMaterial(player.getInventory().getItemInMainHand().getType()).rangeBonus();
         if (bonus == 0) return;
         try {
-            inst.addTransientModifier(new AttributeModifier(key, bonus,
-                    AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND));
+            inst.addTransientModifier(new AttributeModifier(key, bonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND));
         } catch (Exception e) {
             GlovedPlugin.logWarning("Could not apply weapon reach: " + e.getMessage());
         }
@@ -234,24 +150,21 @@ public final class CombatListener implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> applyReach(event.getPlayer()));
     }
 
-    // Swing-thru-grass
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockDamage(BlockDamageEvent event) {
         if (!registry.isEnabled() || !registry.isSwingThruGrass()) return;
         if (isZeroHardness(event.getBlock().getType())) {
-            Material held = event.getPlayer().getInventory().getItemInMainHand().getType();
-            if (TrailFX.isOneHandedWeapon(held)) {
+            if (TrailFX.isOneHandedWeapon(event.getPlayer().getInventory().getItemInMainHand().getType())) {
                 event.setCancelled(true);
             }
         }
     }
 
-    private static boolean isZeroHardness(Material mat) {
+    private static boolean isZeroHardness(org.bukkit.Material mat) {
         return switch (mat) {
             case SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN, DEAD_BUSH,
-                    DANDELION, POPPY, TORCH, REDSTONE_WIRE, SNOW -> true;
-            default -> mat.isAir() || mat.name().endsWith("_BUTTON")
-                    || mat.name().endsWith("_PRESSURE_PLATE");
+                 DANDELION, POPPY, TORCH, REDSTONE_WIRE, SNOW -> true;
+            default -> mat.isAir() || mat.name().endsWith("_BUTTON") || mat.name().endsWith("_PRESSURE_PLATE");
         };
     }
 
