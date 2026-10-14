@@ -63,9 +63,10 @@ public final class CombatListener implements Listener {
         }
         FmmBridge.onSwing(player, false);
 
-        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
-            return;
-        }
+        // Allow arc attacks in all gamemodes
+        // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
+        //     return;
+        // }
 
         long now = tick(player);
         UUID id = player.getUniqueId();
@@ -82,6 +83,7 @@ public final class CombatListener implements Listener {
             return;
         }
 
+        int idx = 0;
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
@@ -91,12 +93,16 @@ public final class CombatListener implements Listener {
             double dist = hit.distance();
             double angle = hit.angleDeg();
             GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
-            try {
-                player.attack(target);
-                GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + target.getType() + " id=" + target.getUniqueId());
-            } catch (Exception e) {
-                GlovedPlugin.logWarning("[BetterCombat] attack failed for " + target.getType() + ": " + e.getMessage());
-            }
+            final LivingEntity t = target;
+            final int delay = idx++;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                try {
+                    player.attack(t);
+                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
+                } catch (Exception e) {
+                    GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
+                }
+            }, delay);
         }
     }
 
