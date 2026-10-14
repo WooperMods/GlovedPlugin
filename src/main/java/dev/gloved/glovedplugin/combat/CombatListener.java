@@ -70,8 +70,9 @@ public final class CombatListener implements Listener {
 
         long now = tick(player);
         UUID id = player.getUniqueId();
-        Long last = lastArcTick.get(id);
-        if (last != null && now - last < 2) return;
+        // Throttle removed to allow continuous arc attacks; uncomment to rate limit
+        // Long last = lastArcTick.get(id);
+        // if (last != null && now - last < 2) return;
         lastArcTick.put(id, now);
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
