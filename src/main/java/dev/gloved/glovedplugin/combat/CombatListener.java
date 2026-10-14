@@ -94,7 +94,6 @@ public final class CombatListener implements Listener {
         }
 
         int idx = 0;
-        syntheticAttack.set(true);
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
@@ -107,15 +106,17 @@ public final class CombatListener implements Listener {
             final LivingEntity t = target;
             final int delay = idx++;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                syntheticAttack.set(true);
                 try {
                     player.attack(t);
                     GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
+                } finally {
+                    syntheticAttack.set(false);
                 }
             }, delay);
         }
-        syntheticAttack.set(false);
     }
 
     private NamespacedKey reachKey() {
