@@ -2,7 +2,6 @@ package dev.gloved.glovedplugin.combat;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
@@ -20,7 +19,6 @@ import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
-import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 
@@ -34,41 +32,25 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Server-side Better Combat-lite: arc expansion, combo stages, sweep falloff,
- * dual-wield alternation, hold-to-spam queue, per-weapon reach.
- *
- * <p>Design rules (EliteMobs-safe): the vanilla damage event is never
- * cancelled and never re-dealt — the primary hit keeps flowing through every
- * other plugin's damage pipeline (enchants, effects, custom formulas). We only
- * scale its amount early ({@code LOW}) and add secondary arc targets via
- * normal {@code damage()} calls so those fire standard events too. Swing FX
- * fires on every arm swing, hit or miss.
+ * Server-side arc cleave for Paper 26.3.
+ * <p>
+ * Primary hit is 100% vanilla: we never cancel or re-deal it.
+ * We only add secondary targets within the weapon's angle/range arc.
+ * All damage for secondaries uses the same base amount as the primary
+ * (event.getDamage()) so enchants/effects from EliteMobs etc. still apply
+ * via the standard {@link EntityDamageByEntityEvent} pipeline.
  */
 public final class CombatListener implements Listener {
 
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
-    private final ComboTracker combos = new ComboTracker();
-    /** Attacker -> last arc tick, to suppress vanilla sweep double-hits. */
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
-    /** Entities hit by our arc this tick (suppress chained sweep events). */
-    private final Set<UUID> arcVictims = new HashSet<>();
-    /** Targets currently being damaged by us (skip nested echoes). */
     private final Set<UUID> syntheticTargets = new HashSet<>();
-    /** Attacker -> last tick a damage event was processed for them. */
-    private final Map<UUID, Long> lastHitTick = new HashMap<>();
-    /** Attacker -> last tick the off-angle assist dealt a hit (rate limit). */
-    private final Map<UUID, Long> lastProactiveTick = new HashMap<>();
-    private record ProactiveHit(UUID target, long tick) {}
-    /** Attacker -> assist hit, to swallow a late vanilla echo of the same hit. */
-    private final Map<UUID, ProactiveHit> proactiveHits = new HashMap<>();
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
         this.registry = registry;
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        // Hold-to-spam pump: fire queued swings once cooldown is ready.
-        Bukkit.getScheduler().runTaskTimer(plugin, this::pumpQueuedSwings, 2L, 2L);
         for (Player player : Bukkit.getOnlinePlayers()) {
             applyReach(player);
         }
@@ -78,144 +60,34 @@ public final class CombatListener implements Listener {
         return player.getWorld().getFullTime();
     }
 
-    // --- Swing: FX + combo advance (every swing, hit or miss) ---
-
+    // Swing FX only (no combo)
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onSwing(PlayerArmSwingEvent event) {
         if (!registry.isEnabled()) return;
-        if (event.getHand() != EquipmentSlot.HAND) return;
+        if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         Player player = event.getPlayer();
-        // Skip item-use animations (eating, bow draw, shield block).
         try {
             if (player.isHandRaised() || player.isBlocking()) return;
         } catch (NoSuchMethodError ignored) {
         }
-
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
-
-        ComboTracker.State state = combos.state(player.getUniqueId());
-        long now = tick(player);
-
-        // Burst tracking for hold-to-spam.
-        if (now - state.lastSwingTick <= 12) {
-            state.burst++;
-        } else {
-            state.burst = 1;
-        }
-        state.lastSwingTick = now;
-
-        // Gate swing processing to actual attack rhythm to avoid spam when
-        // holding left click in air / looking at ground. Arm swings can arrive
-        // every tick; only process when cooldown is essentially ready.
-        float cooled;
-        try {
-            cooled = player.getCooledAttackStrength(0.5f);
-        } catch (Exception e) {
-            cooled = 1.0f;
-        }
-        if (cooled < 0.80f) {
-            // Still track burst above, but suppress FX/combo advance.
-            return;
-        }
-
-        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-
-        int stageIdx = combos.nextStage(player.getUniqueId(), now,
-                registry.getComboResetTicks(), attrs.comboSize());
-        boolean useOffhand = pickHand(player, state, attrs);
-        state.armedStage = stageIdx;
-        state.armedTick = now;
-        state.armedOffhand = useOffhand;
-
-        WeaponAttributes useAttrs = useOffhand
-                ? registry.forMaterial(player.getInventory().getItemInOffHand().getType())
-                : attrs;
-        AttackStage stage = useAttrs.stage(stageIdx);
         if (registry.isTrailFx()) {
+            WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
+            // Use a default stage for FX
+            AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
             TrailFX.play(player, stage);
         }
-        FmmBridge.onSwing(player, useOffhand);
-
-        if (registry.isHoldToSpam()) {
-            state.pendingQueued = true;
-            state.pendingTick = now;
-        }
-
-        // Off-angle assist: if vanilla lands no hit for this swing (target
-        // wasn't under the crosshair), pick the best arc target ourselves.
-        float cooledAtSwing = cooled;
-        if (registry.isOffAngleAssist() && cooledAtSwing >= 0.85f
-                && (player.getGameMode() == GameMode.SURVIVAL
-                    || player.getGameMode() == GameMode.ADVENTURE)) {
-            UUID playerId = player.getUniqueId();
-            final long swingTick = now;
-            final float cooledFinal = cooledAtSwing;
-            Bukkit.getScheduler().runTaskLater(plugin, () ->
-                    proactiveAssist(playerId, swingTick, cooledFinal), 2L);
-        }
+        FmmBridge.onSwing(player, false);
     }
 
-    /**
-     * Deals a hit to the best arc target when vanilla whiffed. Runs 2 ticks
-     * after the swing so a normal (direct-look) hit always wins the race; the
-     * manual damage re-enters {@link #onAttack} and flows through the same
-     * pipeline (combo consume, scaling, cleave, enchant events).
-     */
-    private void proactiveAssist(UUID playerId, long swingTick, float cooledAtSwing) {
-        if (!registry.isEnabled() || !registry.isOffAngleAssist()) return;
-        Player player = Bukkit.getPlayer(playerId);
-        if (player == null || !player.isOnline()) return;
-        if (player.getGameMode() != GameMode.SURVIVAL
-                && player.getGameMode() != GameMode.ADVENTURE) return;
-        Long hitTick = lastHitTick.get(playerId);
-        if (hitTick != null && hitTick >= swingTick) return; // vanilla landed
-        long now = tick(player);
-        Long lastPro = lastProactiveTick.get(playerId);
-        if (lastPro != null && now - lastPro < registry.getProactiveMinInterval()) return;
-        ItemStack mainHand = player.getInventory().getItemInMainHand();
-        if (mainHand.getType().isAir()) return;
-        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-        ComboTracker.State state = combos.state(playerId);
-        boolean armedFresh = state.armedStage >= 0 && now - state.armedTick <= 6;
-        boolean useOffhand = armedFresh && state.armedOffhand;
-        WeaponAttributes useAttrs = useOffhand
-                ? registry.forMaterial(player.getInventory().getItemInOffHand().getType())
-                : attrs;
-        AttackStage stage = useAttrs.stage(armedFresh ? state.armedStage : 0);
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(
-                player, null, useAttrs.rangeBonus(), stage, useAttrs.hitbox());
-        if (hits.isEmpty()) return;
-        LivingEntity target = hits.get(0).entity();
-        double estimate = estimateBase(useOffhand
-                ? player.getInventory().getItemInOffHand() : mainHand);
-        estimate *= 0.2 + cooledAtSwing * cooledAtSwing * 0.8; // vanilla scaling
-        lastProactiveTick.put(playerId, now);
-        proactiveHits.put(playerId, new ProactiveHit(target.getUniqueId(), now));
-        try {
-            target.damage(estimate, player);
-        } catch (Exception ignored) {
-        }
-    }
-
-    /** Vanilla attack-damage estimate (base + Sharpness) for assist hits. */
-    static double estimateBase(ItemStack weapon) {
-        if (weapon == null) return 1.0;
-        double base = baseDamage(weapon.getType());
-        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
-        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
-        return base;
-    }
-
-    // --- Vanilla damage -> arc (never cancelled, never re-dealt) ---
-
+    // Primary vanilla hit -> add arc secondaries
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onAttack(EntityDamageByEntityEvent event) {
         if (!registry.isEnabled()) return;
         if (!(event.getDamager() instanceof Player attacker)) return;
         if (!(event.getEntity() instanceof LivingEntity primary)) return;
-        // Our own secondary/synthetic damage re-enters here; leave it alone
-        // so EliteMobs and vanilla handle it exactly once.
+        // Skip synthetic secondary hits
         if (syntheticTargets.contains(primary.getUniqueId())) return;
 
         ItemStack mainHand = attacker.getInventory().getItemInMainHand();
@@ -223,107 +95,29 @@ public final class CombatListener implements Listener {
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         long now = tick(attacker);
-
-        // Late vanilla echo of a hit the assist already dealt: the nested
-        // pipeline handled it, so drop the duplicate, not the damage. Same-tick
-        // events proceed (that is the assist's own nested event).
-        ProactiveHit pro = proactiveHits.get(attacker.getUniqueId());
-        if (pro != null && pro.target().equals(primary.getUniqueId())
-                && now - pro.tick() >= 1 && now - pro.tick() < 4) {
-            event.setCancelled(true);
-            return;
-        }
-
-        // Suppress chained sweep echoes from our own arc earlier this tick.
         Long lastArc = lastArcTick.get(attacker.getUniqueId());
-        if (lastArc != null && now - lastArc < 2 && arcVictims.contains(primary.getUniqueId())) {
+        if (lastArc != null && now - lastArc < 2) {
             return;
         }
 
-        ComboTracker.State state = combos.state(attacker.getUniqueId());
-        int stageIdx;
-        boolean useOffhand;
-        if (now - state.armedTick <= 10 && state.armedStage >= 0) {
-            // Normal path: swing armed the stage a moment ago; consume it.
-            stageIdx = state.armedStage;
-            useOffhand = state.armedOffhand;
-            state.armedStage = -1;
-        } else {
-            // No swing seen (synthetic damage, sweep, other plugin); advance.
-            stageIdx = combos.nextStage(attacker.getUniqueId(), now,
-                    registry.getComboResetTicks(), attrs.comboSize());
-            useOffhand = pickHand(attacker, state, attrs);
-        }
-
-        ItemStack weapon = useOffhand
-                ? attacker.getInventory().getItemInOffHand()
-                : mainHand;
-        WeaponAttributes useAttrs = useOffhand
-                ? registry.forMaterial(weapon.getType()) : attrs;
-        AttackStage stage = useAttrs.stage(stageIdx);
-
-        double baseDamage = event.getDamage();
-        if (useOffhand) {
-            baseDamage = scaleOffhandDamage(mainHand, weapon, baseDamage);
-        }
-
-        if (stage.upswingTicks() > 0) {
-            // Delayed landing: the only path that cancels, since vanilla has
-            // no notion of upswing. Defaults keep this at 0 (instant).
-            event.setCancelled(true);
-            state.pendingQueued = false;
-            scheduleUpswing(attacker, primary, useAttrs, stage, baseDamage);
-        } else {
-            lastHitTick.put(attacker.getUniqueId(), now);
-            event.setDamage(baseDamage * stage.damageMultiplier());
-            dealSecondaries(attacker, primary, useAttrs, stage, baseDamage);
-        }
-    }
-
-    private void scheduleUpswing(Player attacker, LivingEntity primary,
-                                 WeaponAttributes attrs, AttackStage stage,
-                                 double baseDamage) {
-        UUID attackerId = attacker.getUniqueId();
-        UUID primaryId = primary.getUniqueId();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player p = Bukkit.getPlayer(attackerId);
-            var primaryEntity = Bukkit.getEntity(primaryId);
-            if (p == null || !(primaryEntity instanceof LivingEntity le) || le.isDead()) return;
-            lastHitTick.put(attackerId, tick(p));
-            guardedDamage(le, baseDamage * stage.damageMultiplier(), p);
-            dealSecondaries(p, le, attrs, stage, baseDamage);
-            if (registry.isTrailFx()) {
-                TrailFX.play(p, stage);
-            }
-            FmmBridge.onSwing(p, false);
-        }, Math.max(1, stage.upswingTicks()));
-    }
-
-    /**
-     * Damage every arc target except the primary (which flows through the
-     * vanilla event untouched). Each call fires a standard damage event so
-     * enchant/effect plugins process secondaries normally.
-     */
-    private void dealSecondaries(Player attacker, LivingEntity primary,
-                                 WeaponAttributes attrs, AttackStage stage,
-                                 double baseDamage) {
+        // Arc secondaries
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(
-                attacker, primary, attrs.rangeBonus(), stage, attrs.hitbox());
+                attacker, primary, attrs.rangeBonus(),
+                new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK"),
+                attrs.hitbox());
 
         int sweeping = attacker.getInventory().getItemInMainHand()
                 .getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
+        boolean fullCleave = sweeping > 0;
 
-        long now = tick(attacker);
         lastArcTick.put(attacker.getUniqueId(), now);
-
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target.equals(primary)) continue;
-            double amount = baseDamage * stage.damageMultiplier();
-            if (sweeping <= 0) {
+            double amount = event.getDamage();
+            if (!fullCleave) {
                 amount *= registry.getSweepFalloff();
             }
-            arcVictims.add(target.getUniqueId());
             guardedDamage(target, amount, attacker);
         }
     }
@@ -339,75 +133,11 @@ public final class CombatListener implements Listener {
         }
     }
 
-    // --- Dual wield ---
-
-    private boolean pickHand(Player attacker, ComboTracker.State state, WeaponAttributes mainAttrs) {
-        if (!registry.isDualWield()) {
-            state.nextIsOffhand = false;
-            return false;
-        }
-        Material main = attacker.getInventory().getItemInMainHand().getType();
-        Material off = attacker.getInventory().getItemInOffHand().getType();
-        if (mainAttrs.twoHanded()) return false;
-        if (!TrailFX.isOneHandedWeapon(main)) return false;
-        if (!TrailFX.isOneHandedWeapon(off)) {
-            state.nextIsOffhand = false;
-            return false;
-        }
-        if (TrailFX.blocksOffhandUse(off)) {
-            state.nextIsOffhand = false;
-            return false;
-        }
-        boolean useOff = state.nextIsOffhand;
-        state.nextIsOffhand = !state.nextIsOffhand;
-        return useOff;
-    }
-
-    static double scaleOffhandDamage(ItemStack main, ItemStack off, double mainDamage) {
-        double mainBase = baseDamage(main.getType());
-        double offBase = baseDamage(off.getType());
-        if (mainBase <= 0) return mainDamage;
-        double ratio = offBase / mainBase;
-        int sharp = off.getEnchantmentLevel(Enchantment.SHARPNESS);
-        double sharpBonus = sharp > 0 ? 1.0 + (sharp - 1) * 0.5 : 0.0;
-        return mainDamage * Math.clamp(ratio, 0.3, 1.5) * (sharpBonus > 0 ? (offBase + sharpBonus) / offBase : 1.0);
-    }
-
-    static double baseDamage(Material mat) {
-        if (mat == null) return 1.0;
-        return switch (mat) {
-            case WOODEN_SWORD -> 4.0;
-            case STONE_SWORD -> 5.0;
-            case GOLDEN_SWORD -> 4.0;
-            case IRON_SWORD -> 6.0;
-            case DIAMOND_SWORD -> 7.0;
-            case NETHERITE_SWORD -> 8.0;
-            case WOODEN_AXE -> 7.0;
-            case STONE_AXE -> 9.0;
-            case IRON_AXE -> 9.0;
-            case GOLDEN_AXE -> 7.0;
-            case DIAMOND_AXE -> 9.0;
-            case NETHERITE_AXE -> 10.0;
-            case TRIDENT -> 9.0;
-            case MACE -> 6.0;
-            case DIAMOND_HOE, IRON_HOE -> 2.0;
-            default -> {
-                String n = mat.name();
-                if (n.endsWith("_SWORD")) yield 5.0;
-                if (n.endsWith("_AXE")) yield 7.0;
-                if (n.equals("STICK") || n.equals("BLAZE_ROD")) yield 2.0;
-                yield 1.0;
-            }
-        };
-    }
-
-    // --- Per-weapon reach (extends the vanilla trigger range) ---
-
+    // Per-weapon reach
     private NamespacedKey reachKey() {
         return new NamespacedKey(plugin, "weapon_reach");
     }
 
-    /** Adds the held weapon's range bonus to entity interaction range. */
     public void applyReach(Player player) {
         AttributeInstance inst;
         try {
@@ -448,66 +178,7 @@ public final class CombatListener implements Listener {
         Bukkit.getScheduler().runTask(plugin, () -> applyReach(event.getPlayer()));
     }
 
-    // --- Hold to spam (auto-repeat only when really holding) ---
-
-    private void pumpQueuedSwings() {
-        if (!registry.isEnabled() || !registry.isHoldToSpam()) return;
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            ComboTracker.State state = combos.state(player.getUniqueId());
-            if (!state.pendingQueued) continue;
-            // Single clicks never auto-repeat: require a real burst (holding).
-            if (state.burst < 2) {
-                if (tick(player) - state.pendingTick > 20) state.pendingQueued = false;
-                continue;
-            }
-            var target = player.getTargetEntity(6);
-            if (!(target instanceof LivingEntity le) || le.isDead()) {
-                // Nobody in front: drop the queue, don't whiff air forever.
-                if (tick(player) - state.pendingTick > 20) {
-                    state.pendingQueued = false;
-                }
-                continue;
-            }
-            float cooled = 1.0f;
-            try {
-                cooled = player.getCooledAttackStrength(0.5f);
-            } catch (Exception e) {
-                cooled = 1.0f;
-            }
-            state.pendingQueued = false;
-            state.burst = 1;
-            ItemStack main = player.getInventory().getItemInMainHand();
-            if (main.getType().isAir()) continue;
-            WeaponAttributes attrs = registry.forMaterial(main.getType());
-            long now = tick(player);
-            int stageIdx = combos.nextStage(player.getUniqueId(), now,
-                    registry.getComboResetTicks(), attrs.comboSize());
-            boolean useOffhand = pickHand(player, state, attrs);
-            WeaponAttributes useAttrs = useOffhand
-                    ? registry.forMaterial(player.getInventory().getItemInOffHand().getType())
-                    : attrs;
-            AttackStage stage = useAttrs.stage(stageIdx);
-            state.armedStage = -1; // synthetic damage skips the armed path
-            double base = estimateBase(useOffhand
-                    ? player.getInventory().getItemInOffHand()
-                    : main);
-            base *= cooled; // vanilla attack strength scaling
-            if (stage.upswingTicks() > 0) {
-                scheduleUpswing(player, le, useAttrs, stage, base);
-            } else {
-                guardedDamage(le, base * stage.damageMultiplier(), player);
-                dealSecondaries(player, le, useAttrs, stage, base);
-                if (registry.isTrailFx()) {
-                    TrailFX.play(player, stage);
-                }
-                FmmBridge.onSwing(player, useOffhand);
-                player.resetCooldown();
-            }
-        }
-    }
-
-    // --- Swing-thru-grass (opt-in) ---
-
+    // Swing-thru-grass
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockDamage(BlockDamageEvent event) {
         if (!registry.isEnabled() || !registry.isSwingThruGrass()) return;
@@ -530,13 +201,6 @@ public final class CombatListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        combos.clear(event.getPlayer().getUniqueId());
         lastArcTick.remove(event.getPlayer().getUniqueId());
-        lastHitTick.remove(event.getPlayer().getUniqueId());
-        lastProactiveTick.remove(event.getPlayer().getUniqueId());
-        proactiveHits.remove(event.getPlayer().getUniqueId());
     }
-
-    public WeaponRegistry getRegistry() { return registry; }
-    public ComboTracker getCombos() { return combos; }
 }
