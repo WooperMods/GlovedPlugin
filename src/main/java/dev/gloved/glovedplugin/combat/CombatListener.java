@@ -13,7 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockDamageEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -23,18 +22,15 @@ import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
 
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.HashMap;
 
 public final class CombatListener implements Listener {
 
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
-    private final Set<UUID> syntheticTargets = new HashSet<>();
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
@@ -60,55 +56,68 @@ public final class CombatListener implements Listener {
         } catch (NoSuchMethodError ignored) {}
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
+
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
             AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
             TrailFX.play(player, stage);
         }
         FmmBridge.onSwing(player, false);
-    }
 
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
-    public void onAttack(EntityDamageByEntityEvent event) {
-        if (!registry.isEnabled()) return;
-        if (!(event.getDamager() instanceof Player attacker)) return;
-        if (!(event.getEntity() instanceof LivingEntity primary)) return;
-        if (syntheticTargets.contains(primary.getUniqueId())) return;
+        if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
+            return;
+        }
 
-        ItemStack mainHand = attacker.getInventory().getItemInMainHand();
-        if (mainHand.getType().isAir()) return;
+        long now = tick(player);
+        UUID id = player.getUniqueId();
+        Long last = lastArcTick.get(id);
+        if (last != null && now - last < 2) return;
+        lastArcTick.put(id, now);
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-        long now = tick(attacker);
-        Long last = lastArcTick.get(attacker.getUniqueId());
-        if (last != null && now - last < 2) return;
-
+        // Wide angle for swing arc
         AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(attacker, primary, attrs.rangeBonus(), stage, attrs.hitbox());
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
+        if (hits.isEmpty()) return;
 
+        float cooled = 1.0f;
+        try { cooled = player.getCooledAttackStrength(0.5f); } catch (Exception ignored) {}
+
+        double base = estimateBase(mainHand) * cooled;
         int sweeping = mainHand.getEnchantmentLevel(Enchantment.SWEEPING_EDGE);
         boolean fullCleave = sweeping > 0;
-        double baseDamage = event.getDamage();
-
-        lastArcTick.put(attacker.getUniqueId(), now);
 
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
-            if (target.equals(primary)) continue;
-            double amount = baseDamage;
+            double amount = base;
             if (!fullCleave) amount *= registry.getSweepFalloff();
-            guardedDamage(target, amount, attacker);
+            target.damage(amount, player);
         }
     }
 
-    private void guardedDamage(LivingEntity target, double amount, Player attacker) {
-        UUID id = target.getUniqueId();
-        syntheticTargets.add(id);
-        try {
-            target.damage(amount, attacker);
-        } finally {
-            syntheticTargets.remove(id);
-        }
+    static double estimateBase(ItemStack weapon) {
+        if (weapon == null) return 1.0;
+        double base = baseDamage(weapon.getType());
+        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
+        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
+        return base;
+    }
+
+    static double baseDamage(org.bukkit.Material mat) {
+        return switch (mat) {
+            case WOODEN_SWORD, GOLDEN_SWORD -> 4.0;
+            case STONE_SWORD -> 4.0;
+            case IRON_SWORD -> 6.0;
+            case DIAMOND_SWORD -> 7.0;
+            case NETHERITE_SWORD -> 8.0;
+            case WOODEN_AXE -> 7.0;
+            case GOLDEN_AXE -> 7.0;
+            case STONE_AXE -> 9.0;
+            case IRON_AXE -> 9.0;
+            case DIAMOND_AXE -> 9.0;
+            case NETHERITE_AXE -> 10.0;
+            default -> 1.0;
+        };
     }
 
     private NamespacedKey reachKey() {
@@ -119,9 +128,7 @@ public final class CombatListener implements Listener {
         AttributeInstance inst;
         try {
             inst = player.getAttribute(Attribute.ENTITY_INTERACTION_RANGE);
-        } catch (Exception e) {
-            return;
-        }
+        } catch (Exception e) { return; }
         if (inst == null) return;
         NamespacedKey key = reachKey();
         try { inst.removeModifier(key); } catch (Exception ignored) {}
