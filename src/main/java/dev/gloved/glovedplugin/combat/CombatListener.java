@@ -31,6 +31,7 @@ public final class CombatListener implements Listener {
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
+    private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
@@ -43,6 +44,14 @@ public final class CombatListener implements Listener {
 
     private static long tick(Player player) {
         return player.getWorld().getFullTime();
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPreAttack(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
+        if (!registry.isEnabled()) return;
+        if (Boolean.TRUE.equals(syntheticAttack.get())) return;
+        // Cancel vanilla attacks, we handle arc via player.attack ourselves
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
@@ -85,6 +94,7 @@ public final class CombatListener implements Listener {
         }
 
         int idx = 0;
+        syntheticAttack.set(true);
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
@@ -105,6 +115,7 @@ public final class CombatListener implements Listener {
                 }
             }, delay);
         }
+        syntheticAttack.set(false);
     }
 
     private NamespacedKey reachKey() {
