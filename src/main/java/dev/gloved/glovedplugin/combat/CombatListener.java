@@ -2,6 +2,7 @@ package dev.gloved.glovedplugin.combat;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -50,6 +51,8 @@ public final class CombatListener implements Listener {
     public void onPreAttack(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
         if (!registry.isEnabled()) return;
         if (Boolean.TRUE.equals(syntheticAttack.get())) return;
+        Player player = event.getPlayer();
+        if (!isWeaponHeld(player)) return;
         // Cancel vanilla attacks, we handle arc via player.attack ourselves
         event.setCancelled(true);
     }
@@ -64,6 +67,7 @@ public final class CombatListener implements Listener {
         } catch (NoSuchMethodError ignored) {}
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
+        if (!isWeaponHeld(player)) return;
 
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
@@ -172,6 +176,13 @@ public final class CombatListener implements Listener {
                  DANDELION, POPPY, TORCH, REDSTONE_WIRE, SNOW -> true;
             default -> mat.isAir() || mat.name().endsWith("_BUTTON") || mat.name().endsWith("_PRESSURE_PLATE");
         };
+    }
+
+    private static boolean isWeaponHeld(Player player) {
+        Material mat = player.getInventory().getItemInMainHand().getType();
+        if (mat == null || mat.isAir()) return false;
+        String name = mat.name();
+        return name.endsWith("_SWORD") || name.endsWith("_AXE") || mat == Material.TRIDENT || mat == Material.MACE;
     }
 
     @EventHandler
