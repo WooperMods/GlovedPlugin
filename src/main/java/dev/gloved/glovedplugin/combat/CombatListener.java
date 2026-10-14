@@ -94,16 +94,32 @@ public final class CombatListener implements Listener {
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
 
-        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         ComboTracker.State state = combos.state(player.getUniqueId());
         long now = tick(player);
 
-        // Burst tracking for hold-to-spam: repeated swings in a short window.
+        // Burst tracking for hold-to-spam.
         if (now - state.lastSwingTick <= 12) {
             state.burst++;
         } else {
             state.burst = 1;
         }
+        state.lastSwingTick = now;
+
+        // Gate swing processing to actual attack rhythm to avoid spam when
+        // holding left click in air / looking at ground. Arm swings can arrive
+        // every tick; only process when cooldown is essentially ready.
+        float cooled;
+        try {
+            cooled = player.getCooledAttackStrength(0.5f);
+        } catch (Exception e) {
+            cooled = 1.0f;
+        }
+        if (cooled < 0.80f) {
+            // Still track burst above, but suppress FX/combo advance.
+            return;
+        }
+
+        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
 
         int stageIdx = combos.nextStage(player.getUniqueId(), now,
                 registry.getComboResetTicks(), attrs.comboSize());
@@ -128,20 +144,15 @@ public final class CombatListener implements Listener {
 
         // Off-angle assist: if vanilla lands no hit for this swing (target
         // wasn't under the crosshair), pick the best arc target ourselves.
-        float cooledAtSwing;
-        try {
-            cooledAtSwing = player.getCooledAttackStrength(0.5f);
-        } catch (Exception e) {
-            cooledAtSwing = 1.0f;
-        }
+        float cooledAtSwing = cooled;
         if (registry.isOffAngleAssist() && cooledAtSwing >= 0.85f
                 && (player.getGameMode() == GameMode.SURVIVAL
                     || player.getGameMode() == GameMode.ADVENTURE)) {
             UUID playerId = player.getUniqueId();
             final long swingTick = now;
-            final float cooled = cooledAtSwing;
+            final float cooledFinal = cooledAtSwing;
             Bukkit.getScheduler().runTaskLater(plugin, () ->
-                    proactiveAssist(playerId, swingTick, cooled), 2L);
+                    proactiveAssist(playerId, swingTick, cooledFinal), 2L);
         }
     }
 
