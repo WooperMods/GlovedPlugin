@@ -76,16 +76,27 @@ public final class CombatListener implements Listener {
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
-        if (hits.isEmpty()) return;
+        GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + attrs.rangeBonus() + ", hitsFound=" + hits.size());
+        if (hits.isEmpty()) {
+            GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName());
+            return;
+        }
 
-        // Use vanilla attack for each target in arc
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
-            if (target == null || target.isDead()) continue;
-            // Let the server run full melee damage calculation
+            if (target == null || target.isDead()) {
+                GlovedPlugin.logInfo("[BetterCombat] Skipping null/dead target for " + player.getName());
+                continue;
+            }
+            double dist = hit.distance();
+            double angle = hit.angleDeg();
+            GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
             try {
                 player.attack(target);
-            } catch (Exception ignored) {}
+                GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + target.getType() + " id=" + target.getUniqueId());
+            } catch (Exception e) {
+                GlovedPlugin.logWarning("[BetterCombat] attack failed for " + target.getType() + ": " + e.getMessage());
+            }
         }
     }
 
