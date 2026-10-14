@@ -98,7 +98,7 @@ public final class CombatListener implements Listener {
         lastArcTick.put(id, now);
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-        AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+        AttackStage stage = attrs.stage(0);
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + attrs.rangeBonus() + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
@@ -118,17 +118,32 @@ public final class CombatListener implements Listener {
             GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
             final LivingEntity t = target;
             final int delay = idx++;
-            final double baseDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getValue();
+            final AttackStage finalStage = stage;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 syntheticAttack.set(true);
+                AttributeInstance att = null;
+                AttributeModifier mod = null;
                 try {
-                    double strength = Math.max(0.0, Math.min(1.0, player.getCooledAttackStrength(0)));
-                    double dmg = baseDamage * strength;
-                    GlovedPlugin.logInfo("[BetterCombat] Manual damage " + dmg + " to " + t.getType() + " id=" + t.getUniqueId() + " base=" + baseDamage + " strength=" + strength);
-                    t.damage(dmg, player);
+                    double mult = finalStage.damageMultiplier();
+                    if (mult != 1.0) {
+                        att = player.getAttribute(Attribute.ATTACK_DAMAGE);
+                        if (att != null) {
+                            double base = att.getValue();
+                            double add = base * (mult - 1.0);
+                            NamespacedKey key = new NamespacedKey(plugin, "arc_damage_mul");
+                            att.removeModifier(key);
+                            mod = new AttributeModifier(key, add, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND);
+                            att.addTransientModifier(mod);
+                        }
+                    }
+                    player.attack(t);
+                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId() + " dmgMult=" + finalStage.damageMultiplier());
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
                 } finally {
+                    if (att != null && mod != null) {
+                        att.removeModifier(mod.getKey());
+                    }
                     syntheticAttack.set(false);
                 }
             }, delay);
