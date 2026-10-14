@@ -4,6 +4,11 @@ enabled: true
 
 # Hold attack to queue the next combo stage once cooldown is ready.
 hold_to_spam: true
+# Hit the best arc target even when it isn't exactly under the crosshair.
+# (Direct-look hits stay instant; assist lands ~2 ticks after the swing.)
+off_angle_assist: true
+# Minimum ticks between assist hits per player (spam rate limit).
+proactive_min_interval_ticks: 6
 # Swing particles + sounds on every swing (set a stage's particles/swing_sound
 # to NONE to silence it individually).
 trail_fx: true

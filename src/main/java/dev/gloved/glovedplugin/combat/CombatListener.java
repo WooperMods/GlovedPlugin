@@ -2,6 +2,7 @@ package dev.gloved.glovedplugin.combat;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
@@ -54,6 +55,13 @@ public final class CombatListener implements Listener {
     private final Set<UUID> arcVictims = new HashSet<>();
     /** Targets currently being damaged by us (skip nested echoes). */
     private final Set<UUID> syntheticTargets = new HashSet<>();
+    /** Attacker -> last tick a damage event was processed for them. */
+    private final Map<UUID, Long> lastHitTick = new HashMap<>();
+    /** Attacker -> last tick the off-angle assist dealt a hit (rate limit). */
+    private final Map<UUID, Long> lastProactiveTick = new HashMap<>();
+    private record ProactiveHit(UUID target, long tick) {}
+    /** Attacker -> assist hit, to swallow a late vanilla echo of the same hit. */
+    private final Map<UUID, ProactiveHit> proactiveHits = new HashMap<>();
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
@@ -117,6 +125,75 @@ public final class CombatListener implements Listener {
             state.pendingQueued = true;
             state.pendingTick = now;
         }
+
+        // Off-angle assist: if vanilla lands no hit for this swing (target
+        // wasn't under the crosshair), pick the best arc target ourselves.
+        float cooledAtSwing;
+        try {
+            cooledAtSwing = player.getCooledAttackStrength(0.5f);
+        } catch (Exception e) {
+            cooledAtSwing = 1.0f;
+        }
+        if (registry.isOffAngleAssist() && cooledAtSwing >= 0.85f
+                && (player.getGameMode() == GameMode.SURVIVAL
+                    || player.getGameMode() == GameMode.ADVENTURE)) {
+            UUID playerId = player.getUniqueId();
+            final long swingTick = now;
+            final float cooled = cooledAtSwing;
+            Bukkit.getScheduler().runTaskLater(plugin, () ->
+                    proactiveAssist(playerId, swingTick, cooled), 2L);
+        }
+    }
+
+    /**
+     * Deals a hit to the best arc target when vanilla whiffed. Runs 2 ticks
+     * after the swing so a normal (direct-look) hit always wins the race; the
+     * manual damage re-enters {@link #onAttack} and flows through the same
+     * pipeline (combo consume, scaling, cleave, enchant events).
+     */
+    private void proactiveAssist(UUID playerId, long swingTick, float cooledAtSwing) {
+        if (!registry.isEnabled() || !registry.isOffAngleAssist()) return;
+        Player player = Bukkit.getPlayer(playerId);
+        if (player == null || !player.isOnline()) return;
+        if (player.getGameMode() != GameMode.SURVIVAL
+                && player.getGameMode() != GameMode.ADVENTURE) return;
+        Long hitTick = lastHitTick.get(playerId);
+        if (hitTick != null && hitTick >= swingTick) return; // vanilla landed
+        long now = tick(player);
+        Long lastPro = lastProactiveTick.get(playerId);
+        if (lastPro != null && now - lastPro < registry.getProactiveMinInterval()) return;
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (mainHand.getType().isAir()) return;
+        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
+        ComboTracker.State state = combos.state(playerId);
+        boolean armedFresh = state.armedStage >= 0 && now - state.armedTick <= 6;
+        boolean useOffhand = armedFresh && state.armedOffhand;
+        WeaponAttributes useAttrs = useOffhand
+                ? registry.forMaterial(player.getInventory().getItemInOffHand().getType())
+                : attrs;
+        AttackStage stage = useAttrs.stage(armedFresh ? state.armedStage : 0);
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(
+                player, null, useAttrs.rangeBonus(), stage, useAttrs.hitbox());
+        if (hits.isEmpty()) return;
+        LivingEntity target = hits.get(0).entity();
+        double estimate = estimateBase(useOffhand
+                ? player.getInventory().getItemInOffHand() : mainHand);
+        estimate *= 0.2 + cooledAtSwing * cooledAtSwing * 0.8; // vanilla scaling
+        lastProactiveTick.put(playerId, now);
+        proactiveHits.put(playerId, new ProactiveHit(target.getUniqueId(), now));
+        try {
+            target.damage(estimate, player);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Vanilla attack-damage estimate (base + Sharpness) for assist hits. */
+    static double estimateBase(ItemStack weapon) {
+        if (weapon == null) return 1.0;
+        double base = baseDamage(weapon.getType());
+        int sharp = weapon.getEnchantmentLevel(Enchantment.SHARPNESS);
+        if (sharp > 0) base += 1.0 + (sharp - 1) * 0.5;
+        return base;
     }
 
     // --- Vanilla damage -> arc (never cancelled, never re-dealt) ---
@@ -135,6 +212,16 @@ public final class CombatListener implements Listener {
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         long now = tick(attacker);
+
+        // Late vanilla echo of a hit the assist already dealt: the nested
+        // pipeline handled it, so drop the duplicate, not the damage. Same-tick
+        // events proceed (that is the assist's own nested event).
+        ProactiveHit pro = proactiveHits.get(attacker.getUniqueId());
+        if (pro != null && pro.target().equals(primary.getUniqueId())
+                && now - pro.tick() >= 1 && now - pro.tick() < 4) {
+            event.setCancelled(true);
+            return;
+        }
 
         // Suppress chained sweep echoes from our own arc earlier this tick.
         Long lastArc = lastArcTick.get(attacker.getUniqueId());
@@ -176,6 +263,7 @@ public final class CombatListener implements Listener {
             state.pendingQueued = false;
             scheduleUpswing(attacker, primary, useAttrs, stage, baseDamage);
         } else {
+            lastHitTick.put(attacker.getUniqueId(), now);
             event.setDamage(baseDamage * stage.damageMultiplier());
             dealSecondaries(attacker, primary, useAttrs, stage, baseDamage);
         }
@@ -190,6 +278,7 @@ public final class CombatListener implements Listener {
             Player p = Bukkit.getPlayer(attackerId);
             var primaryEntity = Bukkit.getEntity(primaryId);
             if (p == null || !(primaryEntity instanceof LivingEntity le) || le.isDead()) return;
+            lastHitTick.put(attackerId, tick(p));
             guardedDamage(le, baseDamage * stage.damageMultiplier(), p);
             dealSecondaries(p, le, attrs, stage, baseDamage);
             if (registry.isTrailFx()) {
@@ -426,6 +515,9 @@ public final class CombatListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         combos.clear(event.getPlayer().getUniqueId());
         lastArcTick.remove(event.getPlayer().getUniqueId());
+        lastHitTick.remove(event.getPlayer().getUniqueId());
+        lastProactiveTick.remove(event.getPlayer().getUniqueId());
+        proactiveHits.remove(event.getPlayer().getUniqueId());
     }
 
     public WeaponRegistry getRegistry() { return registry; }
