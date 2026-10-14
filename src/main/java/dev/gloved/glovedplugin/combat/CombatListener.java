@@ -118,11 +118,14 @@ public final class CombatListener implements Listener {
             GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
             final LivingEntity t = target;
             final int delay = idx++;
+            final double baseDamage = player.getAttribute(Attribute.ATTACK_DAMAGE).getValue();
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 syntheticAttack.set(true);
                 try {
-                    player.attack(t);
-                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
+                    double strength = Math.max(0.0, Math.min(1.0, player.getCooledAttackStrength(0)));
+                    double dmg = baseDamage * strength;
+                    GlovedPlugin.logInfo("[BetterCombat] Manual damage " + dmg + " to " + t.getType() + " id=" + t.getUniqueId() + " base=" + baseDamage + " strength=" + strength);
+                    t.damage(dmg, player);
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
                 } finally {
