@@ -8,6 +8,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
 import org.bukkit.plugin.java.JavaPlugin;
 import dev.gloved.glovedplugin.Menus.MenuInv;
+import dev.gloved.glovedplugin.combat.CombatListener;
+import dev.gloved.glovedplugin.combat.FmmBridge;
+import dev.gloved.glovedplugin.combat.WeaponRegistry;
 import dev.gloved.glovedplugin.commands.GlovedCommand;
 import dev.gloved.glovedplugin.commands.Menu;
 import dev.gloved.glovedplugin.editor.EditSessionCache;
@@ -27,6 +30,8 @@ public final class GlovedPlugin extends JavaPlugin {
     private static Logger logger;
 
     private MenuConfig menuConfig;
+    private final WeaponRegistry weaponRegistry = new WeaponRegistry();
+    private CombatListener combatListener;
 
     {
         logger = getLogger();
@@ -84,6 +89,12 @@ public final class GlovedPlugin extends JavaPlugin {
         // Initialize MenuInv
         new MenuInv(this);
 
+        // Server-side Better Combat-lite (arc + combo + sweep + dual-wield).
+        // Soft-depends only: safe with or without FMM / PacketEvents / RPM.
+        this.weaponRegistry.load(this);
+        this.combatListener = new CombatListener(this, this.weaponRegistry);
+        FmmBridge.invalidate();
+
         // Register menu command using Paper's registerCommand API
         Menu menuCommand = new Menu();
         this.registerCommand("menu", "Custom menu for Commands", menuCommand);
@@ -111,6 +122,12 @@ public final class GlovedPlugin extends JavaPlugin {
         ensureConfigDefaults();
         this.menuConfig = MenuConfig.load(this);
         Menu.refreshTitle(this.menuConfig);
+        this.weaponRegistry.load(this);
+        FmmBridge.invalidate();
+    }
+
+    public WeaponRegistry getWeaponRegistry() {
+        return weaponRegistry;
     }
 
     /**

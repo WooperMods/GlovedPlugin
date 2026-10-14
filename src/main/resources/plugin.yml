@@ -2,6 +2,7 @@ name: GlovedPlugin
 version: '0.1.0'
 main: dev.gloved.glovedplugin.GlovedPlugin
 api-version: '26.3'
+softdepend: [FreeMinecraftModels, ResourcePackManager, PacketEvents]
 permissions:
   gloved.edit:
     description: Edit the server menu in-game
