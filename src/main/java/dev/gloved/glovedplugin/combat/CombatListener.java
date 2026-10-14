@@ -21,6 +21,7 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
+import com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent;
 
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +56,14 @@ public final class CombatListener implements Listener {
         if (!isWeaponHeld(player)) return;
         // Cancel vanilla attacks, we handle arc via player.attack ourselves
         event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onAttackCooldownReset(PlayerAttackEntityCooldownResetEvent event) {
+        if (Boolean.TRUE.equals(syntheticAttack.get())) {
+            // Keep attack strength at pre-attack value for synthetic arc hits
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
