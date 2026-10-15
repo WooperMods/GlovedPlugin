@@ -139,8 +139,12 @@ public final class CombatListener implements Listener {
         final float capturedFall = fallAtSwing;
         final int capturedWindBurst = windBurst;
         final boolean smash = capturedFall > SMASH_MIN_FALL;
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
-        GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + attrs.rangeBonus() + ", hitsFound=" + hits.size());
+        double rangeBonus = attrs.rangeBonus();
+        if (mainHand.getType() == Material.MACE && capturedFall > 0.5F) {
+            rangeBonus += registry.getMaceFallingRangeBonus();
+        }
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, rangeBonus, stage, attrs.hitbox());
+        GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
             GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName());
             return;

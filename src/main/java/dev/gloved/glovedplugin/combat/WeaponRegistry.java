@@ -35,6 +35,7 @@ public final class WeaponRegistry {
     private boolean swingThruGrass = false;
     private long comboResetTicks = 40L;
     private double minAttackStrength = 0.9;
+    private double maceFallingRangeBonus = 1.5;
 
     public void load(GlovedPlugin plugin) {
         byMaterial.clear();
@@ -54,6 +55,7 @@ public final class WeaponRegistry {
         swingThruGrass = cfg.getBoolean("swing_thru_grass", false);
         comboResetTicks = cfg.getLong("combo_reset_ticks", 40L);
         minAttackStrength = Math.clamp(cfg.getDouble("min_attack_strength", 0.9), 0.0, 1.0);
+        maceFallingRangeBonus = Math.max(0.0, cfg.getDouble("mace_falling_range_bonus", 1.5));
 
         fallback = readAttributes(cfg.getConfigurationSection("fallback"),
                 new WeaponAttributes(0.0, 90.0,
@@ -193,4 +195,5 @@ public final class WeaponRegistry {
     public boolean isSwingThruGrass() { return swingThruGrass; }
     public long getComboResetTicks() { return comboResetTicks; }
     public double getMinAttackStrength() { return minAttackStrength; }
+    public double getMaceFallingRangeBonus() { return maceFallingRangeBonus; }
 }
