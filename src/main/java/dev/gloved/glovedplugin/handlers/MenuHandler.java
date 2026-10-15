@@ -387,6 +387,17 @@ public class MenuHandler implements Listener {
             int removed = dedupeOpeners(event.getPlayer());
             dev.gloved.glovedplugin.DebugLog.log("INFO",
                     "Opener drop-event player=" + event.getPlayer().getName() + " dupesRemoved=" + removed);
+            // Re-set the held slot explicitly: updateInventory alone often
+            // fails to restore the client's held-item render after a
+            // cancelled drop, leaving ghost duplicates behind.
+            try {
+                Player p = event.getPlayer();
+                int held = p.getInventory().getHeldItemSlot();
+                ItemStack inHand = p.getInventory().getItem(held);
+                if (MenuInv.isMenuOpener(inHand)) {
+                    p.getInventory().setItem(held, inHand);
+                }
+            } catch (Exception ignored) {}
             event.getPlayer().updateInventory();
         }
     }
