@@ -118,6 +118,11 @@ public final class CombatListener implements Listener {
         final float capturedFall = fallAtSwing;
         final int capturedWindBurst = windBurst;
         final boolean smash = capturedFall > SMASH_MIN_FALL;
+        boolean glideCheck = false;
+        try {
+            glideCheck = player.isGliding();
+        } catch (Exception ignored) {}
+        final boolean gliding = glideCheck;
 
         if (registry.isTrailFx()) {
             WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
@@ -218,6 +223,26 @@ public final class CombatListener implements Listener {
                         if (capturedWindBurst > 0) {
                             GlovedPlugin.logInfo("[BetterCombat] Wind Burst smash by " + player.getName() + " level=" + capturedWindBurst);
                         }
+                    }
+                    if (!smash && gliding && capturedWindBurst > 0
+                            && mainHand.getType() == Material.MACE) {
+                        // Elytra glide: vanilla never registers a smash while
+                        // gliding, so replicate the burst manually. Glide is
+                        // kept, horizontal momentum preserved, Y popped up.
+                        try {
+                            double launchV = Math.min(2.0, 0.9 + 0.4 * (capturedWindBurst - 1));
+                            org.bukkit.util.Vector v = player.getVelocity();
+                            player.setVelocity(new org.bukkit.util.Vector(v.getX(), launchV, v.getZ()));
+                        } catch (Exception ignored) {}
+                        try {
+                            player.getWorld().spawnParticle(
+                                    TrailFX.parseParticle("GUST_EMITTER", org.bukkit.Particle.GUST),
+                                    player.getLocation().add(0.0, 1.0, 0.0), 1, 0, 0, 0, 0);
+                            player.getWorld().playSound(player.getLocation(),
+                                    TrailFX.parseSound("ENTITY_WIND_CHARGE_BURST", org.bukkit.Sound.ENTITY_GENERIC_EXPLODE),
+                                    0.8f, 1.2f);
+                        } catch (Exception ignored) {}
+                        GlovedPlugin.logInfo("[BetterCombat] Elytra Wind Burst by " + player.getName() + " level=" + capturedWindBurst);
                     }
                     GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
                 } catch (Exception e) {
