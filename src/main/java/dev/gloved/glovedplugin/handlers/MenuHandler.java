@@ -218,6 +218,16 @@ public class MenuHandler implements Listener {
 
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
+        // Double-click collect runs after dispatch and would vacuum an opener
+        // into a matching cursor stack (merging can also strip its identity),
+        // so block it upfront whenever an opener is carried.
+        if (event.getAction() == org.bukkit.event.inventory.InventoryAction.COLLECT_TO_CURSOR
+                && cursor != null && !cursor.getType().isAir() && config != null
+                && cursor.getType() == config.openerMaterial() && hasOpener(player)) {
+            event.setCancelled(true);
+            player.updateInventory();
+            return;
+        }
         boolean currentOpener = MenuInv.isMenuOpener(current);
         boolean cursorOpener = MenuInv.isMenuOpener(cursor);
         if (!currentOpener && !cursorOpener) return;
@@ -745,6 +755,21 @@ public class MenuHandler implements Listener {
     }
 
     /**
+     * True when the player carries any opener stack (storage, armor, offhand
+     * or cursor).
+     */
+    private static boolean hasOpener(Player player) {
+        for (ItemStack it : player.getInventory().getContents()) {
+            if (MenuInv.isMenuOpener(it)) return true;
+        }
+        for (ItemStack it : player.getInventory().getArmorContents()) {
+            if (MenuInv.isMenuOpener(it)) return true;
+        }
+        return MenuInv.isMenuOpener(player.getInventory().getItemInOffHand())
+                || MenuInv.isMenuOpener(player.getItemOnCursor());
+    }
+
+    /**
      * Collapses opener duplicates down to a single stack: keeps the first
      * PDC-tagged opener found across storage, armor, offhand and cursor,
      * clears the rest. Returns how many stacks were removed.
@@ -755,8 +780,13 @@ public class MenuHandler implements Listener {
         ItemStack[] contents = player.getInventory().getContents();
         for (int i = 0; i < contents.length; i++) {
             if (MenuInv.isMenuOpener(contents[i])) {
-                if (!kept) kept = true;
-                else {
+                if (!kept) {
+                    kept = true;
+                    if (contents[i].getAmount() != 1) {
+                        contents[i].setAmount(1);
+                        player.getInventory().setItem(i, contents[i]);
+                    }
+                } else {
                     player.getInventory().setItem(i, null);
                     removed++;
                 }
@@ -766,8 +796,13 @@ public class MenuHandler implements Listener {
         boolean armorTouched = false;
         for (int i = 0; i < armor.length; i++) {
             if (MenuInv.isMenuOpener(armor[i])) {
-                if (!kept) kept = true;
-                else {
+                if (!kept) {
+                    kept = true;
+                    if (armor[i].getAmount() != 1) {
+                        armor[i].setAmount(1);
+                        armorTouched = true;
+                    }
+                } else {
                     armor[i] = null;
                     armorTouched = true;
                     removed++;
@@ -776,15 +811,23 @@ public class MenuHandler implements Listener {
         }
         if (armorTouched) player.getInventory().setArmorContents(armor);
         if (MenuInv.isMenuOpener(player.getInventory().getItemInOffHand())) {
-            if (!kept) kept = true;
-            else {
+            if (!kept) {
+                kept = true;
+                if (player.getInventory().getItemInOffHand().getAmount() != 1) {
+                    player.getInventory().getItemInOffHand().setAmount(1);
+                }
+            } else {
                 player.getInventory().setItemInOffHand(null);
                 removed++;
             }
         }
         if (MenuInv.isMenuOpener(player.getItemOnCursor())) {
-            if (!kept) kept = true;
-            else {
+            if (!kept) {
+                kept = true;
+                if (player.getItemOnCursor().getAmount() != 1) {
+                    player.getItemOnCursor().setAmount(1);
+                }
+            } else {
                 player.setItemOnCursor(null);
                 removed++;
             }
