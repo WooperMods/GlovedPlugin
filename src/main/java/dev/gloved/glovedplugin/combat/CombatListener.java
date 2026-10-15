@@ -150,9 +150,11 @@ public final class CombatListener implements Listener {
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         AttackStage stage = attrs.stage(0);
         double rangeBonus = attrs.rangeBonus();
-        if (mainHand.getType() == Material.MACE && capturedFall > 0.5F) {
+        if (mainHand.getType() == Material.MACE && (capturedFall > 0.5F || gliding)) {
             rangeBonus += registry.getMaceFallingRangeBonus();
         }
+        // Refresh reach so the delayed synthetic attacks inherit arc range.
+        applyReach(player);
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, rangeBonus, stage, attrs.hitbox());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
@@ -320,13 +322,35 @@ public final class CombatListener implements Listener {
         NamespacedKey key = reachKey();
         try { inst.removeModifier(key); } catch (Exception ignored) {}
         if (!registry.isEnabled()) return;
-        double bonus = registry.forMaterial(player.getInventory().getItemInMainHand().getType()).rangeBonus();
+        double bonus = effectiveRangeBonus(player);
         if (bonus == 0) return;
         try {
             inst.addTransientModifier(new AttributeModifier(key, bonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND));
         } catch (Exception e) {
             GlovedPlugin.logWarning("Could not apply weapon reach: " + e.getMessage());
         }
+    }
+
+    /**
+     * Arc reach bonus for the held weapon. Mace gains the falling bonus while
+     * falling or elytra gliding so the synthetic attack reach matches the arc.
+     */
+    private double effectiveRangeBonus(Player player) {
+        Material held;
+        try {
+            held = player.getInventory().getItemInMainHand().getType();
+        } catch (Exception e) {
+            return 0.0;
+        }
+        double bonus = registry.forMaterial(held).rangeBonus();
+        if (held == Material.MACE) {
+            try {
+                if (player.getFallDistance() > 0.5F || player.isGliding()) {
+                    bonus += registry.getMaceFallingRangeBonus();
+                }
+            } catch (Exception ignored) {}
+        }
+        return bonus;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
