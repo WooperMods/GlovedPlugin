@@ -35,6 +35,34 @@ public final class TrailFX {
         playSoundOnly(player, stage);
     }
 
+    /**
+     * Mace smash cone: expanding rings of particles along the look vector
+     * instead of the shared horizontal slash. {@code scale} grows the cone
+     * for falling smashes.
+     */
+    public static void playCone(Player player, AttackStage stage, double scale) {
+        String particleRaw = stage.particles();
+        if (particleRaw != null && particleRaw.trim().equalsIgnoreCase("NONE")) {
+            playSoundOnly(player, stage);
+            return;
+        }
+        Particle particle = parseParticle(particleRaw, Particle.GUST);
+        try {
+            var eye = player.getEyeLocation();
+            var dir = eye.getDirection().normalize();
+            double s = Math.max(0.5, Math.min(2.5, scale));
+            for (int ring = 0; ring < 4; ring++) {
+                double dist = 1.0 + ring * 0.7 * s;
+                var at = eye.clone().add(dir.clone().multiply(dist));
+                double spread = (0.25 + ring * 0.35) * s;
+                player.getWorld().spawnParticle(particle, at, 5, spread, spread * 0.6, spread, 0.02);
+            }
+        } catch (Exception ignored) {
+            // Old clients / odd particles must never break damage handling.
+        }
+        playSoundOnly(player, stage);
+    }
+
     private static void playSoundOnly(Player player, AttackStage stage) {
         String soundRaw = stage.swingSound();
         if (soundRaw != null && soundRaw.trim().equalsIgnoreCase("NONE")) return;

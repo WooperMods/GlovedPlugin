@@ -65,6 +65,8 @@ presets:
     range_bonus: 0.5
     angle: 180.0
     hitbox: HORIZONTAL_PLANE
+    attacks:
+      - { damage_multiplier: 1.0, range_multiplier: 1.0, angle: 180.0, swing_sound: ENTITY_MACE_SMASH_GROUND, particles: GUST }
   dagger:
     range_bonus: -0.5
     angle: 70.0

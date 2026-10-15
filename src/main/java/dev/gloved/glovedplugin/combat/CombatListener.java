@@ -98,27 +98,6 @@ public final class CombatListener implements Listener {
             return;
         }
 
-        if (registry.isTrailFx()) {
-            WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-            AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
-            TrailFX.play(player, stage);
-        }
-        FmmBridge.onSwing(player, false);
-
-        // Allow arc attacks in all gamemodes
-        // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
-        //     return;
-        // }
-
-        long now = tick(player);
-        UUID id = player.getUniqueId();
-        // Throttle removed to allow continuous arc attacks; uncomment to rate limit
-        // Long last = lastArcTick.get(id);
-        // if (last != null && now - last < 2) return;
-        lastArcTick.put(id, now);
-
-        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
-        AttackStage stage = attrs.stage(0);
         // Capture smash state synchronously: the synthetic attack below runs a
         // tick later, after landing has already zeroed fall distance, which
         // would silently drop vanilla smash damage and Wind Burst.
@@ -139,6 +118,32 @@ public final class CombatListener implements Listener {
         final float capturedFall = fallAtSwing;
         final int capturedWindBurst = windBurst;
         final boolean smash = capturedFall > SMASH_MIN_FALL;
+
+        if (registry.isTrailFx()) {
+            WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
+            if (mainHand.getType() == Material.MACE) {
+                TrailFX.playCone(player, fxAttrs.stage(0), smash ? 1.6 : 1.0);
+            } else {
+                AttackStage fxStage = new AttackStage(1.0, 1.0, fxAttrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+                TrailFX.play(player, fxStage);
+            }
+        }
+        FmmBridge.onSwing(player, false);
+
+        // Allow arc attacks in all gamemodes
+        // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
+        //     return;
+        // }
+
+        long now = tick(player);
+        UUID id = player.getUniqueId();
+        // Throttle removed to allow continuous arc attacks; uncomment to rate limit
+        // Long last = lastArcTick.get(id);
+        // if (last != null && now - last < 2) return;
+        lastArcTick.put(id, now);
+
+        WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
+        AttackStage stage = attrs.stage(0);
         double rangeBonus = attrs.rangeBonus();
         if (mainHand.getType() == Material.MACE && capturedFall > 0.5F) {
             rangeBonus += registry.getMaceFallingRangeBonus();
