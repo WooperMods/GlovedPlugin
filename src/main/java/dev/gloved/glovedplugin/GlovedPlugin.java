@@ -32,6 +32,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private MenuConfig menuConfig;
     private final WeaponRegistry weaponRegistry = new WeaponRegistry();
     private CombatListener combatListener;
+    private final java.util.Set<java.util.UUID> pvpDisabled = new java.util.HashSet<>();
 
     {
         logger = getLogger();
@@ -133,6 +134,27 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public WeaponRegistry getWeaponRegistry() {
         return weaponRegistry;
+    }
+
+    public boolean isPvpDisabled(org.bukkit.entity.Player player) {
+        return pvpDisabled.contains(player.getUniqueId());
+    }
+
+    public boolean togglePvp(org.bukkit.entity.Player player) {
+        java.util.UUID id = player.getUniqueId();
+        boolean disabled;
+        if (pvpDisabled.contains(id)) {
+            pvpDisabled.remove(id);
+            disabled = false;
+        } else {
+            pvpDisabled.add(id);
+            disabled = true;
+        }
+        return disabled;
+    }
+
+    public java.util.Set<java.util.UUID> getPvpDisabledSet() {
+        return pvpDisabled;
     }
 
     /**

@@ -26,6 +26,18 @@ public class GlovedCommand implements BasicCommand {
 
     @Override
     public void execute(@NotNull CommandSourceStack source, @NotNull String[] args) {
+        if (args.length > 0 && args[0].equalsIgnoreCase("pvp")) {
+            if (!(source.getSender() instanceof Player player)) {
+                source.getSender().sendMessage("Only players can toggle PvP.");
+                return;
+            }
+            boolean disabled = plugin.togglePvp(player);
+            String msg = "Gloved Combat PvP is now " + (disabled ? "OFF" : "ON") + " for you.";
+            player.sendMessage(Component.text(msg));
+            plugin.logInfo("Player " + player.getName() + " toggled Gloved PvP to " + (disabled ? "OFF" : "ON"));
+            return;
+        }
+
         if (args.length == 0 || args[0].equalsIgnoreCase("menu")) {
             if (!(source.getSender() instanceof Player player)) {
                 source.getSender().sendMessage("Only players can open the menu.");
@@ -89,7 +101,7 @@ public class GlovedCommand implements BasicCommand {
     @Override
     public Collection<String> suggest(@NotNull CommandSourceStack source, @NotNull String[] args) {
         if (args.length <= 1) {
-            return List.of("menu", "reload", "reset", "edit");
+            return List.of("menu", "reload", "reset", "edit", "pvp");
         }
         return List.of();
     }

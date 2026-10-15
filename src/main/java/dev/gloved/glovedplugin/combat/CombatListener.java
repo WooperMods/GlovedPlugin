@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockDamageEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -33,6 +34,7 @@ public final class CombatListener implements Listener {
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
+    private final Map<UUID, Long> miningPlayers = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
@@ -77,6 +79,11 @@ public final class CombatListener implements Listener {
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
         if (!isWeaponHeld(player)) return;
+        // Suppress arc attacks during active block mining to avoid spam
+        Long miningAt = miningPlayers.get(player.getUniqueId());
+        if (miningAt != null && System.currentTimeMillis() - miningAt < 250) {
+            return;
+        }
 
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
@@ -107,18 +114,29 @@ public final class CombatListener implements Listener {
         }
 
         int idx = 0;
+        boolean first = true;
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
                 GlovedPlugin.logInfo("[BetterCombat] Skipping null/dead target for " + player.getName());
                 continue;
             }
+            if (target instanceof org.bukkit.entity.Player targetPlayer) {
+                boolean attackerPvpDisabled = plugin.isPvpDisabled(player);
+                boolean targetPvpDisabled = plugin.isPvpDisabled(targetPlayer);
+                if (attackerPvpDisabled || targetPvpDisabled) {
+                    GlovedPlugin.logInfo("[BetterCombat] Skipping PvP target " + targetPlayer.getName() + " due to PvP toggle");
+                    continue;
+                }
+            }
             double dist = hit.distance();
             double angle = hit.angleDeg();
             GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
             final LivingEntity t = target;
-            final int delay = idx++;
+            final int delay = 0;
             final AttackStage finalStage = stage;
+            final boolean isFirst = first;
+            if (first) first = false;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 syntheticAttack.set(true);
                 AttributeInstance att = null;
@@ -137,9 +155,11 @@ public final class CombatListener implements Listener {
                         }
                     }
                     double baseLog = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getValue() : -1;
-                    GlovedPlugin.logInfo("[BetterCombat] Attack dmg for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult);
+                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst);
+                    // Force attack strength to full via multiple methods
+                    forceFullAttackStrength(player);
                     player.attack(t);
-                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId() + " dmgMult=" + finalStage.damageMultiplier());
+                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
                 } finally {
@@ -197,6 +217,17 @@ public final class CombatListener implements Listener {
                 event.setCancelled(true);
             }
         }
+        // Track mining to suppress arc attacks during block break
+        Player p = event.getPlayer();
+        miningPlayers.put(p.getUniqueId(), System.currentTimeMillis());
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
+            Player p = event.getPlayer();
+            miningPlayers.put(p.getUniqueId(), System.currentTimeMillis());
+        }
     }
 
     private static boolean isZeroHardness(org.bukkit.Material mat) {
@@ -208,10 +239,65 @@ public final class CombatListener implements Listener {
     }
 
     private static boolean isWeaponHeld(Player player) {
-        Material mat = player.getInventory().getItemInMainHand().getType();
-        if (mat == null || mat.isAir()) return false;
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (item == null || item.getType().isAir()) return false;
+        Material mat = item.getType();
         String name = mat.name();
-        return name.endsWith("_SWORD") || name.endsWith("_AXE") || mat == Material.TRIDENT || mat == Material.MACE;
+        if (name.endsWith("_SWORD") || name.endsWith("_AXE") || mat == Material.TRIDENT || mat == Material.MACE) {
+            return true;
+        }
+        // Support EliteMobs and other custom weapons via ATTACK_DAMAGE attribute
+        try {
+            var meta = item.getItemMeta();
+            if (meta != null) {
+                var attrs = meta.getAttributeModifiers();
+                if (attrs != null) {
+                    for (var entry : attrs.asMap().entrySet()) {
+                        if (entry.getKey() == org.bukkit.attribute.Attribute.ATTACK_DAMAGE && !entry.getValue().isEmpty()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private static void forceFullAttackStrength(Player player) {
+        // Try Paper API first
+        try {
+            java.lang.reflect.Method m = player.getClass().getMethod("setCooledAttackStrength", float.class);
+            m.invoke(player, 1.0f);
+            GlovedPlugin.logInfo("[BetterCombat] setCooledAttackStrength used");
+            return;
+        } catch (Exception ignored) {}
+        // Fallback to NMS handle
+        try {
+            Class<?> craftPlayerClass = Class.forName("org.bukkit.craftbukkit.entity.CraftPlayer");
+            java.lang.reflect.Method getHandle = craftPlayerClass.getMethod("getHandle");
+            Object handle = getHandle.invoke(player);
+            int cooldownPeriod = (int) player.getCooldownPeriod();
+            // Search for attackStrengthTicker in class hierarchy
+            Class<?> cls = handle.getClass();
+            java.lang.reflect.Field f = null;
+            while (cls != null) {
+                try {
+                    f = cls.getDeclaredField("attackStrengthTicker");
+                    break;
+                } catch (NoSuchFieldException e) {
+                    cls = cls.getSuperclass();
+                }
+            }
+            if (f != null) {
+                f.setAccessible(true);
+                f.setInt(handle, cooldownPeriod);
+                GlovedPlugin.logInfo("[BetterCombat] attackStrengthTicker set to " + cooldownPeriod);
+            } else {
+                GlovedPlugin.logInfo("[BetterCombat] attackStrengthTicker field not found");
+            }
+        } catch (Exception e) {
+            GlovedPlugin.logInfo("[BetterCombat] forceFullAttackStrength failed: " + e.getMessage());
+        }
     }
 
     @EventHandler
