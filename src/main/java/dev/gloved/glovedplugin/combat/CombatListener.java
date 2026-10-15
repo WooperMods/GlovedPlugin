@@ -108,15 +108,19 @@ public final class CombatListener implements Listener {
             GlovedPlugin.logWarning("[BetterCombat] could not read fall distance, smash disabled: " + e.getMessage());
         }
         int windBurst = 0;
+        int density = 0;
         try {
             var meta = mainHand.getItemMeta();
-            windBurst = meta != null
-                    ? meta.getEnchantLevel(org.bukkit.enchantments.Enchantment.WIND_BURST) : 0;
+            if (meta != null) {
+                windBurst = meta.getEnchantLevel(org.bukkit.enchantments.Enchantment.WIND_BURST);
+                density = meta.getEnchantLevel(org.bukkit.enchantments.Enchantment.DENSITY);
+            }
         } catch (Exception e) {
-            GlovedPlugin.logWarning("[BetterCombat] could not read Wind Burst level: " + e.getMessage());
+            GlovedPlugin.logWarning("[BetterCombat] could not read mace enchant levels: " + e.getMessage());
         }
         final float capturedFall = fallAtSwing;
         final int capturedWindBurst = windBurst;
+        final int capturedDensity = density;
         final boolean smash = capturedFall > SMASH_MIN_FALL;
         boolean glideCheck = false;
         try {
@@ -192,11 +196,23 @@ public final class CombatListener implements Listener {
                 AttributeModifier mod = null;
                 try {
                     double mult = finalStage.damageMultiplier();
-                    if (mult != 1.0) {
+                    // Glide dives never accumulate fall distance, so vanilla
+                    // Density sees nothing. Convert dive speed into equivalent
+                    // fallen blocks (capped) at the vanilla 0.5/block/level.
+                    double densityBonus = 0.0;
+                    if (!smash && gliding && capturedDensity > 0) {
+                        double vy = 0.0;
+                        try {
+                            vy = player.getVelocity().getY();
+                        } catch (Exception ignored) {}
+                        double equivFall = Math.min(15.0, Math.max(0.0, -vy) * 20.0);
+                        densityBonus = equivFall * 0.5 * capturedDensity;
+                    }
+                    if (mult != 1.0 || densityBonus != 0.0) {
                         att = player.getAttribute(Attribute.ATTACK_DAMAGE);
                         if (att != null) {
                             double base = att.getValue();
-                            double add = base * (mult - 1.0);
+                            double add = base * (mult - 1.0) + densityBonus;
                             NamespacedKey key = new NamespacedKey(plugin, "arc_damage_mul");
                             att.removeModifier(key);
                             mod = new AttributeModifier(key, add, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND);
@@ -204,7 +220,7 @@ public final class CombatListener implements Listener {
                         }
                     }
                     double baseLog = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getValue() : -1;
-                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst + " fall=" + String.format("%.1f", capturedFall) + " wb=" + capturedWindBurst);
+                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst + " fall=" + String.format("%.1f", capturedFall) + " wb=" + capturedWindBurst + " densBonus=" + String.format("%.1f", densityBonus));
                     if (smash) {
                         // Restore pre-landing fall distance so vanilla sees the
                         // smash: bonus damage plus Wind Burst trigger.
