@@ -37,6 +37,9 @@ public final class CombatListener implements Listener {
     private final Map<UUID, Long> miningPlayers = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
 
+    /** Minimum fall distance (blocks) for a mace smash attack, per vanilla. */
+    private static final float SMASH_MIN_FALL = 1.5F;
+
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
         this.registry = registry;
@@ -116,6 +119,26 @@ public final class CombatListener implements Listener {
 
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         AttackStage stage = attrs.stage(0);
+        // Capture smash state synchronously: the synthetic attack below runs a
+        // tick later, after landing has already zeroed fall distance, which
+        // would silently drop vanilla smash damage and Wind Burst.
+        float fallAtSwing = 0.0F;
+        try {
+            fallAtSwing = player.getFallDistance();
+        } catch (Exception e) {
+            GlovedPlugin.logWarning("[BetterCombat] could not read fall distance, smash disabled: " + e.getMessage());
+        }
+        int windBurst = 0;
+        try {
+            var meta = mainHand.getItemMeta();
+            windBurst = meta != null
+                    ? meta.getEnchantLevel(org.bukkit.enchantments.Enchantment.WIND_BURST) : 0;
+        } catch (Exception e) {
+            GlovedPlugin.logWarning("[BetterCombat] could not read Wind Burst level: " + e.getMessage());
+        }
+        final float capturedFall = fallAtSwing;
+        final int capturedWindBurst = windBurst;
+        final boolean smash = capturedFall > SMASH_MIN_FALL;
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + attrs.rangeBonus() + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
@@ -165,10 +188,28 @@ public final class CombatListener implements Listener {
                         }
                     }
                     double baseLog = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getValue() : -1;
-                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst);
+                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst + " fall=" + String.format("%.1f", capturedFall) + " wb=" + capturedWindBurst);
+                    if (smash) {
+                        // Restore pre-landing fall distance so vanilla sees the
+                        // smash: bonus damage plus Wind Burst trigger.
+                        try {
+                            player.setFallDistance(capturedFall);
+                        } catch (Exception ignored) {}
+                    }
                     // Force attack strength to full via multiple methods
                     forceFullAttackStrength(player);
                     player.attack(t);
+                    if (smash) {
+                        // A successful smash negates the fall. Vanilla resets
+                        // this itself on smash; enforce it so a landed tick
+                        // can't eat the fall after our delayed attack.
+                        try {
+                            player.setFallDistance(0.0F);
+                        } catch (Exception ignored) {}
+                        if (capturedWindBurst > 0) {
+                            GlovedPlugin.logInfo("[BetterCombat] Wind Burst smash by " + player.getName() + " level=" + capturedWindBurst);
+                        }
+                    }
                     GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());

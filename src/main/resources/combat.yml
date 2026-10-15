@@ -59,6 +59,10 @@ presets:
     angle: 35.0
     hitbox: FORWARD_BOX
     two_handed: true
+  mace:
+    range_bonus: 0.5
+    angle: 180.0
+    hitbox: HORIZONTAL_PLANE
   dagger:
     range_bonus: -0.5
     angle: 70.0
@@ -75,6 +79,4 @@ weapons:
   DIAMOND_AXE: axe
   NETHERITE_AXE: axe
   TRIDENT: spear
-  MACE:
-    preset: spear
-    range_bonus: 0.5
+  MACE: mace
