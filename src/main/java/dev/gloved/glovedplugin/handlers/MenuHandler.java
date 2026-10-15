@@ -230,6 +230,11 @@ public class MenuHandler implements Listener {
                 // right after a cancelled drop desyncs the client into ghost
                 // duplicate openers that can't be moved or dropped.
                 event.setCancelled(true);
+                int removed = dedupeOpeners(player);
+                dev.gloved.glovedplugin.DebugLog.log("INFO",
+                        "Opener drop-click player=" + player.getName() + " action=" + event.getAction()
+                                + " current=" + diagItem(current) + " cursor=" + diagItem(cursor)
+                                + " dupesRemoved=" + removed);
                 player.updateInventory();
                 return;
             }
@@ -369,6 +374,10 @@ public class MenuHandler implements Listener {
     public void onOpenerDrop(PlayerDropItemEvent event) {
         if (MenuInv.isMenuOpener(event.getItemDrop().getItemStack())) {
             event.setCancelled(true);
+            int removed = dedupeOpeners(event.getPlayer());
+            dev.gloved.glovedplugin.DebugLog.log("INFO",
+                    "Opener drop-event player=" + event.getPlayer().getName() + " dupesRemoved=" + removed);
+            event.getPlayer().updateInventory();
         }
     }
 
@@ -733,6 +742,55 @@ public class MenuHandler implements Listener {
 
     private void reopenEditor(Player player, EditSession session, MenuEditorInv.Screen screen, int index) {
         new MenuEditorInv(plugin, session, screen, index).open(player);
+    }
+
+    /**
+     * Collapses opener duplicates down to a single stack: keeps the first
+     * PDC-tagged opener found across storage, armor, offhand and cursor,
+     * clears the rest. Returns how many stacks were removed.
+     */
+    public static int dedupeOpeners(Player player) {
+        int removed = 0;
+        boolean kept = false;
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            if (MenuInv.isMenuOpener(contents[i])) {
+                if (!kept) kept = true;
+                else {
+                    player.getInventory().setItem(i, null);
+                    removed++;
+                }
+            }
+        }
+        ItemStack[] armor = player.getInventory().getArmorContents();
+        boolean armorTouched = false;
+        for (int i = 0; i < armor.length; i++) {
+            if (MenuInv.isMenuOpener(armor[i])) {
+                if (!kept) kept = true;
+                else {
+                    armor[i] = null;
+                    armorTouched = true;
+                    removed++;
+                }
+            }
+        }
+        if (armorTouched) player.getInventory().setArmorContents(armor);
+        if (MenuInv.isMenuOpener(player.getInventory().getItemInOffHand())) {
+            if (!kept) kept = true;
+            else {
+                player.getInventory().setItemInOffHand(null);
+                removed++;
+            }
+        }
+        if (MenuInv.isMenuOpener(player.getItemOnCursor())) {
+            if (!kept) kept = true;
+            else {
+                player.setItemOnCursor(null);
+                removed++;
+            }
+        }
+        if (removed > 0) player.updateInventory();
+        return removed;
     }
 
     /**
