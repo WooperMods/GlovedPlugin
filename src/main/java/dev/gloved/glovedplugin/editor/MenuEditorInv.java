@@ -236,6 +236,8 @@ public class MenuEditorInv implements InventoryHolder {
         inv.setItem(13, armed
                 ? btn(Material.TNT, "&c&lClick Again to Confirm Delete")
                 : btn(Material.TNT, "&cDelete Button", "&7Click, then click again"));
+        inv.setItem(14, btn(Material.ARROW, "&eMove Up", "&7Change order in menu"));
+        inv.setItem(15, btn(Material.ARROW, "&eMove Down", "&7Change order in menu"));
         inv.setItem(17, btn(Material.ARROW, "&fBack to Preview"));
         chrome(inv);
         return inv;
@@ -464,6 +466,26 @@ public class MenuEditorInv implements InventoryHolder {
                     session.armedDelete = idx;
                     session.armedDeleteAt = System.currentTimeMillis();
                     reopen(player, Screen.ITEM, idx);
+                }
+            }
+            case 14 -> {
+                if (idx > 0) {
+                    MenuConfig.MenuItem temp = session.items.get(idx - 1);
+                    session.items.set(idx - 1, session.items.get(idx));
+                    session.items.set(idx, temp);
+                    reopen(player, Screen.ITEM, idx - 1);
+                } else {
+                    player.sendMessage(Component.text("Already first."));
+                }
+            }
+            case 15 -> {
+                if (idx < session.items.size() - 1) {
+                    MenuConfig.MenuItem temp = session.items.get(idx + 1);
+                    session.items.set(idx + 1, session.items.get(idx));
+                    session.items.set(idx, temp);
+                    reopen(player, Screen.ITEM, idx + 1);
+                } else {
+                    player.sendMessage(Component.text("Already last."));
                 }
             }
             case 17 -> {
