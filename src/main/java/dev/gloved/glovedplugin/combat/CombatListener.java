@@ -222,6 +222,23 @@ public final class CombatListener implements Listener {
                         } catch (Exception ignored) {}
                         if (capturedWindBurst > 0) {
                             GlovedPlugin.logInfo("[BetterCombat] Wind Burst smash by " + player.getName() + " level=" + capturedWindBurst);
+                            // Our extended arc range can land hits outside the
+                            // vanilla burst's lift radius, so if the attacker
+                            // is still descending, pop them up manually.
+                            // Already-rising players (vanilla burst connected)
+                            // are left alone to avoid double-launching.
+                            try {
+                                double vy = player.getVelocity().getY();
+                                if (vy <= 0.05) {
+                                    double launchV = Math.min(2.2, 0.9 + 0.4 * (capturedWindBurst - 1));
+                                    org.bukkit.util.Vector v = player.getVelocity();
+                                    player.setVelocity(new org.bukkit.util.Vector(v.getX(), launchV, v.getZ()));
+                                    player.getWorld().spawnParticle(
+                                            TrailFX.parseParticle("GUST_EMITTER", org.bukkit.Particle.GUST),
+                                            player.getLocation().add(0.0, 1.0, 0.0), 1, 0, 0, 0, 0);
+                                    GlovedPlugin.logInfo("[BetterCombat] Wind Burst assist pop for " + player.getName());
+                                }
+                            } catch (Exception ignored) {}
                         }
                     }
                     if (!smash && gliding && capturedWindBurst > 0
