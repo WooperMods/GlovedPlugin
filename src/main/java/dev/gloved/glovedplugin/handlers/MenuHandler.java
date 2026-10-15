@@ -373,6 +373,19 @@ public class MenuHandler implements Listener {
     }
 
     /**
+     * The F-key hand swap bypasses inventory clicks: keep the opener out of
+     * the offhand, where the give/purge pass can't see it and the next give
+     * would mint a duplicate.
+     */
+    @EventHandler
+    public void onOpenerSwapHand(org.bukkit.event.player.PlayerSwapHandItemsEvent event) {
+        if (MenuInv.isMenuOpener(event.getMainHandItem()) || MenuInv.isMenuOpener(event.getOffHandItem())) {
+            event.setCancelled(true);
+            event.getPlayer().updateInventory();
+        }
+    }
+
+    /**
      * Keep the opener out of death drops (prevents farming free chests and
      * scattering UI items); it is re-given on respawn.
      */
@@ -730,11 +743,24 @@ public class MenuHandler implements Listener {
         GlovedPlugin plugin = JavaPlugin.getPlugin(GlovedPlugin.class);
         MenuConfig config = plugin.getMenuConfig();
         int slot = config != null ? config.openerSlot() : 17;
-        // Purge stale openers anywhere in storage (e.g. the slot was changed and
-        // the old one was orphaned). Only PDC-tagged openers are touched.
+        // Purge stale openers anywhere on the player (storage, armor, offhand;
+        // e.g. the slot was changed and the old one was orphaned). Only
+        // PDC-tagged openers are touched.
         ItemStack[] contents = player.getInventory().getContents();
         for (int i = 0; i < contents.length; i++) {
             if (MenuInv.isMenuOpener(contents[i])) player.getInventory().setItem(i, null);
+        }
+        ItemStack[] armor = player.getInventory().getArmorContents();
+        boolean armorTouched = false;
+        for (int i = 0; i < armor.length; i++) {
+            if (MenuInv.isMenuOpener(armor[i])) {
+                armor[i] = null;
+                armorTouched = true;
+            }
+        }
+        if (armorTouched) player.getInventory().setArmorContents(armor);
+        if (MenuInv.isMenuOpener(player.getInventory().getItemInOffHand())) {
+            player.getInventory().setItemInOffHand(null);
         }
         if (MenuInv.isMenuOpener(player.getItemOnCursor())) player.setItemOnCursor(null);
         ItemStack opener = MenuInv.createMenuOpener();
