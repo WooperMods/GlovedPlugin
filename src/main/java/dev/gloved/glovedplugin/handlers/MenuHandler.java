@@ -222,6 +222,20 @@ public class MenuHandler implements Listener {
         boolean cursorOpener = MenuInv.isMenuOpener(cursor);
         if (!currentOpener && !cursorOpener) return;
 
+        switch (event.getAction()) {
+            case DROP_ONE_SLOT, DROP_ALL_SLOT, DROP_ONE_CURSOR, DROP_ALL_CURSOR,
+                 HOTBAR_SWAP, HOTBAR_MOVE_AND_READD, CLONE_STACK, COLLECT_TO_CURSOR,
+                 MOVE_TO_OTHER_INVENTORY, UNKNOWN -> {
+                // Non-pickup actions must never open the menu: switching windows
+                // right after a cancelled drop desyncs the client into ghost
+                // duplicate openers that can't be moved or dropped.
+                event.setCancelled(true);
+                player.updateInventory();
+                return;
+            }
+            default -> {}
+        }
+
         // TEMPORARY DIAGNOSTIC (DIAG2): storedInInv distinguishes a ghost
         // (stack exists nowhere server-side) from a desync (stack is in storage).
         int stored = 0;
