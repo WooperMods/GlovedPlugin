@@ -1,5 +1,6 @@
 package dev.gloved.glovedplugin.commands;
 
+import dev.gloved.glovedplugin.DebugLog;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.Menus.MenuInv;
 import dev.gloved.glovedplugin.editor.EditSession;
@@ -80,6 +81,30 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
+        if (args[0].equalsIgnoreCase("debug")) {
+            if (!source.getSender().hasPermission("gloved.debug")) {
+                source.getSender().sendMessage(Component.text("You don't have permission to do that."));
+                return;
+            }
+            boolean on = args.length < 2 || !args[1].equalsIgnoreCase("off");
+            if (args.length > 1) {
+                if (args[1].equalsIgnoreCase("on")) on = true;
+                else if (args[1].equalsIgnoreCase("off")) on = false;
+                else {
+                    source.getSender().sendMessage(Component.text("Usage: /gloved debug [on|off]"));
+                    return;
+                }
+            } else {
+                on = !DebugLog.isEnabled();
+            }
+            if (!DebugLog.setEnabled(plugin, on)) {
+                source.getSender().sendMessage(Component.text("Could not write debug state, check console."));
+                return;
+            }
+            source.getSender().sendMessage(Component.text("GlovedPlugin debug logging " + (on ? "ON (plugins/GlovedPlugin/debug.log)" : "OFF")));
+            return;
+        }
+
         if (args[0].equalsIgnoreCase("reset")) {
             if (!source.getSender().hasPermission("gloved.reset")) {
                 source.getSender().sendMessage(Component.text("You don't have permission to do that."));
@@ -95,13 +120,13 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
-        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit>"));
+        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit|debug|pvp>"));
     }
 
     @Override
     public Collection<String> suggest(@NotNull CommandSourceStack source, @NotNull String[] args) {
         if (args.length <= 1) {
-            return List.of("menu", "reload", "reset", "edit", "pvp");
+            return List.of("menu", "reload", "reset", "edit", "pvp", "debug");
         }
         return List.of();
     }

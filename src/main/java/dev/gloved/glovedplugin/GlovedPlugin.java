@@ -46,6 +46,7 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     public static void logInfo(String message) {
         logger.info("<##>-------------< " + message + " >-------------<##>");
+        DebugLog.log("INFO", message);
     }
 
     /**
@@ -56,6 +57,7 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     public static void logWarning(String message) {
         logger.warning("<###>-------------< " + message + " >-------------<###>");
+        DebugLog.log("WARNING", message);
     }
 
     /**
@@ -92,6 +94,7 @@ public final class GlovedPlugin extends JavaPlugin {
 
         // Server-side Better Combat-lite (arc + combo + sweep + dual-wield).
         // Soft-depends only: safe with or without FMM / PacketEvents / RPM.
+        DebugLog.init(this);
         this.weaponRegistry.load(this);
         this.combatListener = new CombatListener(this, this.weaponRegistry);
         FmmBridge.invalidate();
