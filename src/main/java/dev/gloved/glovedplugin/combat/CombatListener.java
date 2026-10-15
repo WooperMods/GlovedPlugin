@@ -236,7 +236,40 @@ public final class CombatListener implements Listener {
                                     player.getWorld().spawnParticle(
                                             TrailFX.parseParticle("GUST_EMITTER", org.bukkit.Particle.GUST),
                                             player.getLocation().add(0.0, 1.0, 0.0), 1, 0, 0, 0, 0);
-                                    GlovedPlugin.logInfo("[BetterCombat] Wind Burst assist pop for " + player.getName());
+                                    player.getWorld().playSound(player.getLocation(),
+                                            TrailFX.parseSound("ENTITY_WIND_CHARGE_BURST", org.bukkit.Sound.ENTITY_GENERIC_EXPLODE),
+                                            0.8f, 1.2f);
+                                    // Vanilla-faithful burst AoE: knock back
+                                    // nearby living entities, no damage.
+                                    double burstRadius = 3.5 + 0.5 * capturedWindBurst;
+                                    double outward = 0.9 + 0.3 * capturedWindBurst;
+                                    org.bukkit.Location center = player.getLocation().add(0.0, 1.0, 0.0);
+                                    int knocked = 0;
+                                    for (org.bukkit.entity.Entity e : player.getWorld().getNearbyEntities(center,
+                                            burstRadius, burstRadius / 2 + 1, burstRadius,
+                                            en -> en instanceof LivingEntity le && !le.isDead()
+                                                    && !le.getUniqueId().equals(player.getUniqueId()))) {
+                                        LivingEntity le = (LivingEntity) e;
+                                        if (le instanceof org.bukkit.entity.Player other
+                                                && (plugin.isPvpDisabled(player) || plugin.isPvpDisabled(other))) {
+                                            continue;
+                                        }
+                                        org.bukkit.util.Vector away = le.getLocation().add(0.0, 0.5, 0.0)
+                                                .toVector().subtract(center.toVector());
+                                        if (away.lengthSquared() < 0.0001) {
+                                            away = new org.bukkit.util.Vector(0, 1, 0);
+                                        } else {
+                                            away.normalize();
+                                        }
+                                        org.bukkit.util.Vector cur = le.getVelocity();
+                                        org.bukkit.util.Vector kb = cur.add(away.multiply(outward));
+                                        kb.setY(kb.getY() + 1.0);
+                                        try {
+                                            le.setVelocity(kb);
+                                            knocked++;
+                                        } catch (Exception ignored) {}
+                                    }
+                                    GlovedPlugin.logInfo("[BetterCombat] Wind Burst assist pop for " + player.getName() + " knocked=" + knocked);
                                 }
                             } catch (Exception ignored) {}
                         }
