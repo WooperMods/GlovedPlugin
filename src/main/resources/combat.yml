@@ -26,7 +26,7 @@ combo_reset_ticks: 40
 # Clicks below this are ignored with no FX and no damage.
 min_attack_strength: 0.9
 # Extra mace reach (blocks) while falling. Total arc reach is ~3 + bonus.
-mace_falling_range_bonus: 1.5
+mace_falling_range_bonus: 3.0
 
 fallback:
   range_bonus: 0.0
