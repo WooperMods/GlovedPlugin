@@ -205,6 +205,20 @@ public class MenuHandler implements Listener {
     }
 
     /**
+     * True when the packet-claimed cursor matches live server state (type,
+     * amount and opener tag). Anything else is client prediction fiction.
+     */
+    private static boolean cursorStateMatches(ItemStack eventCursor, ItemStack liveCursor) {
+        boolean eventAir = eventCursor == null || eventCursor.getType().isAir();
+        boolean liveAir = liveCursor == null || liveCursor.getType().isAir();
+        if (eventAir != liveAir) return false;
+        if (eventAir) return true;
+        if (eventCursor.getType() != liveCursor.getType()) return false;
+        if (eventCursor.getAmount() != liveCursor.getAmount()) return false;
+        return MenuInv.isMenuOpener(eventCursor) == MenuInv.isMenuOpener(liveCursor);
+    }
+
+    /**
      * Opener item in the player inventory. Only PDC-tagged opener items react;
      * the cursor is only cleared when it actually holds a duplicate opener.
      * The menu opens next tick (never open inside the click event, which
@@ -231,6 +245,19 @@ public class MenuHandler implements Listener {
         boolean currentOpener = MenuInv.isMenuOpener(current);
         boolean cursorOpener = MenuInv.isMenuOpener(cursor);
         if (!currentOpener && !cursorOpener) return;
+
+        // The client predicts merges on cancelled clicks and then echoes that
+        // fiction back in later click packets (tagged cursor the server never
+        // held). Opening windows on fiction amplifies the desync into working
+        // duplicate buttons, so swallow it: cancel, resync, no menu, no sound.
+        if (!cursorStateMatches(cursor, player.getItemOnCursor())) {
+            event.setCancelled(true);
+            dev.gloved.glovedplugin.DebugLog.log("INFO",
+                    "Opener desync-click swallowed player=" + player.getName() + " action=" + event.getAction()
+                            + " cursor=" + diagItem(cursor) + " serverCursor=" + diagItem(player.getItemOnCursor()));
+            player.updateInventory();
+            return;
+        }
 
         switch (event.getAction()) {
             case DROP_ONE_SLOT, DROP_ALL_SLOT, DROP_ONE_CURSOR, DROP_ALL_CURSOR,
