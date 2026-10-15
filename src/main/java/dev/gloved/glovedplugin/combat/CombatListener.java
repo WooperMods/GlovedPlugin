@@ -136,6 +136,8 @@ public final class CombatListener implements Listener {
                             att.addTransientModifier(mod);
                         }
                     }
+                    double baseLog = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getValue() : -1;
+                    GlovedPlugin.logInfo("[BetterCombat] Attack dmg for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult);
                     player.attack(t);
                     GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId() + " dmgMult=" + finalStage.damageMultiplier());
                 } catch (Exception e) {
