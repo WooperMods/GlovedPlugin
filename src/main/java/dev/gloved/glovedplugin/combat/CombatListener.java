@@ -85,6 +85,16 @@ public final class CombatListener implements Listener {
             return;
         }
 
+        // Vanilla cooldown gate: ignore clicks before attack strength recharges.
+        // No FX and no damage, but log the denial so a stuck gate is visible.
+        float strength = player.getCooledAttackStrength(0.5F);
+        if (strength < registry.getMinAttackStrength()) {
+            GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
+                    + " strength=" + String.format("%.2f", strength)
+                    + " required=" + registry.getMinAttackStrength());
+            return;
+        }
+
         if (registry.isTrailFx()) {
             WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
             AttackStage stage = new AttackStage(1.0, 1.0, attrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");

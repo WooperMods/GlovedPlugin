@@ -34,6 +34,7 @@ public final class WeaponRegistry {
     private double sweepFalloff = 0.5;
     private boolean swingThruGrass = false;
     private long comboResetTicks = 40L;
+    private double minAttackStrength = 0.9;
 
     public void load(GlovedPlugin plugin) {
         byMaterial.clear();
@@ -52,6 +53,7 @@ public final class WeaponRegistry {
         sweepFalloff = cfg.getDouble("sweep_falloff_multiplier", 0.5);
         swingThruGrass = cfg.getBoolean("swing_thru_grass", false);
         comboResetTicks = cfg.getLong("combo_reset_ticks", 40L);
+        minAttackStrength = Math.clamp(cfg.getDouble("min_attack_strength", 0.9), 0.0, 1.0);
 
         fallback = readAttributes(cfg.getConfigurationSection("fallback"),
                 new WeaponAttributes(0.0, 90.0,
@@ -190,4 +192,5 @@ public final class WeaponRegistry {
     public double getSweepFalloff() { return sweepFalloff; }
     public boolean isSwingThruGrass() { return swingThruGrass; }
     public long getComboResetTicks() { return comboResetTicks; }
+    public double getMinAttackStrength() { return minAttackStrength; }
 }

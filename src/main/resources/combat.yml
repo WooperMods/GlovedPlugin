@@ -22,6 +22,9 @@ sweep_falloff_multiplier: 0.5
 swing_thru_grass: false
 # Idle ticks before the combo restarts at stage 1.
 combo_reset_ticks: 40
+# Minimum vanilla attack strength (0.0-1.0) required for an arc swing.
+# Clicks below this are ignored with no FX and no damage.
+min_attack_strength: 0.9
 
 fallback:
   range_bonus: 0.0
