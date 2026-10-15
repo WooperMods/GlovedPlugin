@@ -141,7 +141,7 @@ public class MenuConfig {
             List<String> lore = new ArrayList<>();
             Object loreObj = map.get("lore");
             if (loreObj instanceof List<?> loreList) {
-                for (Object l : loreList) lore.add(String.valueOf(l));
+                for (Object l : loreList) lore.add(normalizeLoreLine(String.valueOf(l)));
             }
             Object cmdObj = map.get("command");
             String command = cmdObj != null ? String.valueOf(cmdObj) : "";
@@ -236,6 +236,23 @@ public class MenuConfig {
             }
         }
         return null;
+    }
+
+    /** Default lore color, matching the sibling items' {@code &r&7} prefix. */
+    static final String DEFAULT_LORE_COLOR = "&r&7";
+
+    /**
+     * Prefixes lore lines lacking a leading color code so unstyled config
+     * lines render like the rest of the menu. Blank lines pass through.
+     */
+    static String normalizeLoreLine(String line) {
+        if (line == null || line.isBlank()) return line;
+        String s = line.stripLeading();
+        if (s.length() >= 2 && (s.charAt(0) == '&' || s.charAt(0) == '§')
+                && "0123456789AaBbCcDdEeFfKkLlMmNnOoRrXx".indexOf(s.charAt(1)) >= 0) {
+            return line;
+        }
+        return DEFAULT_LORE_COLOR + line;
     }
 
     private static int toInt(Object o, int def) {        if (o == null) return def;
