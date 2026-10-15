@@ -1,6 +1,7 @@
 package dev.gloved.glovedplugin.Menus;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -146,15 +147,27 @@ public class MenuInv implements InventoryHolder {
      */
     public static ItemStack getItem(ItemStack item, String name, String... lore) {
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(GlovedPlugin.makeComponent(name));
+        meta.displayName(noAutoItalic(GlovedPlugin.makeComponent(name)));
         List<Component> lores = new ArrayList<>();
         for (String s : lore) {
-            lores.add(GlovedPlugin.makeComponent(s));
+            lores.add(noAutoItalic(GlovedPlugin.makeComponent(s)));
         }
         meta.lore(lores);
         // logger.info("Item created: " + item.getType() + " with name: " + name + " and lore: " + lores + ".");
 
         item.setItemMeta(meta);
         return item;
+    }
+
+    /**
+     * Vanilla renders names/lore italic unless italic is explicitly set.
+     * Opt out only when the author's codes didn't ask for italic ({@code &o}).
+     */
+    static Component noAutoItalic(Component component) {
+        if (component == null) return null;
+        if (!component.hasDecoration(TextDecoration.ITALIC)) {
+            return component.decoration(TextDecoration.ITALIC, false);
+        }
+        return component;
     }
 }
