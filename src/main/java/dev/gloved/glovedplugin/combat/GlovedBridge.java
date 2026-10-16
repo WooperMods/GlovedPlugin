@@ -42,6 +42,8 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL);
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, CHANNEL, this);
         Bukkit.getPluginManager().registerEvents(this, plugin);
+        // TODO(bridge-debug): temporary, remove once framing is confirmed.
+        GlovedPlugin.logInfo("[BetterCombat] Bridge active on " + CHANNEL);
     }
 
     public void shutdown() {
@@ -71,6 +73,8 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
     public void sendBeacon(Player player) {
         if (!bridgeOn()) return;
         try {
+            // TODO(bridge-debug): temporary, remove once framing is confirmed.
+            GlovedPlugin.logInfo("[BetterCombat] Bridge beacon -> " + player.getName());
             player.sendPluginMessage(plugin, CHANNEL, concat(new byte[]{HELLO}, varInt(PROTOCOL_VERSION)));
         } catch (Exception ignored) {}
     }
