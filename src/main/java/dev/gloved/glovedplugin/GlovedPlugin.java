@@ -131,6 +131,7 @@ public final class GlovedPlugin extends JavaPlugin {
         if (this.combatListener != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 this.combatListener.applyReach(player);
+                this.combatListener.applyBlockTargeting(player);
             }
         }
     }

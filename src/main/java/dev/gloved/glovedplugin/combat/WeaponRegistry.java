@@ -34,6 +34,7 @@ public final class WeaponRegistry {
     private double sweepFalloff = 0.5;
     private boolean suppressMiningWithWeapons = true;
     private boolean sneakBypass = true;
+    private boolean zeroBlockTargeting = true;
     private long comboResetTicks = 40L;
     private double minAttackStrength = 0.9;
     private double maceFallingRangeBonus = 3.0;
@@ -55,6 +56,7 @@ public final class WeaponRegistry {
         sweepFalloff = cfg.getDouble("sweep_falloff_multiplier", 0.5);
         suppressMiningWithWeapons = cfg.getBoolean("suppress_mining_with_weapons", true);
         sneakBypass = cfg.getBoolean("sneak_bypass", true);
+        zeroBlockTargeting = cfg.getBoolean("zero_block_targeting", true);
         comboResetTicks = cfg.getLong("combo_reset_ticks", 40L);
         minAttackStrength = Math.clamp(cfg.getDouble("min_attack_strength", 0.9), 0.0, 1.0);
         maceFallingRangeBonus = Math.max(0.0, cfg.getDouble("mace_falling_range_bonus", 3.0));
@@ -196,6 +198,7 @@ public final class WeaponRegistry {
     public double getSweepFalloff() { return sweepFalloff; }
     public boolean isSuppressMiningWithWeapons() { return suppressMiningWithWeapons; }
     public boolean isSneakBypass() { return sneakBypass; }
+    public boolean isZeroBlockTargeting() { return zeroBlockTargeting; }
     public long getComboResetTicks() { return comboResetTicks; }
     public double getMinAttackStrength() { return minAttackStrength; }
     public double getMaceFallingRangeBonus() { return maceFallingRangeBonus; }

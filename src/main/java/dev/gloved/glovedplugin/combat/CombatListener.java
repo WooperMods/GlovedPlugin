@@ -18,6 +18,7 @@ import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 
@@ -51,6 +52,7 @@ public final class CombatListener implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (Player player : Bukkit.getOnlinePlayers()) {
             applyReach(player);
+            applyBlockTargeting(player);
         }
     }
 
@@ -465,19 +467,87 @@ public final class CombatListener implements Listener {
         return bonus;
     }
 
+    private NamespacedKey blockRangeKey() {
+        return new NamespacedKey(plugin, "weapon_no_blocks");
+    }
+
+    /**
+     * Zeroes the client's block targeting range while armed: with 0 block
+     * reach the client highlights and targets no block, so left-clicks
+     * become pure attack swings. Entity reach is a separate attribute and is
+     * untouched, so arcs keep working. Sneaking restores targeting (crouch
+     * bypass); creative/spectator are never touched; unarmed players and
+     * non-weapon tools are unaffected. Event cancels on block damage/break
+     * remain as a server-side safety net.
+     */
+    public void applyBlockTargeting(Player player) {
+        AttributeInstance inst;
+        try {
+            inst = player.getAttribute(Attribute.BLOCK_INTERACTION_RANGE);
+        } catch (Exception e) { return; }
+        if (inst == null) return;
+        NamespacedKey key = blockRangeKey();
+        try { inst.removeModifier(key); } catch (Exception ignored) {}
+        if (!registry.isEnabled() || !registry.isZeroBlockTargeting()) return;
+        try {
+            org.bukkit.GameMode mode = player.getGameMode();
+            if (mode == org.bukkit.GameMode.CREATIVE || mode == org.bukkit.GameMode.SPECTATOR) return;
+        } catch (Exception ignored) {}
+        boolean armed;
+        try {
+            armed = isWeaponHeld(player);
+        } catch (Exception e) {
+            return;
+        }
+        if (!armed) return;
+        if (registry.isSneakBypass()) {
+            try {
+                if (player.isSneaking()) return;
+            } catch (Exception ignored) {}
+        }
+        // Negate the live total so targeting lands on exactly 0 regardless
+        // of base value; vanilla clamps the attribute at a 0 minimum.
+        double total;
+        try {
+            total = inst.getValue();
+        } catch (Exception e) {
+            return;
+        }
+        try {
+            inst.addTransientModifier(new AttributeModifier(key, -total, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND));
+        } catch (Exception e) {
+            GlovedPlugin.logWarning("Could not apply block targeting suppression: " + e.getMessage());
+        }
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onHeldChange(PlayerItemHeldEvent event) {
-        Bukkit.getScheduler().runTask(plugin, () -> applyReach(event.getPlayer()));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            applyReach(event.getPlayer());
+            applyBlockTargeting(event.getPlayer());
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSneakToggle(PlayerToggleSneakEvent event) {
+        // Next tick so isSneaking() reflects the new state.
+        Bukkit.getScheduler().runTask(plugin, () -> applyBlockTargeting(event.getPlayer()));
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onJoin(PlayerJoinEvent event) {
-        Bukkit.getScheduler().runTask(plugin, () -> applyReach(event.getPlayer()));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            applyReach(event.getPlayer());
+            applyBlockTargeting(event.getPlayer());
+        });
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onRespawn(PlayerRespawnEvent event) {
-        Bukkit.getScheduler().runTask(plugin, () -> applyReach(event.getPlayer()));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            applyReach(event.getPlayer());
+            applyBlockTargeting(event.getPlayer());
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
