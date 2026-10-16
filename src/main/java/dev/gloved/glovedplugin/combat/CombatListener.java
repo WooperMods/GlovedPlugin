@@ -84,7 +84,7 @@ public final class CombatListener implements Listener {
         if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         Player player = event.getPlayer();
         if (!swingParity(player)) return;
-        if (!handleSwing(player)) {
+        if (!handleSwing(player, false)) {
             event.setCancelled(true);
         }
     }
@@ -99,7 +99,9 @@ public final class CombatListener implements Listener {
             return;
         }
         if (!swingParity(player)) return;
-        handleSwing(player);
+        // No swing packet exists for modded frames, so the arc must
+        // broadcast its own third-person animation (see executeArcSwing).
+        handleSwing(player, true);
     }
 
     /** Shared pre-gate: weapon held, hand free (parity with vanilla path). */
@@ -115,9 +117,12 @@ public final class CombatListener implements Listener {
     /**
      * Gate + arc + queue shared by vanilla and modded swings.
      *
+     * @param broadcastSwing true when no vanilla swing packet exists for this
+     *                       swing (modded frames, queued arcs): the arc then
+     *                       broadcasts its own third-person animation.
      * @return true if an arc swing executed (clock consumed).
      */
-    private boolean handleSwing(Player player) {
+    private boolean handleSwing(Player player, boolean broadcastSwing) {
         // Our own pacing clock: the vanilla ticker is reset by clicks we
         // don't control and no working API can preserve it, so arcs are
         // gated on time since the last LANDED arc. Spam freely; damage lands
@@ -139,7 +144,7 @@ public final class CombatListener implements Listener {
             return false;
         }
 
-        executeArcSwing(player);
+        executeArcSwing(player, broadcastSwing);
         return true;
     }
 
@@ -148,7 +153,7 @@ public final class CombatListener implements Listener {
      * Called directly from {@link #onSwing} and once per cooldown from the
      * hold-to-spam queue.
      */
-    private void executeArcSwing(Player player) {
+    private void executeArcSwing(Player player, boolean broadcastSwing) {
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir() || !isWeaponHeld(player)) return;
 
@@ -196,6 +201,15 @@ public final class CombatListener implements Listener {
             }
         }
         FmmBridge.onSwing(player, false);
+        if (broadcastSwing) {
+            // No vanilla swing packet exists for this arc (modded frame or
+            // queued swing), so broadcast the third-person arm animation
+            // ourselves; otherwise trackers never see it. Verified against
+            // 26.3 sources: server-side attack() broadcasts nothing.
+            try {
+                player.swingMainHand();
+            } catch (Exception ignored) {}
+        }
 
         // Every gate-passed swing consumes the clock, hit or miss: otherwise
         // whiffs bypass pacing entirely and spam-clicking feels cooldown-free.
@@ -471,7 +485,8 @@ public final class CombatListener implements Listener {
                 long required = requiredGapMillis(p);
                 Long last = lastArcMillis.get(id);
                 if (last != null && System.currentTimeMillis() - last < required) return;
-                executeArcSwing(p);
+                // Queued arcs have no swing packet: broadcast third-person.
+                executeArcSwing(p, true);
             }, delayTicks);
             pendingSpam.put(id, task);
         } catch (Exception ignored) {}
