@@ -9,6 +9,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,6 +36,8 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
     private final GlovedPlugin plugin;
     private final CombatListener combat;
     private final Set<UUID> modded = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, org.bukkit.scheduler.BukkitTask> beaconTasks = new ConcurrentHashMap<>();
+    private static final int BEACON_TRIES = 10;
 
     public GlovedBridge(GlovedPlugin plugin, CombatListener combat) {
         this.plugin = plugin;
@@ -65,8 +68,62 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onJoin(PlayerJoinEvent event) {
         if (!bridgeOn()) return;
-        Player player = event.getPlayer();
-        Bukkit.getScheduler().runTask(plugin, () -> sendBeacon(player));
+        UUID id;
+        try {
+            id = event.getPlayer().getUniqueId();
+        } catch (Exception e) {
+            return;
+        }
+        cancelBeacon(id);
+        // Paper silently drops outgoing plugin messages until the client's
+        // channel registration arrives, so retry until the channel is listed
+        // (or the client handshakes, or we give up on vanilla clients).
+        final int[] attempts = {0};
+        org.bukkit.scheduler.BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            Player player;
+            try {
+                player = Bukkit.getPlayer(id);
+            } catch (Exception e) {
+                cancelBeacon(id);
+                return;
+            }
+            if (player == null || !player.isOnline() || !bridgeOn()) {
+                cancelBeacon(id);
+                return;
+            }
+            if (modded.contains(id)) {
+                cancelBeacon(id);
+                return;
+            }
+            boolean listed = false;
+            try {
+                Set<String> listening = player.getListeningPluginChannels();
+                listed = listening != null && listening.contains(CHANNEL);
+            } catch (Exception ignored) {}
+            if (listed) {
+                sendBeacon(player);
+            }
+            if (++attempts[0] >= BEACON_TRIES) {
+                cancelBeacon(id);
+            }
+        }, 20L, 20L);
+        beaconTasks.put(id, task);
+    }
+
+    private void cancelBeacon(UUID id) {
+        org.bukkit.scheduler.BukkitTask task = beaconTasks.remove(id);
+        if (task != null) {
+            try {
+                task.cancel();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public void clear(Player player) {
+        try {
+            modded.remove(player.getUniqueId());
+            cancelBeacon(player.getUniqueId());
+        } catch (Exception ignored) {}
     }
 
     /** Beacon: lets the mod know the bridge exists (vanilla clients ignore it). */
@@ -86,12 +143,6 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
             if (!modded.contains(player.getUniqueId())) return;
             int gap = (int) Math.max(1L, Math.min(Integer.MAX_VALUE, gapMillis));
             player.sendPluginMessage(plugin, CHANNEL, concat(new byte[]{ARC}, varInt(gap)));
-        } catch (Exception ignored) {}
-    }
-
-    public void clear(Player player) {
-        try {
-            modded.remove(player.getUniqueId());
         } catch (Exception ignored) {}
     }
 
