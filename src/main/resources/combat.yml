@@ -18,8 +18,11 @@ dual_wield: true
 dual_wield_speed_bonus: 0.2
 # Non-primary arc targets take damage * this unless you have Sweeping Edge.
 sweep_falloff_multiplier: 0.5
-# Attack through zero-hardness blocks (grass/torches) instead of mining them.
-swing_thru_grass: false
+# No mining with weapons: holding a weapon suppresses block damage/break
+# (axes can't fell trees either) unless sneaking or in creative.
+suppress_mining_with_weapons: true
+# Sneaking with a weapon re-enables mining (crouch bypass to force-mine).
+sneak_bypass: true
 # Idle ticks before the combo restarts at stage 1.
 combo_reset_ticks: 40
 # Minimum vanilla attack strength (0.0-1.0) required for an arc swing.

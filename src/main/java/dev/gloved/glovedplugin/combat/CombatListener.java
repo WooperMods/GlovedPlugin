@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDamageEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -480,48 +481,42 @@ public final class CombatListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockDamage(BlockDamageEvent event) {
         if (!registry.isEnabled()) return;
-        Player player = event.getPlayer();
-        // Legacy grass pass-through: never start mining zero-hardness decor
-        // with a one-handed weapon, swing goes to the arc instead.
-        if (registry.isSwingThruGrass() && isZeroHardness(event.getBlock().getType())) {
-            if (TrailFX.isOneHandedWeapon(player.getInventory().getItemInMainHand().getType())) {
-                event.setCancelled(true);
-            }
-            return;
+        if (isMiningSuppressed(event.getPlayer())) {
+            event.setCancelled(true);
         }
-        // Decor-grade blocks (grass, flowers, torches) always break through:
-        // never pause these for arcs. The swing still arcs via onSwing, but
-        // clearing grass near mobs no longer eats the block or feels broken.
-        if (isZeroHardness(event.getBlock().getType())) return;
-        // Attack + pause mining on hit: looking at / mining a block must not
-        // eat the swing. If the arc has a valid target, cancel this block
-        // damage tick so the swing hits the entity instead. No target = let
-        // mining proceed untouched.
-        if (!isWeaponHeld(player)) return;
-        try {
-            WeaponAttributes attrs = registry.forMaterial(player.getInventory().getItemInMainHand().getType());
-            AttackStage stage = attrs.stage(0);
-            List<ArcHitbox.ArcHit> hits =
-                    ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
-            for (ArcHitbox.ArcHit hit : hits) {
-                LivingEntity le = hit.entity();
-                if (le == null || le.isDead()) continue;
-                if (le instanceof Player targetPlayer
-                        && (plugin.isPvpDisabled(player) || plugin.isPvpDisabled(targetPlayer))) {
-                    continue;
-                }
-                event.setCancelled(true);
-                break;
-            }
-        } catch (Exception ignored) {}
     }
 
-    private static boolean isZeroHardness(org.bukkit.Material mat) {
-        return switch (mat) {
-            case SHORT_GRASS, TALL_GRASS, FERN, LARGE_FERN, DEAD_BUSH,
-                 DANDELION, POPPY, TORCH, REDSTONE_WIRE, SNOW -> true;
-            default -> mat.isAir() || mat.name().endsWith("_BUTTON") || mat.name().endsWith("_PRESSURE_PLATE");
-        };
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (!registry.isEnabled()) return;
+        // Safety net for instant-break blocks and chain-break plugins.
+        if (isMiningSuppressed(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * No mining with weapons: holding a weapon suppresses block damage and
+     * breaks. Sneaking re-enables mining (crouch bypass); creative and
+     * spectator are never suppressed; non-weapons (pickaxes, shovels) mine
+     * freely so tools keep working.
+     */
+    private boolean isMiningSuppressed(Player player) {
+        try {
+            org.bukkit.GameMode mode = player.getGameMode();
+            if (mode == org.bukkit.GameMode.CREATIVE || mode == org.bukkit.GameMode.SPECTATOR) return false;
+        } catch (Exception ignored) {}
+        if (!registry.isSuppressMiningWithWeapons()) return false;
+        if (registry.isSneakBypass()) {
+            try {
+                if (player.isSneaking()) return false;
+            } catch (Exception ignored) {}
+        }
+        try {
+            return isWeaponHeld(player);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static boolean isWeaponHeld(Player player) {
