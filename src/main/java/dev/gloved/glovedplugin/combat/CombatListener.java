@@ -23,7 +23,6 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
-import com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
@@ -35,7 +34,9 @@ public final class CombatListener implements Listener {
 
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
-    private final Map<UUID, Long> lastArcTick = new HashMap<>();
+    /** Last LANDED arc time per player: our own pacing clock, independent of
+     * the vanilla ticker (which any click can reset and no API can preserve). */
+    private final Map<UUID, Long> lastArcMillis = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
     /** One queued hold-to-spam swing per player, fired when cooldown recharges. */
     private final Map<UUID, BukkitTask> pendingSpam = new HashMap<>();
@@ -58,10 +59,6 @@ public final class CombatListener implements Listener {
         }
     }
 
-    private static long tick(Player player) {
-        return player.getWorld().getFullTime();
-    }
-
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPreAttack(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
         if (!registry.isEnabled()) return;
@@ -80,14 +77,6 @@ public final class CombatListener implements Listener {
         event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onAttackCooldownReset(PlayerAttackEntityCooldownResetEvent event) {
-        if (Boolean.TRUE.equals(syntheticAttack.get())) {
-            // Keep attack strength at pre-attack value for synthetic arc hits
-            event.setCancelled(true);
-        }
-    }
-
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onSwing(PlayerArmSwingEvent event) {
         if (!registry.isEnabled()) return;
@@ -100,20 +89,24 @@ public final class CombatListener implements Listener {
         if (mainHand.getType().isAir()) return;
         if (!isWeaponHeld(player)) return;
 
-        // Vanilla cooldown gate: ignore clicks before attack strength recharges.
-        // With hold-to-spam, queue one swing for when the cooldown recharges
-        // instead of silently dropping spam-clicks (slow weapons like maces
-        // otherwise feel like they "can't attack" while mining/clicking fast).
-        float strength = player.getCooledAttackStrength(0.5F);
-        if (strength < registry.getMinAttackStrength()) {
+        // Our own pacing clock: the vanilla ticker is reset by clicks we
+        // don't control and no working API can preserve it, so arcs are
+        // gated on time since the last LANDED arc. Spam freely; damage lands
+        // on schedule via the hold-to-spam queue below.
+        long required = requiredGapMillis(player);
+        Long last = lastArcMillis.get(player.getUniqueId());
+        long elapsed = last == null ? Long.MAX_VALUE : System.currentTimeMillis() - last;
+        if (last != null && elapsed < required) {
+            float vanilla = 0f;
+            try { vanilla = player.getCooledAttackStrength(0.5F); } catch (Exception ignored) {}
             GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
-                    + " strength=" + String.format("%.2f", strength)
-                    + " required=" + registry.getMinAttackStrength());
+                    + " elapsed=" + elapsed + "ms required=" + required + "ms"
+                    + " vanillaStrength=" + String.format("%.2f", vanilla));
             // Hide the spam from everyone else: cancelling stops the server
             // rebroadcasting this swing to tracking players (own first-person
             // hand animation already played client-side and can't be rewound).
             event.setCancelled(true);
-            queueHoldToSpam(player);
+            queueHoldToSpam(player, required - elapsed);
             return;
         }
 
@@ -179,13 +172,6 @@ public final class CombatListener implements Listener {
         //     return;
         // }
 
-        long now = tick(player);
-        UUID id = player.getUniqueId();
-        // Throttle removed to allow continuous arc attacks; uncomment to rate limit
-        // Long last = lastArcTick.get(id);
-        // if (last != null && now - last < 2) return;
-        lastArcTick.put(id, now);
-
         WeaponAttributes attrs = registry.forMaterial(mainHand.getType());
         AttackStage stage = attrs.stage(0);
         double rangeBonus = attrs.rangeBonus();
@@ -198,8 +184,8 @@ public final class CombatListener implements Listener {
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
-            // Whiffs stay quiet like vanilla (no sweep FX while mining grass
-            // or swinging at air); log the targeted block to diagnose
+            // Whiffs still play the pre-collect FX above (an arm swing with
+            // no feedback feels dead); log the targeted block to diagnose
             // "can't attack while looking at X" reports.
             String looking = "AIR";
             try {
@@ -208,6 +194,20 @@ public final class CombatListener implements Listener {
             } catch (Exception ignored) {}
             GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
             return;
+        }
+
+        // Landed arc: consume our clock (whiffs never consume, matching
+        // vanilla) and show the vanilla hotbar cooldown overlay for exactly
+        // the pacing gap, so the bar and the damage always agree. Trident is
+        // exempt from the overlay: throwing is a right-click use action and
+        // the overlay would block drawing a throw mid-drain.
+        long gap = requiredGapMillis(player);
+        lastArcMillis.put(player.getUniqueId(), System.currentTimeMillis());
+        if (mainHand.getType() != Material.TRIDENT) {
+            int overlayTicks = (int) Math.max(1L, (gap + 49L) / 50L);
+            try {
+                player.setCooldown(mainHand.getType(), overlayTicks);
+            } catch (Exception ignored) {}
         }
 
         int idx = 0;
@@ -389,25 +389,33 @@ public final class CombatListener implements Listener {
     }
 
     /**
-     * Hold-to-spam: schedule a single arc swing for when the cooldown
-     * recharges. At most one pending per player; the task re-checks weapon
-     * and strength at fire time and drops otherwise (no chains, no bypass).
+     * Pacing gap for the next arc: min_attack_strength fraction of the held
+     * weapon's vanilla cooldown period, mirroring vanilla strength math
+     * (p >= min needs t >= min*T - 0.5 ticks).
      */
-    private void queueHoldToSpam(Player player) {
+    private long requiredGapMillis(Player player) {
+        double periodTicks;
+        try {
+            periodTicks = player.getCooldownPeriod();
+        } catch (Exception e) {
+            periodTicks = 20.0;
+        }
+        if (periodTicks <= 0) periodTicks = 20.0;
+        double requiredTicks = registry.getMinAttackStrength() * periodTicks - 0.5;
+        if (requiredTicks < 0) requiredTicks = 0;
+        return (long) Math.ceil(requiredTicks * 50.0);
+    }
+
+    /**
+     * Hold-to-spam: schedule a single arc swing for when our clock recharges.
+     * At most one pending per player; the task re-checks our clock (never
+     * the vanilla ticker) and drops otherwise. Whiffs can't starve it.
+     */
+    private void queueHoldToSpam(Player player, long delayMillis) {
         if (!registry.isHoldToSpam()) return;
         UUID id = player.getUniqueId();
         if (pendingSpam.containsKey(id)) return;
-        double period;
-        float strength;
-        try {
-            period = player.getCooldownPeriod();
-            strength = player.getCooledAttackStrength(0.5F);
-        } catch (Exception e) {
-            return;
-        }
-        if (period <= 0) period = 20.0;
-        double need = Math.max(0.0, registry.getMinAttackStrength() - strength);
-        long delay = Math.max(1L, (long) Math.ceil(need * period) + 1L);
+        long delayTicks = Math.max(1L, (delayMillis + 49L) / 50L);
         try {
             BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 pendingSpam.remove(id);
@@ -416,15 +424,11 @@ public final class CombatListener implements Listener {
                 if (!registry.isEnabled()) return;
                 ItemStack held = p.getInventory().getItemInMainHand();
                 if (held.getType().isAir() || !isWeaponHeld(p)) return;
-                float s;
-                try {
-                    s = p.getCooledAttackStrength(0.5F);
-                } catch (Exception e) {
-                    return;
-                }
-                if (s < registry.getMinAttackStrength()) return;
+                long required = requiredGapMillis(p);
+                Long last = lastArcMillis.get(id);
+                if (last != null && System.currentTimeMillis() - last < required) return;
                 executeArcSwing(p);
-            }, delay);
+            }, delayTicks);
             pendingSpam.put(id, task);
         } catch (Exception ignored) {}
     }
@@ -673,7 +677,7 @@ public final class CombatListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        lastArcTick.remove(event.getPlayer().getUniqueId());
+        lastArcMillis.remove(event.getPlayer().getUniqueId());
         lastPrimary.remove(event.getPlayer().getUniqueId());
         restoreGameMode(event.getPlayer(), event.getPlayer().getUniqueId());
         BukkitTask task = pendingSpam.remove(event.getPlayer().getUniqueId());
