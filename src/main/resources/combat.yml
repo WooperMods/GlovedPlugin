@@ -30,6 +30,9 @@ adventure_mode_while_armed: true
 # Never hit tamed mobs (dogs, cats, parrots, horses) with arcs, no matter
 # who tamed them. Untamed mobs are still hittable.
 spare_tamed: true
+# Companion-mod bridge (custom payload channel gloved:combat): handshake,
+# modded hold-repeat input, and server-driven HUD timing for GlovedMod.
+mod_bridge: true
 # Idle ticks before the combo restarts at stage 1.
 combo_reset_ticks: 40
 # Minimum vanilla attack strength (0.0-1.0) required for an arc swing.

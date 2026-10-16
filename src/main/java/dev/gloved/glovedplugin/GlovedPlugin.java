@@ -9,6 +9,7 @@ import org.bukkit.Material;
 import org.bukkit.plugin.java.JavaPlugin;
 import dev.gloved.glovedplugin.Menus.MenuInv;
 import dev.gloved.glovedplugin.combat.CombatListener;
+import dev.gloved.glovedplugin.combat.GlovedBridge;
 import dev.gloved.glovedplugin.combat.FmmBridge;
 import dev.gloved.glovedplugin.combat.WeaponRegistry;
 import dev.gloved.glovedplugin.commands.GlovedCommand;
@@ -32,6 +33,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private MenuConfig menuConfig;
     private final WeaponRegistry weaponRegistry = new WeaponRegistry();
     private CombatListener combatListener;
+    private GlovedBridge glovedBridge;
     private final java.util.Set<java.util.UUID> pvpDisabled = new java.util.HashSet<>();
 
     {
@@ -97,6 +99,7 @@ public final class GlovedPlugin extends JavaPlugin {
         DebugLog.init(this);
         this.weaponRegistry.load(this);
         this.combatListener = new CombatListener(this, this.weaponRegistry);
+        this.glovedBridge = new GlovedBridge(this, this.combatListener);
         FmmBridge.invalidate();
 
         // Register menu command using Paper's registerCommand API
@@ -138,6 +141,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public WeaponRegistry getWeaponRegistry() {
         return weaponRegistry;
+    }
+
+    public GlovedBridge getGlovedBridge() {
+        return glovedBridge;
     }
 
     public boolean isPvpDisabled(org.bukkit.entity.Player player) {
@@ -242,6 +249,9 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
+        try {
+            if (glovedBridge != null) glovedBridge.shutdown();
+        } catch (Exception ignored) {}
         EditSessionCache.storeAll(this);
         // Close any open menu views so a hot-reload doesn't leave ghost
         // inventories / cursor items attached. Fully guarded: an exception

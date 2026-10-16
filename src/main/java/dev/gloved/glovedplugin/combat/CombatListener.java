@@ -83,13 +83,41 @@ public final class CombatListener implements Listener {
         if (!registry.isEnabled()) return;
         if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         Player player = event.getPlayer();
+        if (!swingParity(player)) return;
+        if (!handleSwing(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Entry for modded hold-repeat frames: same gates as vanilla swings. */
+    public void onModdedSwing(Player player) {
+        if (player == null) return;
+        if (!registry.isEnabled()) return;
         try {
-            if (player.isHandRaised() || player.isBlocking()) return;
+            if (!player.isOnline()) return;
+        } catch (Exception e) {
+            return;
+        }
+        if (!swingParity(player)) return;
+        handleSwing(player);
+    }
+
+    /** Shared pre-gate: weapon held, hand free (parity with vanilla path). */
+    private static boolean swingParity(Player player) {
+        try {
+            if (player.isHandRaised() || player.isBlocking()) return false;
         } catch (NoSuchMethodError ignored) {}
         ItemStack mainHand = player.getInventory().getItemInMainHand();
-        if (mainHand.getType().isAir()) return;
-        if (!isWeaponHeld(player)) return;
+        if (mainHand.getType().isAir()) return false;
+        return isWeaponHeld(player);
+    }
 
+    /**
+     * Gate + arc + queue shared by vanilla and modded swings.
+     *
+     * @return true if an arc swing executed (clock consumed).
+     */
+    private boolean handleSwing(Player player) {
         // Our own pacing clock: the vanilla ticker is reset by clicks we
         // don't control and no working API can preserve it, so arcs are
         // gated on time since the last LANDED arc. Spam freely; damage lands
@@ -106,12 +134,13 @@ public final class CombatListener implements Listener {
             // Hide the spam from everyone else: cancelling stops the server
             // rebroadcasting this swing to tracking players (own first-person
             // hand animation already played client-side and can't be rewound).
-            event.setCancelled(true);
+            // (Modded frames have no event to cancel; nothing needed there.)
             queueHoldToSpam(player, required - elapsed);
-            return;
+            return false;
         }
 
         executeArcSwing(player);
+        return true;
     }
 
     /**
@@ -181,6 +210,12 @@ public final class CombatListener implements Listener {
                 player.setCooldown(mainHand.getType(), overlayTicks);
             } catch (Exception ignored) {}
         }
+        // Companion-mod HUD timing (handshaked clients only; vanilla gets
+        // the hotbar overlay above as its fallback).
+        try {
+            GlovedBridge bridge = plugin.getGlovedBridge();
+            if (bridge != null) bridge.sendArc(player, gap);
+        } catch (Exception ignored) {}
 
         // Allow arc attacks in all gamemodes
         // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
@@ -688,6 +723,10 @@ public final class CombatListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         lastArcMillis.remove(event.getPlayer().getUniqueId());
         lastPrimary.remove(event.getPlayer().getUniqueId());
+        try {
+            GlovedBridge bridge = plugin.getGlovedBridge();
+            if (bridge != null) bridge.clear(event.getPlayer());
+        } catch (Exception ignored) {}
         restoreGameMode(event.getPlayer(), event.getPlayer().getUniqueId());
         BukkitTask task = pendingSpam.remove(event.getPlayer().getUniqueId());
         if (task != null) {
