@@ -22,6 +22,7 @@ import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
 import com.destroystokyo.paper.event.player.PlayerAttackEntityCooldownResetEvent;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +35,11 @@ public final class CombatListener implements Listener {
     private final WeaponRegistry registry;
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
+    /** One queued hold-to-spam swing per player, fired when cooldown recharges. */
+    private final Map<UUID, BukkitTask> pendingSpam = new HashMap<>();
+    /** Last crosshair entity from PrePlayerAttack, so arc never loses a vanilla hit. */
+    private record PrimaryHit(UUID entityId, long atMillis) {}
+    private final Map<UUID, PrimaryHit> lastPrimary = new HashMap<>();
 
     /** Minimum fall distance (blocks) for a mace smash attack, per vanilla. */
     private static final float SMASH_MIN_FALL = 1.5F;
@@ -57,6 +63,14 @@ public final class CombatListener implements Listener {
         if (Boolean.TRUE.equals(syntheticAttack.get())) return;
         Player player = event.getPlayer();
         if (!isWeaponHeld(player)) return;
+        // Remember the crosshair target: the arc below must include it even
+        // at the arc edge, otherwise cancelling here would eat a vanilla hit.
+        try {
+            if (event.getAttacked() != null) {
+                lastPrimary.put(player.getUniqueId(),
+                        new PrimaryHit(event.getAttacked().getUniqueId(), System.currentTimeMillis()));
+            }
+        } catch (Exception ignored) {}
         // Cancel vanilla attacks, we handle arc via player.attack ourselves
         event.setCancelled(true);
     }
@@ -82,14 +96,29 @@ public final class CombatListener implements Listener {
         if (!isWeaponHeld(player)) return;
 
         // Vanilla cooldown gate: ignore clicks before attack strength recharges.
-        // No FX and no damage, but log the denial so a stuck gate is visible.
+        // With hold-to-spam, queue one swing for when the cooldown recharges
+        // instead of silently dropping spam-clicks (slow weapons like maces
+        // otherwise feel like they "can't attack" while mining/clicking fast).
         float strength = player.getCooledAttackStrength(0.5F);
         if (strength < registry.getMinAttackStrength()) {
             GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
                     + " strength=" + String.format("%.2f", strength)
                     + " required=" + registry.getMinAttackStrength());
+            queueHoldToSpam(player);
             return;
         }
+
+        executeArcSwing(player);
+    }
+
+    /**
+     * Full arc path: smash capture, target collection, FX, synthetic attacks.
+     * Called directly from {@link #onSwing} and once per cooldown from the
+     * hold-to-spam queue.
+     */
+    private void executeArcSwing(Player player) {
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (mainHand.getType().isAir() || !isWeaponHeld(player)) return;
 
         // Capture smash state synchronously: the synthetic attack below runs a
         // tick later, after landing has already zeroed fall distance, which
@@ -121,17 +150,6 @@ public final class CombatListener implements Listener {
         } catch (Exception ignored) {}
         final boolean gliding = glideCheck;
 
-        if (registry.isTrailFx()) {
-            WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
-            if (mainHand.getType() == Material.MACE) {
-                TrailFX.playCone(player, fxAttrs.stage(0), smash ? 1.6 : 1.0);
-            } else {
-                AttackStage fxStage = new AttackStage(1.0, 1.0, fxAttrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
-                TrailFX.play(player, fxStage);
-            }
-        }
-        FmmBridge.onSwing(player, false);
-
         // Allow arc attacks in all gamemodes
         // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
         //     return;
@@ -152,12 +170,34 @@ public final class CombatListener implements Listener {
         }
         // Refresh reach so the delayed synthetic attacks inherit arc range.
         applyReach(player);
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, null, rangeBonus, stage, attrs.hitbox());
+        LivingEntity primary = resolvePrimary(player);
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
-            GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName());
+            // Whiffs stay quiet like vanilla (no sweep FX while mining grass
+            // or swinging at air); log the targeted block to diagnose
+            // "can't attack while looking at X" reports.
+            String looking = "AIR";
+            try {
+                var block = player.getTargetBlockExact(6);
+                if (block != null) looking = block.getType().name();
+            } catch (Exception ignored) {}
+            GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
             return;
         }
+
+        // FX only on swings that connect: every mining swing used to play
+        // sweep particles + sounds, which felt like attack spam on grass/dirt.
+        if (registry.isTrailFx()) {
+            WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
+            if (mainHand.getType() == Material.MACE) {
+                TrailFX.playCone(player, fxAttrs.stage(0), smash ? 1.6 : 1.0);
+            } else {
+                AttackStage fxStage = new AttackStage(1.0, 1.0, fxAttrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+                TrailFX.play(player, fxStage);
+            }
+        }
+        FmmBridge.onSwing(player, false);
 
         int idx = 0;
         boolean first = true;
@@ -318,6 +358,66 @@ public final class CombatListener implements Listener {
         }
     }
 
+    /**
+     * Crosshair entity from the most recent vanilla attack packet, if fresh
+     * and plausible. Guarantees the entity vanilla would have hit is always
+     * in the arc, even at the arc edge (e.g. looking down past a mob).
+     */
+    private LivingEntity resolvePrimary(Player player) {
+        PrimaryHit ph = lastPrimary.get(player.getUniqueId());
+        if (ph == null || System.currentTimeMillis() - ph.atMillis() > 750) return null;
+        try {
+            var entity = Bukkit.getEntity(ph.entityId());
+            if (entity instanceof LivingEntity le && !le.isDead()
+                    && le.getWorld().equals(player.getWorld())
+                    && le.getLocation().distanceSquared(player.getLocation()) < 100.0) {
+                return le;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Hold-to-spam: schedule a single arc swing for when the cooldown
+     * recharges. At most one pending per player; the task re-checks weapon
+     * and strength at fire time and drops otherwise (no chains, no bypass).
+     */
+    private void queueHoldToSpam(Player player) {
+        if (!registry.isHoldToSpam()) return;
+        UUID id = player.getUniqueId();
+        if (pendingSpam.containsKey(id)) return;
+        double period;
+        float strength;
+        try {
+            period = player.getCooldownPeriod();
+            strength = player.getCooledAttackStrength(0.5F);
+        } catch (Exception e) {
+            return;
+        }
+        if (period <= 0) period = 20.0;
+        double need = Math.max(0.0, registry.getMinAttackStrength() - strength);
+        long delay = Math.max(1L, (long) Math.ceil(need * period) + 1L);
+        try {
+            BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                pendingSpam.remove(id);
+                Player p = Bukkit.getPlayer(id);
+                if (p == null || !p.isOnline()) return;
+                if (!registry.isEnabled()) return;
+                ItemStack held = p.getInventory().getItemInMainHand();
+                if (held.getType().isAir() || !isWeaponHeld(p)) return;
+                float s;
+                try {
+                    s = p.getCooledAttackStrength(0.5F);
+                } catch (Exception e) {
+                    return;
+                }
+                if (s < registry.getMinAttackStrength()) return;
+                executeArcSwing(p);
+            }, delay);
+            pendingSpam.put(id, task);
+        } catch (Exception ignored) {}
+    }
+
     private NamespacedKey reachKey() {
         return new NamespacedKey(plugin, "weapon_reach");
     }
@@ -389,6 +489,10 @@ public final class CombatListener implements Listener {
             }
             return;
         }
+        // Decor-grade blocks (grass, flowers, torches) always break through:
+        // never pause these for arcs. The swing still arcs via onSwing, but
+        // clearing grass near mobs no longer eats the block or feels broken.
+        if (isZeroHardness(event.getBlock().getType())) return;
         // Attack + pause mining on hit: looking at / mining a block must not
         // eat the swing. If the arc has a valid target, cancel this block
         // damage tick so the swing hits the entity instead. No target = let
@@ -485,5 +589,10 @@ public final class CombatListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         lastArcTick.remove(event.getPlayer().getUniqueId());
+        lastPrimary.remove(event.getPlayer().getUniqueId());
+        BukkitTask task = pendingSpam.remove(event.getPlayer().getUniqueId());
+        if (task != null) {
+            try { task.cancel(); } catch (Exception ignored) {}
+        }
     }
 }
