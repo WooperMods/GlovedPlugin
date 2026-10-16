@@ -49,6 +49,13 @@ public final class CombatListener implements Listener {
 
     /** Minimum fall distance (blocks) for a mace smash attack, per vanilla. */
     private static final float SMASH_MIN_FALL = 1.5F;
+    /**
+     * Inputs landing within this window of a consumed arc are echoes of the
+     * same physical click (vanilla packet + modded frame, mouse bounce):
+     * dropped without queueing. Kept well under the modded frame interval
+     * (150ms) and human spam cadence so real spam still queues.
+     */
+    private static final long DEDUPE_MILLIS = 100L;
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
@@ -133,6 +140,16 @@ public final class CombatListener implements Listener {
         if (last != null && elapsed < required) {
             float vanilla = 0f;
             try { vanilla = player.getCooledAttackStrength(0.5F); } catch (Exception ignored) {}
+            // Dedupe: a single physical click arrives as both a vanilla
+            // packet and a modded frame (plus mouse-bounce doubles). Inputs
+            // landing within this window of a consumed arc are echoes, not
+            // new intent: drop them WITHOUT queueing, or the queue fires a
+            // second full arc ~one gap later and every click feels doubled.
+            if (elapsed < DEDUPE_MILLIS) {
+                GlovedPlugin.logInfo("[BetterCombat] Swing echo dropped for " + player.getName()
+                        + " elapsed=" + elapsed + "ms");
+                return false;
+            }
             GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
                     + " elapsed=" + elapsed + "ms required=" + required + "ms"
                     + " vanillaStrength=" + String.format("%.2f", vanilla));
