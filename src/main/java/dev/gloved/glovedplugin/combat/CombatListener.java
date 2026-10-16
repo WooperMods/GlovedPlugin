@@ -9,6 +9,7 @@ import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Tameable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -195,7 +196,7 @@ public final class CombatListener implements Listener {
         // Refresh reach so the delayed synthetic attacks inherit arc range.
         applyReach(player);
         LivingEntity primary = resolvePrimary(player);
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox());
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox(), registry.isSpareTamed());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
             // Whiffs still play the pre-collect FX above (an arm swing with
@@ -216,6 +217,10 @@ public final class CombatListener implements Listener {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
                 GlovedPlugin.logInfo("[BetterCombat] Skipping null/dead target for " + player.getName());
+                continue;
+            }
+            if (registry.isSpareTamed() && target instanceof Tameable tameable && tameable.isTamed()) {
+                GlovedPlugin.logInfo("[BetterCombat] Skipping tamed " + target.getType() + " for " + player.getName());
                 continue;
             }
             if (target instanceof org.bukkit.entity.Player targetPlayer) {
@@ -382,6 +387,10 @@ public final class CombatListener implements Listener {
             if (entity instanceof LivingEntity le && !le.isDead()
                     && le.getWorld().equals(player.getWorld())
                     && le.getLocation().distanceSquared(player.getLocation()) < 100.0) {
+                // Never force-include a spared pet via the primary fallback.
+                if (registry.isSpareTamed() && le instanceof Tameable tameable && tameable.isTamed()) {
+                    return null;
+                }
                 return le;
             }
         } catch (Exception ignored) {}

@@ -3,6 +3,7 @@ package dev.gloved.glovedplugin.combat;
 import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Tameable;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ public final class ArcHitbox {
 
     public static List<ArcHit> collect(Player attacker, LivingEntity primary,
                                        double baseReach, AttackStage stage,
-                                       WeaponAttributes.HitboxShape shape) {
+                                       WeaponAttributes.HitboxShape shape, boolean spareTamed) {
         double reach = (baseReach + 3.0) * stage.rangeMultiplier();
         // rangeBonus in config is additive over the ~3 block vanilla reach.
         // baseReach passed as bonus; keep total sane.
@@ -36,7 +37,8 @@ public final class ArcHitbox {
         for (var entity : eye.getWorld().getNearbyEntities(eye, reach, reach / 2 + 2, reach,
                 e -> e instanceof LivingEntity le
                         && !le.isDead()
-                        && !le.getUniqueId().equals(attacker.getUniqueId()))) {
+                        && !le.getUniqueId().equals(attacker.getUniqueId())
+                        && !(spareTamed && e instanceof Tameable tameable && tameable.isTamed()))) {
             LivingEntity le = (LivingEntity) entity;
             Location target = le.getEyeLocation();
             Vector to = target.clone().subtract(eye).toVector();
