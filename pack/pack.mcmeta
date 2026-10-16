@@ -1,0 +1,9 @@
+{
+  "pack": {
+    "pack_format": 15,
+    "supported_formats": {"min_inclusive": 15, "max_inclusive": 999},
+    "min_format": 15,
+    "max_format": 999,
+    "description": "Gloved server pack: hides the vanilla attack cooldown indicator (combat is paced server-side)."
+  }
+}
