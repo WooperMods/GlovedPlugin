@@ -13,7 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockDamageEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -34,7 +33,6 @@ public final class CombatListener implements Listener {
     private final GlovedPlugin plugin;
     private final WeaponRegistry registry;
     private final Map<UUID, Long> lastArcTick = new HashMap<>();
-    private final Map<UUID, Long> miningPlayers = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
 
     /** Minimum fall distance (blocks) for a mace smash attack, per vanilla. */
@@ -82,11 +80,6 @@ public final class CombatListener implements Listener {
         ItemStack mainHand = player.getInventory().getItemInMainHand();
         if (mainHand.getType().isAir()) return;
         if (!isWeaponHeld(player)) return;
-        // Suppress arc attacks during active block mining to avoid spam
-        Long miningAt = miningPlayers.get(player.getUniqueId());
-        if (miningAt != null && System.currentTimeMillis() - miningAt < 250) {
-            return;
-        }
 
         // Vanilla cooldown gate: ignore clicks before attack strength recharges.
         // No FX and no damage, but log the denial so a stuck gate is visible.
@@ -386,23 +379,37 @@ public final class CombatListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockDamage(BlockDamageEvent event) {
-        if (!registry.isEnabled() || !registry.isSwingThruGrass()) return;
-        if (isZeroHardness(event.getBlock().getType())) {
-            if (TrailFX.isOneHandedWeapon(event.getPlayer().getInventory().getItemInMainHand().getType())) {
+        if (!registry.isEnabled()) return;
+        Player player = event.getPlayer();
+        // Legacy grass pass-through: never start mining zero-hardness decor
+        // with a one-handed weapon, swing goes to the arc instead.
+        if (registry.isSwingThruGrass() && isZeroHardness(event.getBlock().getType())) {
+            if (TrailFX.isOneHandedWeapon(player.getInventory().getItemInMainHand().getType())) {
                 event.setCancelled(true);
             }
+            return;
         }
-        // Track mining to suppress arc attacks during block break
-        Player p = event.getPlayer();
-        miningPlayers.put(p.getUniqueId(), System.currentTimeMillis());
-    }
-
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerInteract(PlayerInteractEvent event) {
-        if (event.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
-            Player p = event.getPlayer();
-            miningPlayers.put(p.getUniqueId(), System.currentTimeMillis());
-        }
+        // Attack + pause mining on hit: looking at / mining a block must not
+        // eat the swing. If the arc has a valid target, cancel this block
+        // damage tick so the swing hits the entity instead. No target = let
+        // mining proceed untouched.
+        if (!isWeaponHeld(player)) return;
+        try {
+            WeaponAttributes attrs = registry.forMaterial(player.getInventory().getItemInMainHand().getType());
+            AttackStage stage = attrs.stage(0);
+            List<ArcHitbox.ArcHit> hits =
+                    ArcHitbox.collect(player, null, attrs.rangeBonus(), stage, attrs.hitbox());
+            for (ArcHitbox.ArcHit hit : hits) {
+                LivingEntity le = hit.entity();
+                if (le == null || le.isDead()) continue;
+                if (le instanceof Player targetPlayer
+                        && (plugin.isPvpDisabled(player) || plugin.isPvpDisabled(targetPlayer))) {
+                    continue;
+                }
+                event.setCancelled(true);
+                break;
+            }
+        } catch (Exception ignored) {}
     }
 
     private static boolean isZeroHardness(org.bukkit.Material mat) {
