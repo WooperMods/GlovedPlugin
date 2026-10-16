@@ -151,6 +151,21 @@ public final class CombatListener implements Listener {
         } catch (Exception ignored) {}
         final boolean gliding = glideCheck;
 
+        // Swing feedback plays on every cooldown-passed swing, hit or miss:
+        // whiffs with no arc target must still feel like attacks (arm swing
+        // alone feels dead, especially now that mining is suppressed and
+        // gives no crack feedback either).
+        if (registry.isTrailFx()) {
+            WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
+            if (mainHand.getType() == Material.MACE) {
+                TrailFX.playCone(player, fxAttrs.stage(0), smash ? 1.6 : 1.0);
+            } else {
+                AttackStage fxStage = new AttackStage(1.0, 1.0, fxAttrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
+                TrailFX.play(player, fxStage);
+            }
+        }
+        FmmBridge.onSwing(player, false);
+
         // Allow arc attacks in all gamemodes
         // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
         //     return;
@@ -186,19 +201,6 @@ public final class CombatListener implements Listener {
             GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
             return;
         }
-
-        // FX only on swings that connect: every mining swing used to play
-        // sweep particles + sounds, which felt like attack spam on grass/dirt.
-        if (registry.isTrailFx()) {
-            WeaponAttributes fxAttrs = registry.forMaterial(mainHand.getType());
-            if (mainHand.getType() == Material.MACE) {
-                TrailFX.playCone(player, fxAttrs.stage(0), smash ? 1.6 : 1.0);
-            } else {
-                AttackStage fxStage = new AttackStage(1.0, 1.0, fxAttrs.baseAngleDegrees(), 0, "ENTITY_PLAYER_ATTACK_SWEEP", "SWEEP_ATTACK");
-                TrailFX.play(player, fxStage);
-            }
-        }
-        FmmBridge.onSwing(player, false);
 
         int idx = 0;
         boolean first = true;
