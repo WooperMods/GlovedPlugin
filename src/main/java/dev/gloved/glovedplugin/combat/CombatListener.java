@@ -39,6 +39,8 @@ public final class CombatListener implements Listener {
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
     /** One queued hold-to-spam swing per player, fired when cooldown recharges. */
     private final Map<UUID, BukkitTask> pendingSpam = new HashMap<>();
+    /** Players we switched to adventure (prior mode to restore). */
+    private final Map<UUID, org.bukkit.GameMode> adventureSwitched = new HashMap<>();
     /** Last crosshair entity from PrePlayerAttack, so arc never loses a vanilla hit. */
     private record PrimaryHit(UUID entityId, long atMillis) {}
     private final Map<UUID, PrimaryHit> lastPrimary = new HashMap<>();
@@ -52,7 +54,7 @@ public final class CombatListener implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (Player player : Bukkit.getOnlinePlayers()) {
             applyReach(player);
-            applyBlockTargeting(player);
+            applyGameMode(player);
         }
     }
 
@@ -467,56 +469,68 @@ public final class CombatListener implements Listener {
         return bonus;
     }
 
-    private NamespacedKey blockRangeKey() {
-        return new NamespacedKey(plugin, "weapon_no_blocks");
+    /**
+     * Silent adventure while armed: survival players holding a weapon (and
+     * not sneaking) are moved to adventure mode so nothing can be mined or
+     * placed, while doors, chests, buttons, and levers keep working.
+     * Creative/spectator and legit adventure players are never touched;
+     * prior modes are recorded so sneak/unarmed/quit restores exactly.
+     */
+    public void applyGameMode(Player player) {
+        UUID id;
+        try {
+            id = player.getUniqueId();
+        } catch (Exception e) {
+            return;
+        }
+        org.bukkit.GameMode current;
+        try {
+            current = player.getGameMode();
+        } catch (Exception e) {
+            return;
+        }
+        if (!registry.isEnabled() || !registry.isAdventureModeWhileArmed()) {
+            restoreGameMode(player, id);
+            return;
+        }
+        if (current == org.bukkit.GameMode.CREATIVE || current == org.bukkit.GameMode.SPECTATOR) {
+            return;
+        }
+        boolean wantAdventure = false;
+        try {
+            if (isWeaponHeld(player)) {
+                wantAdventure = true;
+                if (registry.isSneakBypass() && player.isSneaking()) {
+                    wantAdventure = false;
+                }
+            }
+        } catch (Exception ignored) {}
+        if (wantAdventure) {
+            // Only ever switch out of survival; never claim players who are
+            // already adventure (legit adventure, other plugins, restarts).
+            if (current == org.bukkit.GameMode.SURVIVAL && !adventureSwitched.containsKey(id)) {
+                adventureSwitched.put(id, current);
+                try {
+                    player.setGameMode(org.bukkit.GameMode.ADVENTURE);
+                } catch (Exception e) {
+                    adventureSwitched.remove(id);
+                    GlovedPlugin.logWarning("Could not switch to adventure mode: " + e.getMessage());
+                }
+            }
+        } else {
+            restoreGameMode(player, id);
+        }
     }
 
-    /**
-     * Zeroes the client's block targeting range while armed: with 0 block
-     * reach the client highlights and targets no block, so left-clicks
-     * become pure attack swings. Entity reach is a separate attribute and is
-     * untouched, so arcs keep working. Sneaking restores targeting (crouch
-     * bypass); creative/spectator are never touched; unarmed players and
-     * non-weapon tools are unaffected. Event cancels on block damage/break
-     * remain as a server-side safety net.
-     */
-    public void applyBlockTargeting(Player player) {
-        AttributeInstance inst;
+    private void restoreGameMode(Player player, UUID id) {
+        org.bukkit.GameMode prior = adventureSwitched.remove(id);
+        if (prior == null) return;
         try {
-            inst = player.getAttribute(Attribute.BLOCK_INTERACTION_RANGE);
-        } catch (Exception e) { return; }
-        if (inst == null) return;
-        NamespacedKey key = blockRangeKey();
-        try { inst.removeModifier(key); } catch (Exception ignored) {}
-        if (!registry.isEnabled() || !registry.isZeroBlockTargeting()) return;
-        try {
-            org.bukkit.GameMode mode = player.getGameMode();
-            if (mode == org.bukkit.GameMode.CREATIVE || mode == org.bukkit.GameMode.SPECTATOR) return;
-        } catch (Exception ignored) {}
-        boolean armed;
-        try {
-            armed = isWeaponHeld(player);
+            if (player.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
+                player.setGameMode(prior);
+            }
         } catch (Exception e) {
-            return;
-        }
-        if (!armed) return;
-        if (registry.isSneakBypass()) {
-            try {
-                if (player.isSneaking()) return;
-            } catch (Exception ignored) {}
-        }
-        // Negate the live total so targeting lands on exactly 0 regardless
-        // of base value; vanilla clamps the attribute at a 0 minimum.
-        double total;
-        try {
-            total = inst.getValue();
-        } catch (Exception e) {
-            return;
-        }
-        try {
-            inst.addTransientModifier(new AttributeModifier(key, -total, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.HAND));
-        } catch (Exception e) {
-            GlovedPlugin.logWarning("Could not apply block targeting suppression: " + e.getMessage());
+            GlovedPlugin.logWarning("Could not restore game mode: " + e.getMessage());
         }
     }
 
@@ -524,21 +538,21 @@ public final class CombatListener implements Listener {
     public void onHeldChange(PlayerItemHeldEvent event) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             applyReach(event.getPlayer());
-            applyBlockTargeting(event.getPlayer());
+            applyGameMode(event.getPlayer());
         });
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onSneakToggle(PlayerToggleSneakEvent event) {
         // Next tick so isSneaking() reflects the new state.
-        Bukkit.getScheduler().runTask(plugin, () -> applyBlockTargeting(event.getPlayer()));
+        Bukkit.getScheduler().runTask(plugin, () -> applyGameMode(event.getPlayer()));
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onJoin(PlayerJoinEvent event) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             applyReach(event.getPlayer());
-            applyBlockTargeting(event.getPlayer());
+            applyGameMode(event.getPlayer());
         });
     }
 
@@ -546,7 +560,7 @@ public final class CombatListener implements Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             applyReach(event.getPlayer());
-            applyBlockTargeting(event.getPlayer());
+            applyGameMode(event.getPlayer());
         });
     }
 
@@ -657,6 +671,7 @@ public final class CombatListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         lastArcTick.remove(event.getPlayer().getUniqueId());
         lastPrimary.remove(event.getPlayer().getUniqueId());
+        restoreGameMode(event.getPlayer(), event.getPlayer().getUniqueId());
         BukkitTask task = pendingSpam.remove(event.getPlayer().getUniqueId());
         if (task != null) {
             try { task.cancel(); } catch (Exception ignored) {}

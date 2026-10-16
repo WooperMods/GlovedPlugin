@@ -23,11 +23,10 @@ sweep_falloff_multiplier: 0.5
 suppress_mining_with_weapons: true
 # Sneaking with a weapon re-enables mining (crouch bypass to force-mine).
 sneak_bypass: true
-# Also zero the client's block targeting range while armed (no wireframe,
-# no block crosshair) so left-clicks become pure attack swings. Entity
-# attacks use a separate attribute and are unaffected. Kill-switch if it
-# misbehaves; block damage/break cancels remain as a server-side backstop.
-zero_block_targeting: true
+# Silently move armed survival players to adventure mode (no mining or
+# placing, but doors/chests/buttons/levers keep working). Sneaking restores
+# survival (crouch bypass). Creative/spectator are never touched.
+adventure_mode_while_armed: true
 # Idle ticks before the combo restarts at stage 1.
 combo_reset_ticks: 40
 # Minimum vanilla attack strength (0.0-1.0) required for an arc swing.
