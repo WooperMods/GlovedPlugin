@@ -167,6 +167,20 @@ public final class CombatListener implements Listener {
         }
         FmmBridge.onSwing(player, false);
 
+        // Every gate-passed swing consumes the clock, hit or miss: otherwise
+        // whiffs bypass pacing entirely and spam-clicking feels cooldown-free.
+        // The hotbar overlay shows the same rhythm (trident exempt: throwing
+        // is a right-click use action and the overlay would block drawing a
+        // throw mid-drain).
+        long gap = requiredGapMillis(player);
+        lastArcMillis.put(player.getUniqueId(), System.currentTimeMillis());
+        if (mainHand.getType() != Material.TRIDENT) {
+            int overlayTicks = (int) Math.max(1L, (gap + 49L) / 50L);
+            try {
+                player.setCooldown(mainHand.getType(), overlayTicks);
+            } catch (Exception ignored) {}
+        }
+
         // Allow arc attacks in all gamemodes
         // if (player.getGameMode() != org.bukkit.GameMode.SURVIVAL && player.getGameMode() != org.bukkit.GameMode.ADVENTURE) {
         //     return;
@@ -194,20 +208,6 @@ public final class CombatListener implements Listener {
             } catch (Exception ignored) {}
             GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
             return;
-        }
-
-        // Landed arc: consume our clock (whiffs never consume, matching
-        // vanilla) and show the vanilla hotbar cooldown overlay for exactly
-        // the pacing gap, so the bar and the damage always agree. Trident is
-        // exempt from the overlay: throwing is a right-click use action and
-        // the overlay would block drawing a throw mid-drain.
-        long gap = requiredGapMillis(player);
-        lastArcMillis.put(player.getUniqueId(), System.currentTimeMillis());
-        if (mainHand.getType() != Material.TRIDENT) {
-            int overlayTicks = (int) Math.max(1L, (gap + 49L) / 50L);
-            try {
-                player.setCooldown(mainHand.getType(), overlayTicks);
-            } catch (Exception ignored) {}
         }
 
         int idx = 0;
