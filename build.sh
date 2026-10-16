@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOWNLOADS_DIR="${HOME}/Downloads"
 PLUGIN_DIR="/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins"
 
