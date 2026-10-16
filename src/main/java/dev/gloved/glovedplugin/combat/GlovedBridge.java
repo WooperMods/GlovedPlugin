@@ -45,7 +45,6 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL);
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, CHANNEL, this);
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        // TODO(bridge-debug): temporary, remove once framing is confirmed.
         GlovedPlugin.logInfo("[BetterCombat] Bridge active on " + CHANNEL);
     }
 
@@ -130,8 +129,6 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
     public void sendBeacon(Player player) {
         if (!bridgeOn()) return;
         try {
-            // TODO(bridge-debug): temporary, remove once framing is confirmed.
-            GlovedPlugin.logInfo("[BetterCombat] Bridge beacon -> " + player.getName());
             player.sendPluginMessage(plugin, CHANNEL, concat(new byte[]{HELLO}, varInt(PROTOCOL_VERSION)));
         } catch (Exception ignored) {}
     }
@@ -158,13 +155,6 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
         if (!CHANNEL.equals(channel) || message == null || message.length < 1) return;
         if (!bridgeOn()) return;
-        // TODO(bridge-debug): temporary wire dump, remove once framing is confirmed.
-        try {
-            StringBuilder hex = new StringBuilder();
-            for (byte b : message) hex.append(String.format("%02x ", b));
-            GlovedPlugin.logInfo("[BetterCombat] Bridge RX from " + player.getName()
-                    + " len=" + message.length + " bytes=" + hex.toString().trim());
-        } catch (Exception ignored) {}
         try {
             switch (message[0]) {
                 case HELLO -> {
