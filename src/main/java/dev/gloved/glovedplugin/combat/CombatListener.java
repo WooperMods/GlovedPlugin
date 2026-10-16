@@ -109,6 +109,10 @@ public final class CombatListener implements Listener {
             GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
                     + " strength=" + String.format("%.2f", strength)
                     + " required=" + registry.getMinAttackStrength());
+            // Hide the spam from everyone else: cancelling stops the server
+            // rebroadcasting this swing to tracking players (own first-person
+            // hand animation already played client-side and can't be rewound).
+            event.setCancelled(true);
             queueHoldToSpam(player);
             return;
         }
