@@ -24,7 +24,6 @@ import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 
 import io.papermc.paper.event.player.PlayerArmSwingEvent;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.HashMap;
 import java.util.List;
@@ -39,23 +38,16 @@ public final class CombatListener implements Listener {
      * the vanilla ticker (which any click can reset and no API can preserve). */
     private final Map<UUID, Long> lastArcMillis = new HashMap<>();
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
-    /** One queued hold-to-spam swing per player, fired when cooldown recharges. */
-    private final Map<UUID, BukkitTask> pendingSpam = new HashMap<>();
     /** Players we switched to adventure (prior mode to restore). */
     private final Map<UUID, org.bukkit.GameMode> adventureSwitched = new HashMap<>();
     /** Last crosshair entity from PrePlayerAttack, so arc never loses a vanilla hit. */
     private record PrimaryHit(UUID entityId, long atMillis) {}
     private final Map<UUID, PrimaryHit> lastPrimary = new HashMap<>();
 
-    /** Minimum fall distance (blocks) for a mace smash attack, per vanilla. */
-    private static final float SMASH_MIN_FALL = 1.5F;
     /**
-     * Inputs landing within this window of a consumed arc are echoes of the
-     * same physical click (vanilla packet + modded frame, mouse bounce):
-     * dropped without queueing. Kept well under the modded frame interval
-     * (150ms) and human spam cadence so real spam still queues.
+     * Minimum fall distance (blocks) for a mace smash attack, per vanilla.
      */
-    private static final long DEDUPE_MILLIS = 100L;
+    private static final float SMASH_MIN_FALL = 1.5F;
 
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
@@ -122,42 +114,38 @@ public final class CombatListener implements Listener {
     }
 
     /**
-     * Gate + arc + queue shared by vanilla and modded swings.
+     * Gate + arc shared by vanilla and modded swings.
+     *
+     * <p>Pure gate, no queue: an input either lands an arc (when off the
+     * custom cooldown) or does nothing. Holding is driven entirely by the
+     * client repeating inputs, so attacks stop the instant the button is
+     * released. Vanilla clients keep swinging visually on every click (their
+     * animation is client-side and uncancellable) but the server only
+     * accepts the ones that arrive off cooldown.
      *
      * @param broadcastSwing true when no vanilla swing packet exists for this
-     *                       swing (modded frames, queued arcs): the arc then
-     *                       broadcasts its own third-person animation.
+     *                       swing (modded frames): the arc then broadcasts its
+     *                       own third-person animation.
      * @return true if an arc swing executed (clock consumed).
      */
     private boolean handleSwing(Player player, boolean broadcastSwing) {
         // Our own pacing clock: the vanilla ticker is reset by clicks we
         // don't control and no working API can preserve it, so arcs are
-        // gated on time since the last LANDED arc. Spam freely; damage lands
-        // on schedule via the hold-to-spam queue below.
+        // gated on time since the last arc.
         long required = requiredGapMillis(player);
         Long last = lastArcMillis.get(player.getUniqueId());
         long elapsed = last == null ? Long.MAX_VALUE : System.currentTimeMillis() - last;
         if (last != null && elapsed < required) {
             float vanilla = 0f;
             try { vanilla = player.getCooledAttackStrength(0.5F); } catch (Exception ignored) {}
-            // Dedupe: a single physical click arrives as both a vanilla
-            // packet and a modded frame (plus mouse-bounce doubles). Inputs
-            // landing within this window of a consumed arc are echoes, not
-            // new intent: drop them WITHOUT queueing, or the queue fires a
-            // second full arc ~one gap later and every click feels doubled.
-            if (elapsed < DEDUPE_MILLIS) {
-                GlovedPlugin.logInfo("[BetterCombat] Swing echo dropped for " + player.getName()
-                        + " elapsed=" + elapsed + "ms");
-                return false;
-            }
-            GlovedPlugin.logInfo("[BetterCombat] Swing denied for " + player.getName()
+            GlovedPlugin.logInfo("[BetterCombat] Swing on cooldown for " + player.getName()
                     + " elapsed=" + elapsed + "ms required=" + required + "ms"
                     + " vanillaStrength=" + String.format("%.2f", vanilla));
             // Hide the spam from everyone else: cancelling stops the server
             // rebroadcasting this swing to tracking players (own first-person
             // hand animation already played client-side and can't be rewound).
-            // (Modded frames have no event to cancel; nothing needed there.)
-            queueHoldToSpam(player, required - elapsed);
+            // (Modded frames have no event to cancel; the mod gates its own
+            // visuals, so nothing is needed there.)
             return false;
         }
 
@@ -481,34 +469,6 @@ public final class CombatListener implements Listener {
         return (long) Math.ceil(requiredTicks * 50.0);
     }
 
-    /**
-     * Hold-to-spam: schedule a single arc swing for when our clock recharges.
-     * At most one pending per player; the task re-checks our clock (never
-     * the vanilla ticker) and drops otherwise. Whiffs can't starve it.
-     */
-    private void queueHoldToSpam(Player player, long delayMillis) {
-        if (!registry.isHoldToSpam()) return;
-        UUID id = player.getUniqueId();
-        if (pendingSpam.containsKey(id)) return;
-        long delayTicks = Math.max(1L, (delayMillis + 49L) / 50L);
-        try {
-            BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                pendingSpam.remove(id);
-                Player p = Bukkit.getPlayer(id);
-                if (p == null || !p.isOnline()) return;
-                if (!registry.isEnabled()) return;
-                ItemStack held = p.getInventory().getItemInMainHand();
-                if (held.getType().isAir() || !isWeaponHeld(p)) return;
-                long required = requiredGapMillis(p);
-                Long last = lastArcMillis.get(id);
-                if (last != null && System.currentTimeMillis() - last < required) return;
-                // Queued arcs have no swing packet: broadcast third-person.
-                executeArcSwing(p, true);
-            }, delayTicks);
-            pendingSpam.put(id, task);
-        } catch (Exception ignored) {}
-    }
-
     private NamespacedKey reachKey() {
         return new NamespacedKey(plugin, "weapon_reach");
     }
@@ -760,9 +720,5 @@ public final class CombatListener implements Listener {
             if (bridge != null) bridge.clear(event.getPlayer());
         } catch (Exception ignored) {}
         restoreGameMode(event.getPlayer(), event.getPlayer().getUniqueId());
-        BukkitTask task = pendingSpam.remove(event.getPlayer().getUniqueId());
-        if (task != null) {
-            try { task.cancel(); } catch (Exception ignored) {}
-        }
     }
 }

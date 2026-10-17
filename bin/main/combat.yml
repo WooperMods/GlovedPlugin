@@ -1,0 +1,77 @@
+# GlovedPlugin combat (Better Combat-lite, server-side).
+# Values mirror Better Combat concepts in a Paper-safe subset.
+enabled: true
+
+# Hold attack to queue the next combo stage once cooldown is ready.
+hold_to_spam: true
+# Hit the best arc target even when it isn't exactly under the crosshair.
+# (Direct-look hits stay instant; assist lands ~2 ticks after the swing.)
+off_angle_assist: true
+# Minimum ticks between assist hits per player (spam rate limit).
+proactive_min_interval_ticks: 6
+# Swing particles + sounds on every swing (set a stage's particles/swing_sound
+# to NONE to silence it individually).
+trail_fx: true
+# Alternate main/off-hand when both hold one-handed weapons.
+dual_wield: true
+# Unused for now (needs attribute API per MC version); kept for parity.
+dual_wield_speed_bonus: 0.2
+# Non-primary arc targets take damage * this unless you have Sweeping Edge.
+sweep_falloff_multiplier: 0.5
+# Attack through zero-hardness blocks (grass/torches) instead of mining them.
+swing_thru_grass: false
+# Idle ticks before the combo restarts at stage 1.
+combo_reset_ticks: 40
+
+fallback:
+  range_bonus: 0.0
+  angle: 90.0
+  hitbox: HORIZONTAL_PLANE
+  attacks:
+    - { damage_multiplier: 1.0, range_multiplier: 1.0, angle: 90.0 }
+
+# Named presets usable via weapons.<MATERIAL>: preset name or preset: <id>.
+presets:
+  sword:
+    range_bonus: 0.5
+    angle: 100.0
+    hitbox: HORIZONTAL_PLANE
+    attacks:
+      - { damage_multiplier: 1.0, range_multiplier: 1.0, angle: 100.0 }
+      - { damage_multiplier: 1.1, range_multiplier: 0.95, angle: 80.0 }
+  greatsword:
+    range_bonus: 1.0
+    angle: 120.0
+    hitbox: HORIZONTAL_PLANE
+    two_handed: true
+    attacks:
+      - { damage_multiplier: 1.2, range_multiplier: 1.1, angle: 120.0 }
+      - { damage_multiplier: 1.3, range_multiplier: 1.0, angle: 100.0 }
+  axe:
+    range_bonus: 0.25
+    angle: 70.0
+    hitbox: VERTICAL_PLANE
+  spear:
+    range_bonus: 1.5
+    angle: 35.0
+    hitbox: FORWARD_BOX
+    two_handed: true
+  dagger:
+    range_bonus: -0.5
+    angle: 70.0
+    hitbox: FORWARD_BOX
+    attacks:
+      - { damage_multiplier: 0.8, angle: 70.0, particles: CRIT }
+      - { damage_multiplier: 0.8, angle: 70.0, particles: CRIT }
+      - { damage_multiplier: 1.2, angle: 70.0, particles: CRIT }
+
+weapons:
+  DIAMOND_SWORD: sword
+  NETHERITE_SWORD: sword
+  IRON_SWORD: sword
+  DIAMOND_AXE: axe
+  NETHERITE_AXE: axe
+  TRIDENT: spear
+  MACE:
+    preset: spear
+    range_bonus: 0.5
