@@ -118,21 +118,21 @@ public class MenuHandler implements Listener {
     public static boolean stashCursor(Player player) {
         ItemStack cursor = player.getItemOnCursor();
         if (cursor == null || cursor.getType().isAir()) {
-            logInfo("DIAG2 stash player=" + player.getName() + " to=none (cursor already empty)");
+            GlovedPlugin.logDebug("DIAG2 stash player=" + player.getName() + " to=none (cursor already empty)");
             return true;
         }
         ItemStack moving = cursor.clone();
         player.setItemOnCursor(null);
         java.util.Map<Integer, ItemStack> leftover = player.getInventory().addItem(moving);
         if (leftover.isEmpty()) {
-            logInfo("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=slot");
+            GlovedPlugin.logDebug("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=slot");
             return true;
         }
         // No room: put the exact stack back and refuse. Nothing was lost,
         // nothing was duplicated, the cursor is exactly as it was.
         player.setItemOnCursor(moving);
         player.updateInventory();
-        logInfo("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=REFUSED_FULL");
+        GlovedPlugin.logDebug("DIAG2 stash player=" + player.getName() + " item=" + diagItem(moving) + " to=REFUSED_FULL");
         return false;
     }
 
@@ -286,7 +286,7 @@ public class MenuHandler implements Listener {
                 if (it != null && it.getType() == cursor.getType()) stored += it.getAmount();
             }
         }
-        logInfo("DIAG2 click handler=" + System.identityHashCode(this)
+        GlovedPlugin.logDebug("DIAG2 click handler=" + System.identityHashCode(this)
                 + " player=" + player.getName() + " action=" + event.getAction()
                 + " current=" + diagItem(current) + " cursor=" + diagItem(cursor)
                 + " serverCursor=" + diagItem(player.getItemOnCursor())
@@ -298,7 +298,7 @@ public class MenuHandler implements Listener {
         Inventory eventTop = event.getView().getTopInventory();
         InventoryView curView = player.getOpenInventory();
         Inventory curTop = curView.getTopInventory();
-        logInfo("DIAG2 views player=" + player.getName()
+        GlovedPlugin.logDebug("DIAG2 views player=" + player.getName()
                 + " sameTop=" + (eventTop == curTop)
                 + " eventTop=" + eventTop.getType()
                 + " curTop=" + curTop.getType()
@@ -335,14 +335,14 @@ public class MenuHandler implements Listener {
                     ? player.getInventory().getItem(liveConfig.openerSlot()) : null;
             if (!MenuInv.isMenuOpener(openerSlot)) {
                 // TEMPORARY DIAGNOSTIC (DIAG2)
-                logInfo("DIAG2 skipopen player=" + player.getName()
+                GlovedPlugin.logDebug("DIAG2 skipopen player=" + player.getName()
                         + " openerGoneFromSlot cursor=" + diagItem(player.getItemOnCursor()));
                 player.updateInventory();
                 return;
             }
             new MenuInv(plugin).openMenu(player);
             // TEMPORARY DIAGNOSTIC (DIAG2)
-            logInfo("DIAG2 postopen player=" + player.getName()
+            GlovedPlugin.logDebug("DIAG2 postopen player=" + player.getName()
                     + " cursor=" + diagItem(player.getItemOnCursor()));
             player.updateInventory();
         });
@@ -357,7 +357,7 @@ public class MenuHandler implements Listener {
     public void onInventoryClickTail(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!MenuInv.isMenuOpener(event.getCurrentItem()) && !MenuInv.isMenuOpener(event.getCursor())) return;
-        logInfo("DIAG2 tail handler=" + System.identityHashCode(this)
+        GlovedPlugin.logDebug("DIAG2 tail handler=" + System.identityHashCode(this)
                 + " player=" + player.getName() + " cancelled=" + event.isCancelled()
                 + " serverCursor=" + diagItem(player.getItemOnCursor()));
     }
@@ -488,7 +488,7 @@ public class MenuHandler implements Listener {
     public static void askChat(GlovedPlugin plugin, Player player, PendingInput pending, String prompt) {
         PendingInput.put(player.getUniqueId(), pending);
         // TEMPORARY DIAGNOSTIC (DIAG3)
-        GlovedPlugin.logInfo("DIAG3 ask player=" + player.getName() + " kind=" + pending.kind);
+        GlovedPlugin.logDebug("DIAG3 ask player=" + player.getName() + " kind=" + pending.kind);
         player.sendMessage(GlovedPlugin.makeComponent(prompt));
         player.sendMessage(Component.text("(Type 'cancel' to go back. A leading / is trimmed for commands.)"));
         scheduleTimeout(plugin, player, pending);
@@ -508,7 +508,7 @@ public class MenuHandler implements Listener {
         PendingInput pending = PendingInput.take(player.getUniqueId());
         if (pending == null) return;
         // TEMPORARY DIAGNOSTIC (DIAG3)
-        GlovedPlugin.logInfo("DIAG3 chat player=" + player.getName() + " kind=" + pending.kind);
+        GlovedPlugin.logDebug("DIAG3 chat player=" + player.getName() + " kind=" + pending.kind);
         // LOWEST + cancelled: edit input never reaches chat plugins or Discord.
         event.setCancelled(true);
         String text = LegacyComponentSerializer.legacySection().serialize(event.message()).replace('§', '&').strip();
@@ -617,7 +617,7 @@ public class MenuHandler implements Listener {
                 session.items.add(new MenuConfig.MenuItem(mat, "&f" + mat.name(), new java.util.ArrayList<>(),
                         "", null, 0, 0, null, false, true));
                 // TEMPORARY DIAGNOSTIC (DIAG3)
-                GlovedPlugin.logInfo("DIAG3 created player=" + player.getName() + " material=" + mat.name()
+                GlovedPlugin.logDebug("DIAG3 created player=" + player.getName() + " material=" + mat.name()
                         + " index=" + (session.items.size() - 1));
                 reopenEditor(player, session, MenuEditorInv.Screen.ITEM, session.items.size() - 1);
             }

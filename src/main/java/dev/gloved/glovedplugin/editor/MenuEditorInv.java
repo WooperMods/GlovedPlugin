@@ -336,7 +336,7 @@ public class MenuEditorInv implements InventoryHolder {
     /** Handles a click already cancelled by MenuHandler. Bottom clicks follow menu rules. */
     public void onClick(Player player, org.bukkit.event.inventory.InventoryClickEvent event) {
         // TEMPORARY DIAGNOSTIC (DIAG3)
-        GlovedPlugin.logInfo("DIAG3 click player=" + player.getName() + " screen=" + screen
+        GlovedPlugin.logDebug("DIAG3 click player=" + player.getName() + " screen=" + screen
                 + " slot=" + event.getSlot() + " raw=" + event.getRawSlot() + " action=" + event.getAction());
         disarmIfExpired();
         int topSize = event.getView().getTopInventory().getSize();
