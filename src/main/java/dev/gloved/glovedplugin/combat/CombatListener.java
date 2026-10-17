@@ -142,7 +142,7 @@ public final class CombatListener implements Listener {
         if (last != null && elapsed < required) {
             float vanilla = 0f;
             try { vanilla = player.getCooledAttackStrength(0.5F); } catch (Exception ignored) {}
-            GlovedPlugin.logInfo("[BetterCombat] Swing on cooldown for " + player.getName()
+            GlovedPlugin.logDebug("[BetterCombat] Swing on cooldown for " + player.getName()
                     + " elapsed=" + elapsed + "ms required=" + required + "ms"
                     + " vanillaStrength=" + String.format("%.2f", vanilla));
             // Hide the spam from everyone else: cancelling stops the server
@@ -255,7 +255,7 @@ public final class CombatListener implements Listener {
         applyReach(player);
         LivingEntity primary = resolvePrimary(player);
         List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox(), registry.isSpareTamed(), registry.isSpareNamed());
-        GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
+        GlovedPlugin.logDebug("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
             // Whiffs still play the pre-collect FX above (an arm swing with
             // no feedback feels dead); log the targeted block to diagnose
@@ -265,7 +265,7 @@ public final class CombatListener implements Listener {
                 var block = player.getTargetBlockExact(6);
                 if (block != null) looking = block.getType().name();
             } catch (Exception ignored) {}
-            GlovedPlugin.logInfo("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
+            GlovedPlugin.logDebug("[BetterCombat] No arc targets found for " + player.getName() + " looking=" + looking);
             return;
         }
 
@@ -274,28 +274,28 @@ public final class CombatListener implements Listener {
         for (ArcHitbox.ArcHit hit : hits) {
             LivingEntity target = hit.entity();
             if (target == null || target.isDead()) {
-                GlovedPlugin.logInfo("[BetterCombat] Skipping null/dead target for " + player.getName());
+                GlovedPlugin.logDebug("[BetterCombat] Skipping null/dead target for " + player.getName());
                 continue;
             }
             if (registry.isSpareTamed() && target instanceof Tameable tameable && tameable.isTamed()) {
-                GlovedPlugin.logInfo("[BetterCombat] Skipping tamed " + target.getType() + " for " + player.getName());
+                GlovedPlugin.logDebug("[BetterCombat] Skipping tamed " + target.getType() + " for " + player.getName());
                 continue;
             }
             if (registry.isSpareNamed() && target.customName() != null && target.isPersistent()) {
-                GlovedPlugin.logInfo("[BetterCombat] Skipping named " + target.getType() + " for " + player.getName());
+                GlovedPlugin.logDebug("[BetterCombat] Skipping named " + target.getType() + " for " + player.getName());
                 continue;
             }
             if (target instanceof org.bukkit.entity.Player targetPlayer) {
                 boolean attackerPvpDisabled = plugin.isPvpDisabled(player);
                 boolean targetPvpDisabled = plugin.isPvpDisabled(targetPlayer);
                 if (attackerPvpDisabled || targetPvpDisabled) {
-                    GlovedPlugin.logInfo("[BetterCombat] Skipping PvP target " + targetPlayer.getName() + " due to PvP toggle");
+                    GlovedPlugin.logDebug("[BetterCombat] Skipping PvP target " + targetPlayer.getName() + " due to PvP toggle");
                     continue;
                 }
             }
             double dist = hit.distance();
             double angle = hit.angleDeg();
-            GlovedPlugin.logInfo("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
+            GlovedPlugin.logDebug("[BetterCombat] Attempting attack on " + target.getType() + " id=" + target.getUniqueId() + " dist=" + String.format("%.2f", dist) + " angle=" + String.format("%.1f", angle));
             final LivingEntity t = target;
             final int delay = 0;
             final AttackStage finalStage = stage;
@@ -331,7 +331,7 @@ public final class CombatListener implements Listener {
                         }
                     }
                     double baseLog = player.getAttribute(Attribute.ATTACK_DAMAGE) != null ? player.getAttribute(Attribute.ATTACK_DAMAGE).getValue() : -1;
-                    GlovedPlugin.logInfo("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst + " fall=" + String.format("%.1f", capturedFall) + " wb=" + capturedWindBurst + " densBonus=" + String.format("%.1f", densityBonus));
+                    GlovedPlugin.logDebug("[BetterCombat] Attack for " + player.getName() + " weapon=" + player.getInventory().getItemInMainHand().getType() + " base=" + baseLog + " mult=" + mult + " first=" + isFirst + " fall=" + String.format("%.1f", capturedFall) + " wb=" + capturedWindBurst + " densBonus=" + String.format("%.1f", densityBonus));
                     if (smash) {
                         // Restore pre-landing fall distance so vanilla sees the
                         // smash: bonus damage plus Wind Burst trigger.
@@ -350,7 +350,7 @@ public final class CombatListener implements Listener {
                             player.setFallDistance(0.0F);
                         } catch (Exception ignored) {}
                         if (capturedWindBurst > 0) {
-                            GlovedPlugin.logInfo("[BetterCombat] Wind Burst smash by " + player.getName() + " level=" + capturedWindBurst);
+                            GlovedPlugin.logDebug("[BetterCombat] Wind Burst smash by " + player.getName() + " level=" + capturedWindBurst);
                             // Our extended arc range can land hits outside the
                             // vanilla burst's lift radius, so if the attacker
                             // is still descending, pop them up manually.
@@ -398,7 +398,7 @@ public final class CombatListener implements Listener {
                                             knocked++;
                                         } catch (Exception ignored) {}
                                     }
-                                    GlovedPlugin.logInfo("[BetterCombat] Wind Burst assist pop for " + player.getName() + " knocked=" + knocked);
+                                    GlovedPlugin.logDebug("[BetterCombat] Wind Burst assist pop for " + player.getName() + " knocked=" + knocked);
                                 }
                             } catch (Exception ignored) {}
                         }
@@ -421,9 +421,9 @@ public final class CombatListener implements Listener {
                                     TrailFX.parseSound("ENTITY_WIND_CHARGE_BURST", org.bukkit.Sound.ENTITY_GENERIC_EXPLODE),
                                     0.8f, 1.2f);
                         } catch (Exception ignored) {}
-                        GlovedPlugin.logInfo("[BetterCombat] Elytra Wind Burst by " + player.getName() + " level=" + capturedWindBurst);
+                        GlovedPlugin.logDebug("[BetterCombat] Elytra Wind Burst by " + player.getName() + " level=" + capturedWindBurst);
                     }
-                    GlovedPlugin.logInfo("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
+                    GlovedPlugin.logDebug("[BetterCombat] player.attack called for " + t.getType() + " id=" + t.getUniqueId());
                 } catch (Exception e) {
                     GlovedPlugin.logWarning("[BetterCombat] attack failed for " + t.getType() + ": " + e.getMessage());
                 } finally {
@@ -691,7 +691,7 @@ public final class CombatListener implements Listener {
         try {
             java.lang.reflect.Method m = player.getClass().getMethod("setCooledAttackStrength", float.class);
             m.invoke(player, 1.0f);
-            GlovedPlugin.logInfo("[BetterCombat] setCooledAttackStrength used");
+            GlovedPlugin.logDebug("[BetterCombat] setCooledAttackStrength used");
             return;
         } catch (Exception ignored) {}
         // Fallback to NMS handle
@@ -714,12 +714,12 @@ public final class CombatListener implements Listener {
             if (f != null) {
                 f.setAccessible(true);
                 f.setInt(handle, cooldownPeriod);
-                GlovedPlugin.logInfo("[BetterCombat] attackStrengthTicker set to " + cooldownPeriod);
+                GlovedPlugin.logDebug("[BetterCombat] attackStrengthTicker set to " + cooldownPeriod);
             } else {
-                GlovedPlugin.logInfo("[BetterCombat] attackStrengthTicker field not found");
+                GlovedPlugin.logDebug("[BetterCombat] attackStrengthTicker field not found");
             }
         } catch (Exception e) {
-            GlovedPlugin.logInfo("[BetterCombat] forceFullAttackStrength failed: " + e.getMessage());
+            GlovedPlugin.logDebug("[BetterCombat] forceFullAttackStrength failed: " + e.getMessage());
         }
     }
 

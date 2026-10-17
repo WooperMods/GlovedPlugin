@@ -45,7 +45,7 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, CHANNEL);
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, CHANNEL, this);
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        GlovedPlugin.logInfo("[BetterCombat] Bridge active on " + CHANNEL);
+        GlovedPlugin.logDebug("[BetterCombat] Bridge active on " + CHANNEL);
     }
 
     public void shutdown() {
@@ -166,7 +166,7 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
                         return;
                     }
                     modded.add(player.getUniqueId());
-                    GlovedPlugin.logInfo("[BetterCombat] Companion mod handshaked for " + player.getName());
+                    GlovedPlugin.logDebug("[BetterCombat] Companion mod handshaked for " + player.getName());
                 }
                 case SWING -> combat.onModdedSwing(player);
                 default -> { /* ignore unknown tags */ }

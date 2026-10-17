@@ -51,6 +51,12 @@ public final class GlovedPlugin extends JavaPlugin {
         DebugLog.log("INFO", message);
     }
 
+    public static void logDebug(String message) {
+        if (!DebugLog.isEnabled()) return;
+        logger.info("<##>-------------< " + message + " >-------------<##>");
+        DebugLog.log("INFO", message);
+    }
+
     /**
      * This method is used to log warning messages in a specific format.
      * The format is: <###>-------------< {message} >-------------<###>
