@@ -65,6 +65,7 @@ public final class CombatListener implements Listener {
         if (Boolean.TRUE.equals(syntheticAttack.get())) return;
         Player player = event.getPlayer();
         if (!isWeaponHeld(player)) return;
+        if (player.isSneaking()) return;
         // Remember the crosshair target: the arc below must include it even
         // at the arc edge, otherwise cancelling here would eat a vanilla hit.
         try {
@@ -82,6 +83,7 @@ public final class CombatListener implements Listener {
         if (!registry.isEnabled()) return;
         if (event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         Player player = event.getPlayer();
+        if (player.isSneaking()) return;
         if (!swingParity(player)) return;
         if (!handleSwing(player, false)) {
             event.setCancelled(true);
@@ -97,6 +99,7 @@ public final class CombatListener implements Listener {
         } catch (Exception e) {
             return;
         }
+        if (player.isSneaking()) return;
         if (!swingParity(player)) return;
         // No swing packet exists for modded frames, so the arc must
         // broadcast its own third-person animation (see executeArcSwing).
@@ -129,6 +132,7 @@ public final class CombatListener implements Listener {
      * @return true if an arc swing executed (clock consumed).
      */
     private boolean handleSwing(Player player, boolean broadcastSwing) {
+        if (player.isSneaking()) return false;
         // Our own pacing clock: the vanilla ticker is reset by clicks we
         // don't control and no working API can preserve it, so arcs are
         // gated on time since the last arc.
@@ -489,6 +493,7 @@ public final class CombatListener implements Listener {
         NamespacedKey key = reachKey();
         try { inst.removeModifier(key); } catch (Exception ignored) {}
         if (!registry.isEnabled()) return;
+        if (player.isSneaking()) return;
         double bonus = effectiveRangeBonus(player);
         if (bonus == 0) return;
         try {
