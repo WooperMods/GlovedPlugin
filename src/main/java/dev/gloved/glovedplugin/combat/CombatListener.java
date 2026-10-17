@@ -250,7 +250,7 @@ public final class CombatListener implements Listener {
         // Refresh reach so the delayed synthetic attacks inherit arc range.
         applyReach(player);
         LivingEntity primary = resolvePrimary(player);
-        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox(), registry.isSpareTamed());
+        List<ArcHitbox.ArcHit> hits = ArcHitbox.collect(player, primary, rangeBonus, stage, attrs.hitbox(), registry.isSpareTamed(), registry.isSpareNamed());
         GlovedPlugin.logInfo("[BetterCombat] Swing by " + player.getName() + " with " + mainHand.getType() + ", angle=" + attrs.baseAngleDegrees() + ", rangeBonus=" + rangeBonus + ", hitsFound=" + hits.size());
         if (hits.isEmpty()) {
             // Whiffs still play the pre-collect FX above (an arm swing with
@@ -275,6 +275,10 @@ public final class CombatListener implements Listener {
             }
             if (registry.isSpareTamed() && target instanceof Tameable tameable && tameable.isTamed()) {
                 GlovedPlugin.logInfo("[BetterCombat] Skipping tamed " + target.getType() + " for " + player.getName());
+                continue;
+            }
+            if (registry.isSpareNamed() && target.customName() != null && target.isPersistent()) {
+                GlovedPlugin.logInfo("[BetterCombat] Skipping named " + target.getType() + " for " + player.getName());
                 continue;
             }
             if (target instanceof org.bukkit.entity.Player targetPlayer) {
@@ -443,6 +447,9 @@ public final class CombatListener implements Listener {
                     && le.getLocation().distanceSquared(player.getLocation()) < 100.0) {
                 // Never force-include a spared pet via the primary fallback.
                 if (registry.isSpareTamed() && le instanceof Tameable tameable && tameable.isTamed()) {
+                    return null;
+                }
+                if (registry.isSpareNamed() && le.customName() != null && le.isPersistent()) {
                     return null;
                 }
                 return le;

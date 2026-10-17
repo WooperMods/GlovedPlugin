@@ -23,7 +23,7 @@ public final class ArcHitbox {
 
     public static List<ArcHit> collect(Player attacker, LivingEntity primary,
                                        double baseReach, AttackStage stage,
-                                       WeaponAttributes.HitboxShape shape, boolean spareTamed) {
+                                       WeaponAttributes.HitboxShape shape, boolean spareTamed, boolean spareNamed) {
         double reach = (baseReach + 3.0) * stage.rangeMultiplier();
         // rangeBonus in config is additive over the ~3 block vanilla reach.
         // baseReach passed as bonus; keep total sane.
@@ -38,7 +38,8 @@ public final class ArcHitbox {
                 e -> e instanceof LivingEntity le
                         && !le.isDead()
                         && !le.getUniqueId().equals(attacker.getUniqueId())
-                        && !(spareTamed && e instanceof Tameable tameable && tameable.isTamed()))) {
+                        && !(spareTamed && e instanceof Tameable tameable && tameable.isTamed())
+                        && !(spareNamed && le.customName() != null && le.isPersistent()))) {
             LivingEntity le = (LivingEntity) entity;
             Location target = le.getEyeLocation();
             Vector to = target.clone().subtract(eye).toVector();
@@ -64,7 +65,12 @@ public final class ArcHitbox {
 
         // Primary vanilla target always counts, even at the arc edge.
         if (primary != null && hits.stream().noneMatch(h -> h.entity().equals(primary))) {
-            hits.add(new ArcHit(primary, attacker.getLocation().distance(primary.getLocation()), 0));
+            boolean skip = false;
+            if (spareTamed && primary instanceof Tameable tameable && tameable.isTamed()) skip = true;
+            if (spareNamed && primary.customName() != null && primary.isPersistent()) skip = true;
+            if (!skip) {
+                hits.add(new ArcHit(primary, attacker.getLocation().distance(primary.getLocation()), 0));
+            }
         }
         hits.sort(Comparator.comparingDouble(ArcHit::distance));
         return hits;

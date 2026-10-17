@@ -36,6 +36,7 @@ public final class WeaponRegistry {
     private boolean sneakBypass = true;
     private boolean adventureModeWhileArmed = true;
     private boolean spareTamed = true;
+    private boolean spareNamed = true;
     private boolean modBridge = true;
     private long comboResetTicks = 40L;
     private double minAttackStrength = 0.9;
@@ -60,6 +61,7 @@ public final class WeaponRegistry {
         sneakBypass = cfg.getBoolean("sneak_bypass", true);
         adventureModeWhileArmed = cfg.getBoolean("adventure_mode_while_armed", true);
         spareTamed = cfg.getBoolean("spare_tamed", true);
+        spareNamed = cfg.getBoolean("spare_named", true);
         modBridge = cfg.getBoolean("mod_bridge", true);
         comboResetTicks = cfg.getLong("combo_reset_ticks", 40L);
         minAttackStrength = Math.clamp(cfg.getDouble("min_attack_strength", 0.9), 0.0, 1.0);
@@ -204,6 +206,7 @@ public final class WeaponRegistry {
     public boolean isSneakBypass() { return sneakBypass; }
     public boolean isAdventureModeWhileArmed() { return adventureModeWhileArmed; }
     public boolean isSpareTamed() { return spareTamed; }
+    public boolean isSpareNamed() { return spareNamed; }
     public boolean isModBridge() { return modBridge; }
     public long getComboResetTicks() { return comboResetTicks; }
     public double getMinAttackStrength() { return minAttackStrength; }

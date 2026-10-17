@@ -30,6 +30,9 @@ adventure_mode_while_armed: true
 # Never hit tamed mobs (dogs, cats, parrots, horses) with arcs, no matter
 # who tamed them. Untamed mobs are still hittable.
 spare_tamed: true
+# Never hit mobs named with a name tag. Detected via custom name + persistent.
+# Plugins that only set custom names without persistence are still hittable.
+spare_named: true
 # Companion-mod bridge (custom payload channel gloved:combat): handshake,
 # modded hold-repeat input, and server-driven HUD timing for GlovedMod.
 mod_bridge: true
