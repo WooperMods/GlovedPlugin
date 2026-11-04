@@ -18,6 +18,7 @@
 - [x] Particle visual indicators on open
 - [x] Auto-save task stub
 - [x] Protection listeners scaffold for break/explosion/piston/hopper
+- [x] Auto-registration on chunk load
 
 ## In Progress
 - [ ] Full container auto-registration on chunk load / structure generate
