@@ -7,6 +7,8 @@ public class LootrConfig {
     public boolean autoConvert;
     public boolean perPlayerLoot;
     public int maxTrackedChests;
+    public java.util.List<String> containers;
+    public java.util.List<String> disabledWorlds;
     public boolean protectionBreak;
     public boolean protectionHopper;
     public boolean protectionExplosion;
@@ -29,6 +31,9 @@ public class LootrConfig {
         c.autoConvert = cfg.getBoolean("lootr.auto-convert", true);
         c.perPlayerLoot = cfg.getBoolean("lootr.per-player-loot", true);
         c.maxTrackedChests = cfg.getInt("lootr.max-tracked-chests", 50000);
+        c.containers = cfg.getStringList("lootr.containers");
+        if (c.containers.isEmpty()) c.containers = java.util.List.of("CHEST", "BARREL", "SHULKER_BOX", "MINECART_CHEST");
+        c.disabledWorlds = cfg.getStringList("lootr.disabled-worlds");
         c.protectionBreak = cfg.getBoolean("lootr.protection.prevent-break", true);
         c.protectionHopper = cfg.getBoolean("lootr.protection.prevent-hopper", true);
         c.protectionExplosion = cfg.getBoolean("lootr.protection.prevent-explosion", true);

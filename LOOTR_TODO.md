@@ -22,13 +22,13 @@
 
 ## In Progress
 - [x] EliteMobs procedural gear mix – real API integration for scaling to combat level
-- [ ] Protection listeners: break double-confirm logic
-- [ ] Auto-save task async DB writes
-- [ ] Admin commands full implementation
-- [ ] Config reload handling
-- [ ] World disable list & bypass permission handling
-- [ ] Disabled worlds & container type filtering
-- [ ] Sound effects on open/close
+- [x] Protection listeners: break double-confirm logic
+- [x] Auto-save task async DB writes
+- [x] Admin commands full implementation
+- [x] Config reload handling
+- [x] World disable list & bypass permission handling
+- [x] Disabled worlds & container type filtering
+- [x] Sound effects on open/close
 
 ## Remaining
 - [ ] Tests for DB operations

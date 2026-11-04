@@ -167,6 +167,10 @@ public final class GlovedPlugin extends JavaPlugin {
         return glovedBridge;
     }
 
+    public dev.gloved.glovedplugin.lootr.manager.LootrManager getLootrManager() {
+        return lootrManager;
+    }
+
     public boolean isPvpDisabled(org.bukkit.entity.Player player) {
         return pvpDisabled.contains(player.getUniqueId());
     }

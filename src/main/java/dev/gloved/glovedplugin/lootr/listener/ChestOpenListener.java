@@ -47,7 +47,12 @@ public class ChestOpenListener implements Listener {
         Player player = e.getPlayer();
         if (player.hasPermission("gloved.lootr.bypass")) return;
         // world disable check
-        // config has disabled-worlds list, we need to load it. For now skip.
+        if (manager.getConfig().disabledWorlds != null && manager.getConfig().disabledWorlds.contains(block.getWorld().getName())) return;
+        // container type filter
+        if (manager.getConfig().containers != null) {
+            String type = block.getType().name();
+            if (!manager.getConfig().containers.contains(type)) return;
+        }
 
         Container containerState = (Container) block.getState();
         if (!(containerState instanceof Lootable)) return;
@@ -70,11 +75,17 @@ public class ChestOpenListener implements Listener {
 
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id) {
         if (manager.getConfig().particlesEnabled) {
-            block.getWorld().spawnParticle(
-                org.bukkit.Particle.HAPPY_VILLAGER,
-                block.getLocation().add(0.5,0.5,0.5),
-                5, 0.2, 0.2, 0.2, 0
-            );
+            org.bukkit.Particle particle = parseParticle(manager.getConfig().particleType);
+            if (particle != null) {
+                block.getWorld().spawnParticle(
+                    particle,
+                    block.getLocation().add(0.5,0.5,0.5),
+                    5, 0.2, 0.2, 0.2, 0
+                );
+            }
+        }
+        if (manager.getConfig().playSound) {
+            player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
         }
 
         byte[] blob = lootService.getInventoryBlob(id, player.getUniqueId());
@@ -88,6 +99,9 @@ public class ChestOpenListener implements Listener {
             inventoryMap.put(inv, id);
             playerMap.put(inv, player.getUniqueId());
             player.openInventory(inv);
+            if (manager.getConfig().playSound) {
+                player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
+            }
             return;
         }
 
@@ -121,6 +135,9 @@ public class ChestOpenListener implements Listener {
         inventoryMap.put(inv, id);
         playerMap.put(inv, player.getUniqueId());
         player.openInventory(inv);
+        if (manager.getConfig().playSound) {
+            player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
+        }
     }
 
     @EventHandler
@@ -130,6 +147,18 @@ public class ChestOpenListener implements Listener {
         UUID uuid = playerMap.remove(inv);
         if (id != null && uuid != null) {
             lootService.saveInventory(id, uuid, inv);
+            if (manager.getConfig().playSound && e.getPlayer() instanceof Player player) {
+                player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_CLOSE, 0.6f, 1.0f);
+            }
+        }
+    }
+
+    private org.bukkit.Particle parseParticle(String name) {
+        if (name == null) return null;
+        try {
+            return org.bukkit.Particle.valueOf(name.toUpperCase());
+        } catch (Exception ex) {
+            return org.bukkit.Particle.HAPPY_VILLAGER;
         }
     }
 }

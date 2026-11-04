@@ -33,8 +33,13 @@ public class LootrManager {
         autoSaveTask = new BukkitRunnable() {
             @Override
             public void run() {
-                // Placeholder for async save
-                plugin.getLogger().info("Lootr auto-save tick");
+                try (java.sql.Connection conn = database.getConnection();
+                     java.sql.Statement stmt = conn.createStatement()) {
+                    stmt.execute("PRAGMA wal_checkpoint(FULL)");
+                    plugin.getLogger().info("Lootr auto-save tick");
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Lootr auto-save failed: " + e.getMessage());
+                }
             }
         };
         autoSaveTask.runTaskTimerAsynchronously(plugin, 20L * 60 * interval, 20L * 60 * interval);
