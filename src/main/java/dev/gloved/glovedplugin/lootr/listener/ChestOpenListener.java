@@ -139,8 +139,10 @@ public class ChestOpenListener implements Listener {
             int max = manager.getConfig().eliteMaxItems;
             if (min < 1) min = 1;
             if (max < min) max = min;
-            int count = min + new Random().nextInt(max - min + 1);
             java.util.Random rand = new java.util.Random();
+            int baseCount = min + rand.nextInt(max - min + 1);
+            int count = Math.min(size, baseCount * 2); // elite chests get 2x items
+            
             int generated = 0;
             int attempts = 0;
             while (generated < count && attempts < count * 10) {
