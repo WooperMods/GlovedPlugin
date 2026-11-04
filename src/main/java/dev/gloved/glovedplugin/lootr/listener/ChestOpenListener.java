@@ -25,7 +25,7 @@ import java.util.Random;
 import java.util.UUID;
 
 public class ChestOpenListener implements Listener {
-    private static final double COUNT_TAPER = 0.80; // each further elite item is this fraction as likely as the previous count
+    private static final double COUNT_TAPER = 0.50; // each further elite item is this fraction as likely as the previous count
     private final GlovedPlugin plugin;
     private final LootrManager manager;
     private final PlayerLootService lootService;
