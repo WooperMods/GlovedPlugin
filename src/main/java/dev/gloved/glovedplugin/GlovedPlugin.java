@@ -102,7 +102,10 @@ public final class GlovedPlugin extends JavaPlugin {
         new MenuInv(this);
 
         // Initialize Lootr module
-        dev.gloved.glovedplugin.lootr.config.LootrConfig lootrConfig = dev.gloved.glovedplugin.lootr.config.LootrConfig.load(getConfig());
+        saveResource("lootr.yml", false);
+        java.io.File lootrFile = new java.io.File(getDataFolder(), "lootr.yml");
+        org.bukkit.configuration.file.FileConfiguration lootrCfg = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootrFile);
+        dev.gloved.glovedplugin.lootr.config.LootrConfig lootrConfig = dev.gloved.glovedplugin.lootr.config.LootrConfig.load(lootrCfg);
         if (lootrConfig.enabled) {
             this.lootrManager = new dev.gloved.glovedplugin.lootr.manager.LootrManager(this, lootrConfig);
             this.lootrManager.load();

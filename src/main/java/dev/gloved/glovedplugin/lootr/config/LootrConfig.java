@@ -27,28 +27,28 @@ public class LootrConfig {
 
     public static LootrConfig load(FileConfiguration cfg) {
         LootrConfig c = new LootrConfig();
-        c.enabled = cfg.getBoolean("lootr.enabled", true);
-        c.autoConvert = cfg.getBoolean("lootr.auto-convert", true);
-        c.perPlayerLoot = cfg.getBoolean("lootr.per-player-loot", true);
-        c.maxTrackedChests = cfg.getInt("lootr.max-tracked-chests", 50000);
-        c.containers = cfg.getStringList("lootr.containers");
+        c.enabled = cfg.getBoolean("enabled", true);
+        c.autoConvert = cfg.getBoolean("auto-convert", true);
+        c.perPlayerLoot = cfg.getBoolean("per-player-loot", true);
+        c.maxTrackedChests = cfg.getInt("max-tracked-chests", 50000);
+        c.containers = cfg.getStringList("containers");
         if (c.containers.isEmpty()) c.containers = java.util.List.of("CHEST", "BARREL", "SHULKER_BOX", "MINECART_CHEST");
-        c.disabledWorlds = cfg.getStringList("lootr.disabled-worlds");
-        c.protectionBreak = cfg.getBoolean("lootr.protection.prevent-break", true);
-        c.protectionHopper = cfg.getBoolean("lootr.protection.prevent-hopper", true);
-        c.protectionExplosion = cfg.getBoolean("lootr.protection.prevent-explosion", true);
-        c.protectionPiston = cfg.getBoolean("lootr.protection.prevent-piston", true);
-        c.breakConfirmTime = cfg.getInt("lootr.protection.break-confirm-time", 3);
-        c.bypassProtection = cfg.getBoolean("lootr.protection.bypass-protection", true);
-        c.particlesEnabled = cfg.getBoolean("lootr.visuals.particles-enabled", true);
-        c.particleType = cfg.getString("lootr.visuals.particle-type", "VILLAGER_HAPPY");
-        c.particlesOnlyUnlooted = cfg.getBoolean("lootr.visuals.particles-only-unlooted", true);
-        c.inventoryTitle = cfg.getString("lootr.inventory.title", "&8[&6✦&8] &eLoot Chest");
-        c.playSound = cfg.getBoolean("lootr.inventory.play-sound", true);
-        c.elitemobsEnabled = cfg.getBoolean("lootr.elitemobs.enabled", true);
-        c.elitemobsMixVanilla = cfg.getBoolean("lootr.elitemobs.mix-vanilla", true);
-        c.elitemobsScale = cfg.getString("lootr.elitemobs.scale", "COMBAT_LEVEL");
-        c.autoSaveInterval = cfg.getInt("lootr.storage.auto-save-interval", 5);
+        c.disabledWorlds = cfg.getStringList("disabled-worlds");
+        c.protectionBreak = cfg.getBoolean("protection.prevent-break", true);
+        c.protectionHopper = cfg.getBoolean("protection.prevent-hopper", true);
+        c.protectionExplosion = cfg.getBoolean("protection.prevent-explosion", true);
+        c.protectionPiston = cfg.getBoolean("protection.prevent-piston", true);
+        c.breakConfirmTime = cfg.getInt("protection.break-confirm-time", 3);
+        c.bypassProtection = cfg.getBoolean("protection.bypass-protection", true);
+        c.particlesEnabled = cfg.getBoolean("visuals.particles-enabled", true);
+        c.particleType = cfg.getString("visuals.particle-type", "VILLAGER_HAPPY");
+        c.particlesOnlyUnlooted = cfg.getBoolean("visuals.particles-only-unlooted", true);
+        c.inventoryTitle = cfg.getString("inventory.title", "&8[&6✦&8] &eLoot Chest");
+        c.playSound = cfg.getBoolean("inventory.play-sound", true);
+        c.elitemobsEnabled = cfg.getBoolean("elitemobs.enabled", true);
+        c.elitemobsMixVanilla = cfg.getBoolean("elitemobs.mix-vanilla", true);
+        c.elitemobsScale = cfg.getString("elitemobs.scale", "COMBAT_LEVEL");
+        c.autoSaveInterval = cfg.getInt("storage.auto-save-interval", 5);
         return c;
     }
 }
