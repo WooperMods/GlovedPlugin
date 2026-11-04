@@ -15,7 +15,12 @@ public class InventorySerializer {
              BukkitObjectOutputStream out = new BukkitObjectOutputStream(bos)) {
             out.writeInt(inv.getSize());
             for (int i = 0; i < inv.getSize(); i++) {
-                out.writeObject(inv.getItem(i));
+                try {
+                    out.writeObject(inv.getItem(i));
+                } catch (IOException e) {
+                    // Skip problematic item
+                    out.writeObject(null);
+                }
             }
             return bos.toByteArray();
         } catch (IOException e) {
@@ -30,7 +35,11 @@ public class InventorySerializer {
             int size = in.readInt();
             ItemStack[] items = new ItemStack[size];
             for (int i = 0; i < size; i++) {
-                items[i] = (ItemStack) in.readObject();
+                try {
+                    items[i] = (ItemStack) in.readObject();
+                } catch (Exception e) {
+                    items[i] = null;
+                }
             }
             return items;
         } catch (Exception e) {
