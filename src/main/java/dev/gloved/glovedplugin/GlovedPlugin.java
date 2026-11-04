@@ -112,7 +112,7 @@ public final class GlovedPlugin extends JavaPlugin {
                 org.bukkit.configuration.file.FileConfiguration lootrBackfill = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootrFile);
                 boolean changed = false;
                 if (!lootrBackfill.isSet("elite.regular-chance")) {
-                    lootrBackfill.set("elite.regular-chance", 0.5);
+                    lootrBackfill.set("elite.regular-chance", 0.65);
                     changed = true;
                 }
                 if (!lootrBackfill.isSet("elite.regular-max-items")) {

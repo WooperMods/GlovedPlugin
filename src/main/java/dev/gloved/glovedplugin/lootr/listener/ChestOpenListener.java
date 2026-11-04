@@ -166,7 +166,7 @@ public class ChestOpenListener implements Listener {
                 }
             }
             // Elite items can also hide in regular chests: one roll decides whether
-            // the chest holds any elite items (elite.regular-chance, default 50%),
+            // the chest holds any elite items (elite.regular-chance, default 65%),
             // then the item count is drawn with a taper so 1 item is most likely
             // and each further count is COUNT_TAPER × as likely as the last.
             double regularChance = manager.getConfig().eliteRegularChance;
