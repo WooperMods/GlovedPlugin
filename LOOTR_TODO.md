@@ -22,12 +22,12 @@
 
 ## In Progress
 - [ ] EliteMobs procedural gear mix – real API integration for scaling to combat level
-- [ ] Protection listeners: break double-confirm, piston, explosion, hopper with registry check
-- [ ] Auto-save task and async DB writes
-- [ ] Admin commands: /gloved lootr reload/info/stats/clear/reset/list/convert
+- [ ] Protection listeners: break double-confirm logic
+- [ ] Auto-save task async DB writes
+- [ ] Admin commands full implementation
 - [ ] Config reload handling
-- [ ] World disable list and bypass permission handling
-- [ ] Disabled worlds and container type filtering
+- [ ] World disable list & bypass permission handling
+- [ ] Disabled worlds & container type filtering
 - [ ] Sound effects on open/close
 
 ## Remaining
