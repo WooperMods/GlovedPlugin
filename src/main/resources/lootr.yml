@@ -28,6 +28,6 @@ elite:
   # Chance a regular chest hides elite items
   regular-chance: 0.25
   # Hard cap for elite items in a regular chest
-  regular-max-items: 5
+  regular-max-items: 6
 storage:
   auto-save-interval: 5

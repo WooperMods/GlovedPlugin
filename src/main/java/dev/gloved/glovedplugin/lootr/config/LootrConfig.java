@@ -57,7 +57,7 @@ public class LootrConfig {
         c.eliteMaxItems = cfg.getInt("elite.max-items", 3);
         c.eliteTitleSuffix = cfg.getString("elite.title-suffix", "&6[Elite]");
         c.eliteRegularChance = cfg.getDouble("elite.regular-chance", 0.25);
-        c.eliteRegularMaxItems = cfg.getInt("elite.regular-max-items", 5);
+        c.eliteRegularMaxItems = cfg.getInt("elite.regular-max-items", 6);
         c.autoSaveInterval = cfg.getInt("storage.auto-save-interval", 5);
         return c;
     }

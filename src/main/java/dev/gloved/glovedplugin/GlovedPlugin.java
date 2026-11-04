@@ -116,7 +116,7 @@ public final class GlovedPlugin extends JavaPlugin {
                     changed = true;
                 }
                 if (!lootrBackfill.isSet("elite.regular-max-items")) {
-                    lootrBackfill.set("elite.regular-max-items", 5);
+                    lootrBackfill.set("elite.regular-max-items", 6);
                     changed = true;
                 }
                 if (changed) lootrBackfill.save(lootrFile);
