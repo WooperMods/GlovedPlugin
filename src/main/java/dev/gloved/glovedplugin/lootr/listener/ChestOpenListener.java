@@ -25,6 +25,7 @@ import java.util.Random;
 import java.util.UUID;
 
 public class ChestOpenListener implements Listener {
+    private static final double EXTRA_ITEM_CHANCE = 0.70; // chance per extra elite item in regular chests
     private final GlovedPlugin plugin;
     private final LootrManager manager;
     private final PlayerLootService lootService;
@@ -168,13 +169,11 @@ public class ChestOpenListener implements Listener {
             double regularChance = manager.getConfig().eliteRegularChance;
             if (eliteAvailable && regularChance > 0 && new Random().nextDouble() < regularChance) {
                 int maxItems = Math.max(1, manager.getConfig().eliteRegularMaxItems);
-                // Elite item count: each additional item is less likely, up to maxItems.
+                // Elite item count: each extra item is a straight roll, capped at maxItems.
                 int eliteCount = 1;
-                double extraChance = 0.5;
                 Random rollRandom = new Random();
-                while (eliteCount < maxItems && rollRandom.nextDouble() < extraChance) {
+                while (eliteCount < maxItems && rollRandom.nextDouble() < EXTRA_ITEM_CHANCE) {
                     eliteCount++;
-                    extraChance *= 0.6;
                 }
                 int combatLevel = EliteMobsIntegration.getCombatLevel(player);
                 GlovedPlugin.logDebug("Lootr regular chest elite roll success: " + eliteCount + " items, combatLevel=" + combatLevel);
