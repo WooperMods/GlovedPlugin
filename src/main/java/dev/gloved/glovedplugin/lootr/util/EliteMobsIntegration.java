@@ -34,8 +34,20 @@ public class EliteMobsIntegration {
     }
 
     public static int getCombatLevel(Player player) {
-        if (!eliteMobsAvailable) return 1;
-        // Try PlaceholderAPI fallback
+        if (!isAvailable()) return 1;
+        try {
+            org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
+            if (p == null) return 1;
+            ClassLoader cl = p.getClass().getClassLoader();
+            Class<?> calcClass = Class.forName("com.magmaguy.elitemobs.skills.CombatLevelCalculator", true, cl);
+            Method calcMethod = calcClass.getMethod("calculateCombatLevel", java.util.UUID.class);
+            Object result = calcMethod.invoke(null, player.getUniqueId());
+            if (result instanceof Integer) {
+                int level = (Integer) result;
+                return level > 0 ? level : 1;
+            }
+        } catch (Exception ignored) {}
+        // Fallback to PlaceholderAPI
         try {
             Class<?> placeholderAPI = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
             Method setPlaceholders = placeholderAPI.getMethod("setPlaceholders", Player.class, String.class);
@@ -46,27 +58,18 @@ public class EliteMobsIntegration {
                 } catch (NumberFormatException ignored) {}
             }
         } catch (Exception ignored) {}
-        // Reflection fallback attempt
-        try {
-            // Attempt to get PlayerData via EliteMobs main instance
-            Class<?> eliteMobsMain = Class.forName("com.magmaguy.elitemobs.EliteMobs");
-            Method getPlugin = eliteMobsMain.getMethod("getInstance");
-            Object instance = getPlugin.invoke(null);
-            // Simplified; real path requires PlayerDataManager
-            // Fallback to 1
-        } catch (Exception ignored) {}
         return 1;
     }
 
-    public static ItemStack generateRandomLoot(Player player, int level, Location location) {
+    public static ItemStack generateRandomLoot(Player player, int level) {
         if (!isAvailable()) return null;
         try {
             org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
             if (p == null) return null;
             ClassLoader cl = p.getClass().getClassLoader();
             Class<?> lootTables = Class.forName("com.magmaguy.elitemobs.items.LootTables", true, cl);
-            Method generateLoot = lootTables.getMethod("generateLoot", int.class, Location.class, Player.class);
-            Object result = generateLoot.invoke(null, level, location, player);
+            Method generateItemStack = lootTables.getMethod("generateItemStack", int.class, Player.class, Class.forName("com.magmaguy.elitemobs.mobconstructor.EliteEntity", true, cl));
+            Object result = generateItemStack.invoke(null, level, player, null);
             return (ItemStack) result;
         } catch (Exception e) {
             // Log could be added
