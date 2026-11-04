@@ -35,6 +35,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private CombatListener combatListener;
     private GlovedBridge glovedBridge;
     private final java.util.Set<java.util.UUID> pvpDisabled = new java.util.HashSet<>();
+    private dev.gloved.glovedplugin.lootr.manager.LootrManager lootrManager;
 
     {
         logger = getLogger();
@@ -99,6 +100,16 @@ public final class GlovedPlugin extends JavaPlugin {
         new MenuHandler(this);
         // Initialize MenuInv
         new MenuInv(this);
+
+        // Initialize Lootr module
+        dev.gloved.glovedplugin.lootr.config.LootrConfig lootrConfig = dev.gloved.glovedplugin.lootr.config.LootrConfig.load(getConfig());
+        if (lootrConfig.enabled) {
+            this.lootrManager = new dev.gloved.glovedplugin.lootr.manager.LootrManager(this, lootrConfig);
+            this.lootrManager.load();
+            getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.ChestOpenListener(), this);
+            getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.ProtectionListener(), this);
+            logInfo("Lootr module enabled");
+        }
 
         // Server-side Better Combat-lite (arc + combo + sweep + dual-wield).
         // Soft-depends only: safe with or without FMM / PacketEvents / RPM.
@@ -280,6 +291,9 @@ public final class GlovedPlugin extends JavaPlugin {
             }
         } catch (Exception e) {
             getLogger().warning("GlovedPlugin onDisable failed: " + e);
+        }
+        if (lootrManager != null) {
+            lootrManager.shutdown();
         }
         logInfo("GlovedPlugin has been disabled!");
     }
