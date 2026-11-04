@@ -86,6 +86,7 @@ public class LootrManager {
                             org.bukkit.World world = plugin.getServer().getWorld(wuid);
                             if (world == null) continue;
                             org.bukkit.Location loc = new org.bukkit.Location(world, cp.x + 0.5, cp.y + 1.0, cp.z + 0.5);
+                            if (player.getLocation().distanceSquared(loc) > 256 * 256) continue; // 256 blocks squared
                             // Per-player spawn
                             player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
                         } catch (Exception ignored) {}
