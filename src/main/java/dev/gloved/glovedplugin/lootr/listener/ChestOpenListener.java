@@ -83,16 +83,6 @@ public class ChestOpenListener implements Listener {
 
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
         String title = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
-        if (manager.getConfig().particlesEnabled) {
-            org.bukkit.Particle particle = parseParticle(manager.getConfig().particleType);
-            if (particle != null) {
-                boolean unlooted = !lootService.hasOpened(id, player.getUniqueId());
-                if (!manager.getConfig().particlesOnlyUnlooted || unlooted) {
-                    // Spawn a simple block outline above the chest for visibility
-                    spawnOutline(block.getWorld(), block.getLocation(), particle);
-                }
-            }
-        }
 
         byte[] blob = lootService.getInventoryBlob(id, player.getUniqueId());
         Inventory inv;
@@ -166,39 +156,4 @@ public class ChestOpenListener implements Listener {
         }
     }
 
-    private void spawnOutline(org.bukkit.World world, org.bukkit.Location loc, org.bukkit.Particle particle) {
-        // Create a simple box outline around the chest at y+0.5..1.5
-        double baseY = loc.getY() + 1.0;
-        double x = loc.getX();
-        double y = baseY;
-        double z = loc.getZ();
-        double offset = 0.45;
-        double[][] corners = {
-            {0.5 - offset, 0.5, 0.5 - offset},
-            {0.5 + offset, 0.5, 0.5 - offset},
-            {0.5 - offset, 0.5, 0.5 + offset},
-            {0.5 + offset, 0.5, 0.5 + offset}
-        };
-        for (double[] c : corners) {
-            world.spawnParticle(particle, x + c[0], y + c[1], z + c[2], 1, 0, 0, 0, 0);
-            world.spawnParticle(particle, x + c[0], y + 0.8, z + c[2], 1, 0, 0, 0, 0);
-        }
-        // Top face edges
-        for (int i = 0; i < 4; i++) {
-            double[] a = corners[i];
-            double[] b = corners[(i + 1) % 4];
-            double mx = (a[0] + b[0]) / 2;
-            double mz = (a[2] + b[2]) / 2;
-            world.spawnParticle(particle, x + mx, y + 0.8, z + mz, 1, 0, 0, 0, 0);
-        }
-    }
-
-    private org.bukkit.Particle parseParticle(String name) {
-        if (name == null) return null;
-        try {
-            return org.bukkit.Particle.valueOf(name.toUpperCase());
-        } catch (Exception ex) {
-            return org.bukkit.Particle.HAPPY_VILLAGER;
-        }
-    }
 }
