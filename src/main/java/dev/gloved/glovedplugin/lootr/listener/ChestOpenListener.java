@@ -25,8 +25,7 @@ import java.util.Random;
 import java.util.UUID;
 
 public class ChestOpenListener implements Listener {
-    private static final double EXTRA_ITEM_CHANCE = 0.80; // base chance for a 2nd elite item
-    private static final double EXTRA_ITEM_DECAY = 0.75;  // each further extra item is this × the previous roll
+    private static final double COUNT_TAPER = 0.80; // each further elite item is this fraction as likely as the previous count
     private final GlovedPlugin plugin;
     private final LootrManager manager;
     private final PlayerLootService lootService;
@@ -166,19 +165,28 @@ public class ChestOpenListener implements Listener {
                     GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
                 }
             }
-            // Elite items can also hide in regular chests
+            // Elite items can also hide in regular chests: one roll decides whether
+            // the chest holds any elite items (elite.regular-chance, default 50%),
+            // then the item count is drawn with a taper so 1 item is most likely
+            // and each further count is COUNT_TAPER × as likely as the last.
             double regularChance = manager.getConfig().eliteRegularChance;
             if (eliteAvailable && regularChance > 0 && new Random().nextDouble() < regularChance) {
                 int maxItems = Math.max(1, manager.getConfig().eliteRegularMaxItems);
-                // Elite item count: each extra item starts at EXTRA_ITEM_CHANCE and
-                // the odds taper by EXTRA_ITEM_DECAY per step, so 5 items is far
-                // rarer than 2 while 2-3 stay common. Capped at maxItems.
-                int eliteCount = 1;
-                double extraChance = EXTRA_ITEM_CHANCE;
                 Random rollRandom = new Random();
-                while (eliteCount < maxItems && rollRandom.nextDouble() < extraChance) {
+                double weight = 1.0;
+                double[] weights = new double[maxItems];
+                double total = 0.0;
+                for (int i = 0; i < maxItems; i++) {
+                    weights[i] = weight;
+                    total += weight;
+                    weight *= COUNT_TAPER;
+                }
+                int eliteCount = 1;
+                double roll = rollRandom.nextDouble() * total;
+                double acc = weights[0];
+                while (eliteCount < maxItems && roll >= acc) {
                     eliteCount++;
-                    extraChance *= EXTRA_ITEM_DECAY;
+                    acc += weights[eliteCount - 1];
                 }
                 int combatLevel = EliteMobsIntegration.getCombatLevel(player);
                 GlovedPlugin.logDebug("Lootr regular chest elite roll success: " + eliteCount + " items, combatLevel=" + combatLevel);
