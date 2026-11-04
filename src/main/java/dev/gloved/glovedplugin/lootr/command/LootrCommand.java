@@ -110,8 +110,21 @@ public class LootrCommand implements BasicCommand {
                     return;
                 }
                 dev.gloved.glovedplugin.lootr.model.ContainerId cid = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
-                manager.getRegistry().register(cid, "");
-                sender.sendMessage("§aContainer converted to Lootr");
+                String lootTableKey = "";
+                if (block.getState() instanceof org.bukkit.loot.Lootable lootable) {
+                    org.bukkit.loot.LootTable table = lootable.getLootTable();
+                    if (table != null) {
+                        lootTableKey = table.getKey().toString();
+                        // Clear vanilla loot to avoid duplicate generation
+                        lootable.setLootTable(null);
+                        lootable.setSeed(0);
+                        block.getState().update(true, false);
+                        // Clear inventory
+                        ((org.bukkit.block.Container) block.getState()).getInventory().clear();
+                    }
+                }
+                manager.getRegistry().register(cid, lootTableKey);
+                sender.sendMessage("§aContainer converted to Lootr" + (lootTableKey.isEmpty() ? "" : " with loot table"));
                 return;
             case "list":
                 sender.sendMessage("§eRegistered containers:");
