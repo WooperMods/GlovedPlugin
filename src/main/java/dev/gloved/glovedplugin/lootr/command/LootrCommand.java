@@ -25,7 +25,7 @@ public class LootrCommand implements BasicCommand {
         }
         if (args.length == 0) {
             sender.sendMessage("§eLootr module active");
-            sender.sendMessage("§7Use /lootr reload|info|stats|clear|reset|list|convert");
+            sender.sendMessage("§7Use /lootr reload|info|stats|clear|reset|list|convert|generate");
             return;
         }
         String sub = args[0].toLowerCase();
@@ -126,6 +126,35 @@ public class LootrCommand implements BasicCommand {
                 manager.getRegistry().register(cid, lootTableKey);
                 sender.sendMessage("§aContainer converted to Lootr" + (lootTableKey.isEmpty() ? "" : " with loot table"));
                 return;
+            case "generate":
+                if (!(sender instanceof org.bukkit.entity.Player player)) {
+                    sender.sendMessage("§cOnly players can generate");
+                    return;
+                }
+                org.bukkit.Location loc = player.getLocation().clone().subtract(0, 1, 0);
+                org.bukkit.block.Block b = loc.getBlock();
+                if (!b.getType().isAir() && b.getType() != org.bukkit.Material.CHEST) {
+                    sender.sendMessage("§cBlock in the way");
+                    return;
+                }
+                b.setType(org.bukkit.Material.CHEST);
+                dev.gloved.glovedplugin.lootr.model.ContainerId genId = new dev.gloved.glovedplugin.lootr.model.ContainerId(player.getWorld().getUID(), b.getX(), b.getY(), b.getZ());
+                java.util.List<String> tables = java.util.List.of(
+                    "minecraft:chests/simple_dungeon",
+                    "minecraft:chests/abandoned_mineshaft",
+                    "minecraft:chests/shipwreck_treasure",
+                    "minecraft:chests/buried_treasure",
+                    "minecraft:chests/desert_pyramid",
+                    "minecraft:chests/jungle_temple",
+                    "minecraft:chests/stronghold_corridor",
+                    "minecraft:chests/woodland_mansion",
+                    "minecraft:chests/end_city_treasure",
+                    "minecraft:chests/nether_bridge"
+                );
+                String chosen = tables.get(new java.util.Random().nextInt(tables.size()));
+                manager.getRegistry().register(genId, chosen);
+                sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                return;
             case "list":
                 sender.sendMessage("§eRegistered containers:");
                 listContainers(sender, manager);
@@ -139,7 +168,7 @@ public class LootrCommand implements BasicCommand {
     @Override
     public Collection<String> suggest(CommandSourceStack stack, String[] args) {
         if (args.length == 1) {
-            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert");
+            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert", "generate");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("clear")) {
             return plugin.getServer().getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList();
