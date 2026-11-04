@@ -27,6 +27,7 @@ public class ContainerRegistry {
                 return found;
             }
         } catch (SQLException e) {
+            System.out.println("[Lootr] SQLException on isRegistered " + id.toStringKey() + ": " + e.getMessage());
             return false;
         }
     }
@@ -42,9 +43,15 @@ public class ContainerRegistry {
             ps.setInt(5, id.z());
             ps.setString(6, lootTable);
             ps.setLong(7, System.currentTimeMillis());
-            ps.executeUpdate();
+            int rows = ps.executeUpdate();
             cache.add(id);
-        } catch (SQLException ignored) {}
+            if (rows == 0) {
+                // Log for debugging
+                System.out.println("[Lootr] INSERT OR IGNORE affected 0 rows for " + id.toStringKey());
+            }
+        } catch (SQLException e) {
+            System.out.println("[Lootr] SQLException on register " + id.toStringKey() + ": " + e.getMessage());
+        }
     }
 
     public String getLootTable(ContainerId id) {
@@ -53,7 +60,9 @@ public class ContainerRegistry {
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return rs.getString("loot_table");
             }
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            System.out.println("[Lootr] SQLException on getLootTable " + id.toStringKey() + ": " + e.getMessage());
+        }
         return null;
     }
 }

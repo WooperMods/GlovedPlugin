@@ -103,7 +103,10 @@ public class ChestOpenListener implements Listener {
 
         inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
         String lootTableKeyStr = manager.getRegistry().getLootTable(id);
-        if (lootTableKeyStr != null) {
+        GlovedPlugin.logDebug("Lootr open: container=" + id.toStringKey() + " lootTableKey=" + lootTableKeyStr + " blobExists=" + (lootService.getInventoryBlob(id, player.getUniqueId()) != null));
+        int itemsBefore = 0;
+        for (int i = 0; i < inv.getSize(); i++) if (inv.getItem(i) != null) itemsBefore++;
+        if (lootTableKeyStr != null && !lootTableKeyStr.isEmpty()) {
             try {
                 org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
                 if (key != null) {
@@ -111,10 +114,22 @@ public class ChestOpenListener implements Listener {
                     if (table != null) {
                         LootContext ctx = new LootContext.Builder(block.getLocation()).build();
                         table.fillInventory(inv, new Random(), ctx);
+                        GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success");
+                    } else {
+                        GlovedPlugin.logDebug("Lootr fillInventory: table is null for key " + key);
                     }
+                } else {
+                    GlovedPlugin.logDebug("Lootr fillInventory: NamespacedKey null for string " + lootTableKeyStr);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
+            }
+        } else {
+            GlovedPlugin.logDebug("Lootr fillInventory: no loot table key");
         }
+        int itemsAfter = 0;
+        for (int i = 0; i < inv.getSize(); i++) if (inv.getItem(i) != null) itemsAfter++;
+        GlovedPlugin.logDebug("Lootr items before=" + itemsBefore + " after=" + itemsAfter);
         if (manager.getConfig().elitemobsEnabled && EliteMobsIntegration.isAvailable()) {
             int combatLevel = EliteMobsIntegration.getCombatLevel(player);
             // Mix EliteMobs items: add a random weapon/armor with elite level
