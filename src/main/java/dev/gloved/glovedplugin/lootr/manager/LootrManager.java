@@ -85,7 +85,7 @@ public class LootrManager {
                             java.util.UUID wuid = java.util.UUID.fromString(cp.world);
                             org.bukkit.World world = plugin.getServer().getWorld(wuid);
                             if (world == null) continue;
-                            org.bukkit.Location loc = new org.bukkit.Location(world, cp.x + 0.5, cp.y + 0.9, cp.z + 0.5);
+                            org.bukkit.Location loc = new org.bukkit.Location(world, cp.x + 0.5, cp.y + 1.0, cp.z + 0.5);
                             // Per-player spawn
                             player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
                         } catch (Exception ignored) {}
