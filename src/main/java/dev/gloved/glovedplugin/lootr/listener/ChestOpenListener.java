@@ -21,7 +21,11 @@ import org.bukkit.loot.Lootable;
 import org.bukkit.loot.LootContext;
 import org.bukkit.loot.LootTable;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 public class ChestOpenListener implements Listener {
@@ -196,25 +200,44 @@ public class ChestOpenListener implements Listener {
 
     private void addEliteItems(Inventory inv, Player player, int combatLevel, int count, java.util.Random rand) {
         int size = inv.getSize();
+        // Slots still open. When empty slots run out, elite items overwrite
+        // vanilla loot (random slot) instead of failing to place.
+        List<Integer> emptySlots = new ArrayList<>();
+        for (int slot = 0; slot < size; slot++) {
+            if (inv.getItem(slot) == null) emptySlots.add(slot);
+        }
+        Set<Integer> eliteSlots = new HashSet<>();
         int generated = 0;
+        int overwrote = 0;
         int attempts = 0;
         while (generated < count && attempts < count * 10) {
             ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel);
             attempts++;
-            if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                int tries = 0;
-                while (tries < size * 2) {
-                    int slot = rand.nextInt(size);
-                    if (inv.getItem(slot) == null) {
-                        inv.setItem(slot, item.clone());
-                        generated++;
-                        break;
-                    }
-                    tries++;
+            if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
+            int slot = -1;
+            if (!emptySlots.isEmpty()) {
+                int idx = rand.nextInt(emptySlots.size());
+                slot = emptySlots.remove(idx);
+            } else {
+                List<Integer> overwritable = new ArrayList<>();
+                for (int s = 0; s < size; s++) {
+                    if (inv.getItem(s) != null && !eliteSlots.contains(s)) overwritable.add(s);
                 }
+                if (overwritable.isEmpty()) {
+                    // Only slots holding other elite items remain; overwrite one of them.
+                    for (int s = 0; s < size; s++) {
+                        if (inv.getItem(s) != null) overwritable.add(s);
+                    }
+                }
+                if (overwritable.isEmpty()) break;
+                slot = overwritable.get(rand.nextInt(overwritable.size()));
+                overwrote++;
             }
+            inv.setItem(slot, item.clone());
+            eliteSlots.add(slot);
+            generated++;
         }
-        GlovedPlugin.logDebug("Lootr elite items placed: requested=" + count + " placed=" + generated + " inventorySize=" + size + " player=" + player.getName());
+        GlovedPlugin.logDebug("Lootr elite items placed: requested=" + count + " placed=" + generated + " overwroteVanilla=" + overwrote + " inventorySize=" + size + " player=" + player.getName());
     }
 
     @EventHandler
