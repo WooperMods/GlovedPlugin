@@ -22,14 +22,13 @@ import org.bukkit.loot.LootTable;
 
 import java.util.Random;
 import java.util.UUID;
-import java.util.WeakHashMap;
 
 public class ChestOpenListener implements Listener {
     private final GlovedPlugin plugin;
     private final LootrManager manager;
     private final PlayerLootService lootService;
-    private final WeakHashMap<Inventory, ContainerId> inventoryMap = new WeakHashMap<>();
-    private final WeakHashMap<Inventory, UUID> playerMap = new WeakHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Inventory, ContainerId> inventoryMap = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Inventory, UUID> playerMap = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ChestOpenListener(GlovedPlugin plugin, LootrManager manager) {
         this.plugin = plugin;
@@ -83,26 +82,23 @@ public class ChestOpenListener implements Listener {
     }
 
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
+        String title = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
         if (manager.getConfig().particlesEnabled) {
             org.bukkit.Particle particle = parseParticle(manager.getConfig().particleType);
             if (particle != null) {
-                // particles only unlooted?
                 boolean unlooted = !lootService.hasOpened(id, player.getUniqueId());
                 if (!manager.getConfig().particlesOnlyUnlooted || unlooted) {
-                    block.getWorld().spawnParticle(
-                        particle,
-                        block.getLocation().add(0.5,0.5,0.5),
-                        5, 0.2, 0.2, 0.2, 0
-                    );
+                    // Spawn particles above the block so they are visible
+                    org.bukkit.Location loc = block.getLocation().add(0.5, 1.0, 0.5);
+                    block.getWorld().spawnParticle(particle, loc, 12, 0.3, 0.2, 0.3, 0.02);
                 }
             }
         }
-        // sound handled later
 
         byte[] blob = lootService.getInventoryBlob(id, player.getUniqueId());
         Inventory inv;
         if (blob != null && blob.length > 0) {
-            inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), manager.getConfig().inventoryTitle);
+            inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
             ItemStack[] items = InventorySerializer.deserialize(blob);
             for (int i = 0; i < Math.min(items.length, inv.getSize()); i++) {
                 if (items[i] != null) inv.setItem(i, items[i]);
@@ -116,7 +112,7 @@ public class ChestOpenListener implements Listener {
             return;
         }
 
-        inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), manager.getConfig().inventoryTitle);
+        inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
         String lootTableKeyStr = manager.getRegistry().getLootTable(id);
         if (lootTableKeyStr != null) {
             try {
