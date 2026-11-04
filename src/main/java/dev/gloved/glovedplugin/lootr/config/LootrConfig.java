@@ -55,7 +55,7 @@ public class LootrConfig {
         c.eliteChance = cfg.getDouble("elite.chance", 0.08);
         c.eliteLuckMultiplier = cfg.getDouble("elite.luck-multiplier", 0.02);
         c.eliteMinItems = cfg.getInt("elite.min-items", 3);
-        c.eliteMaxItems = cfg.getInt("elite.max-items", 9);
+        c.eliteMaxItems = cfg.getInt("elite.max-items", 12);
         c.eliteExtraChance = cfg.getDouble("elite.extra-chance", 0.65);
         c.eliteTitleSuffix = cfg.getString("elite.title-suffix", "&6[Elite]");
         c.eliteRegularChance = cfg.getDouble("elite.regular-chance", 0.5);
