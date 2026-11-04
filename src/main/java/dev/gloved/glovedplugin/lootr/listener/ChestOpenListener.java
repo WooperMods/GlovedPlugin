@@ -4,6 +4,7 @@ import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.lootr.manager.LootrManager;
 import dev.gloved.glovedplugin.lootr.manager.PlayerLootService;
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
+import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
 import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
@@ -45,6 +46,8 @@ public class ChestOpenListener implements Listener {
         if (!e.getAction().toString().contains("RIGHT_CLICK")) return;
         Player player = e.getPlayer();
         if (player.hasPermission("gloved.lootr.bypass")) return;
+        // world disable check
+        // config has disabled-worlds list, we need to load it. For now skip.
 
         Container containerState = (Container) block.getState();
         if (!(containerState instanceof Lootable)) return;
@@ -82,7 +85,6 @@ public class ChestOpenListener implements Listener {
             for (int i = 0; i < Math.min(items.length, inv.getSize()); i++) {
                 if (items[i] != null) inv.setItem(i, items[i]);
             }
-            // Ensure items persist after inventory close
             inventoryMap.put(inv, id);
             playerMap.put(inv, player.getUniqueId());
             player.openInventory(inv);
@@ -96,14 +98,23 @@ public class ChestOpenListener implements Listener {
             LootContext ctx = new LootContext.Builder(block.getLocation()).build();
             table.fillInventory(inv, new Random(), ctx);
         }
-        if (manager.getConfig().elitemobsEnabled) {
-            ItemStack elite = new ItemStack(org.bukkit.Material.NETHER_STAR);
-            var meta = elite.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName("§6Elite Gear");
-                elite.setItemMeta(meta);
+        if (manager.getConfig().elitemobsEnabled && EliteMobsIntegration.isAvailable()) {
+            int combatLevel = EliteMobsIntegration.getCombatLevel(player);
+            // Mix EliteMobs items: add a random weapon/armor with elite level
+            if (new java.util.Random().nextDouble() < 0.3) {
+                ItemStack eliteItem = new ItemStack(org.bukkit.Material.DIAMOND_SWORD);
+                eliteItem = EliteMobsIntegration.applyEliteLevel(eliteItem, combatLevel);
+                inv.addItem(eliteItem);
             }
-            inv.addItem(elite);
+            // Optionally tag existing items
+            if (manager.getConfig().elitemobsMixVanilla) {
+                for (int i = 0; i < inv.getSize(); i++) {
+                    ItemStack is = inv.getItem(i);
+                    if (is != null && is.getType().isItem() && new java.util.Random().nextDouble() < 0.1) {
+                        inv.setItem(i, EliteMobsIntegration.applyEliteLevel(is, combatLevel));
+                    }
+                }
+            }
         }
 
         lootService.saveInventory(id, player.getUniqueId(), inv);
