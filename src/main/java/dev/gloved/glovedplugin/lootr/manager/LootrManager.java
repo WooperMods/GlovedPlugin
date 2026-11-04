@@ -55,19 +55,8 @@ public class LootrManager {
             public void run() {
                 org.bukkit.Particle particle = parseParticle(config.particleType);
                 if (particle == null) return;
-                java.util.List<ContainerPos> containers = new java.util.ArrayList<>();
-                // Load all containers once per tick
-                try {
-                    java.sql.Connection conn = database.getConnection();
-                    try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT id, world, x, y, z FROM containers")) {
-                        try (java.sql.ResultSet rs = ps.executeQuery()) {
-                            while (rs.next()) {
-                                containers.add(new ContainerPos(rs.getString("id"), rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z")));
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
-                if (containers.isEmpty()) return;
+                final int range = 64;
+                final int rangeSq = range * range;
                 for (org.bukkit.entity.Player player : plugin.getServer().getOnlinePlayers()) {
                     java.util.Set<String> opened = new java.util.HashSet<>();
                     try {
@@ -79,17 +68,31 @@ public class LootrManager {
                             }
                         }
                     } catch (Exception ignored) {}
-                    for (ContainerPos cp : containers) {
-                        if (opened.contains(cp.id)) continue;
-                        try {
-                            java.util.UUID wuid = java.util.UUID.fromString(cp.world);
-                            org.bukkit.World world = plugin.getServer().getWorld(wuid);
-                            if (world == null) continue;
-                            org.bukkit.Location loc = new org.bukkit.Location(world, cp.x + 0.5, cp.y + 1.0, cp.z + 0.5);
-                            if (player.getLocation().distanceSquared(loc) > 256 * 256) continue; // 256 blocks squared
-                            // Per-player spawn
-                            player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
-                        } catch (Exception ignored) {}
+                    org.bukkit.World world = player.getWorld();
+                    org.bukkit.Location ploc = player.getLocation();
+                    int chunkRadius = range / 16 + 1;
+                    int playerChunkX = ploc.getBlockX() >> 4;
+                    int playerChunkZ = ploc.getBlockZ() >> 4;
+                    for (int cx = playerChunkX - chunkRadius; cx <= playerChunkX + chunkRadius; cx++) {
+                        for (int cz = playerChunkZ - chunkRadius; cz <= playerChunkZ + chunkRadius; cz++) {
+                            org.bukkit.Chunk chunk = world.getChunkAt(cx, cz);
+                            if (!chunk.isLoaded()) continue;
+                            for (org.bukkit.block.BlockState state : chunk.getTileEntities()) {
+                                if (!(state instanceof org.bukkit.block.Container container)) continue;
+                                if (!(container instanceof org.bukkit.loot.Lootable lootable)) continue;
+                                org.bukkit.loot.LootTable table = lootable.getLootTable();
+                                if (table == null) continue;
+                                org.bukkit.block.Block block = container.getBlock();
+                                dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                                if (!registry.isRegistered(id)) {
+                                    registry.register(id, table.getKey().toString());
+                                }
+                                if (opened.contains(id.toStringKey())) continue;
+                                org.bukkit.Location loc = new org.bukkit.Location(world, block.getX() + 0.5, block.getY() + 1.0, block.getZ() + 0.5);
+                                if (ploc.distanceSquared(loc) > rangeSq) continue;
+                                player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
+                            }
+                        }
                     }
                 }
             }
