@@ -45,8 +45,10 @@ public final class WeaponRegistry {
     public void load(GlovedPlugin plugin) {
         byMaterial.clear();
         presets.clear();
-        plugin.saveResource("combat.yml", false);
         File file = new File(plugin.getDataFolder(), "combat.yml");
+        if (!file.exists()) {
+            plugin.saveResource("combat.yml", false);
+        }
         FileConfiguration cfg = YamlConfiguration.loadConfiguration(file);
 
         enabled = cfg.getBoolean("enabled", true);
