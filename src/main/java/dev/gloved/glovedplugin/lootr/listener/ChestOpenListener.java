@@ -140,14 +140,24 @@ public class ChestOpenListener implements Listener {
             if (min < 1) min = 1;
             if (max < min) max = min;
             int count = min + new Random().nextInt(max - min + 1);
+            java.util.Random rand = new java.util.Random();
             int generated = 0;
             int attempts = 0;
             while (generated < count && attempts < count * 10) {
                 ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel);
                 attempts++;
                 if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                    inv.addItem(item);
-                    generated++;
+                    // place in random empty slot
+                    int tries = 0;
+                    while (tries < size * 2) {
+                        int slot = rand.nextInt(size);
+                        if (inv.getItem(slot) == null) {
+                            inv.setItem(slot, item.clone());
+                            generated++;
+                            break;
+                        }
+                        tries++;
+                    }
                 }
             }
             GlovedPlugin.logDebug("Lootr elite chest generated " + generated + "/" + count + " items for " + player.getName());
