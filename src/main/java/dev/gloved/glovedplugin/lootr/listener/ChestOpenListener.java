@@ -88,9 +88,8 @@ public class ChestOpenListener implements Listener {
             if (particle != null) {
                 boolean unlooted = !lootService.hasOpened(id, player.getUniqueId());
                 if (!manager.getConfig().particlesOnlyUnlooted || unlooted) {
-                    // Spawn particles above the block so they are visible
-                    org.bukkit.Location loc = block.getLocation().add(0.5, 1.0, 0.5);
-                    block.getWorld().spawnParticle(particle, loc, 12, 0.3, 0.2, 0.3, 0.02);
+                    // Spawn a simple block outline above the chest for visibility
+                    spawnOutline(block.getWorld(), block.getLocation(), particle);
                 }
             }
         }
@@ -164,6 +163,33 @@ public class ChestOpenListener implements Listener {
             if (manager.getConfig().playSound && e.getPlayer() instanceof Player player) {
                 player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_CLOSE, 0.6f, 1.0f);
             }
+        }
+    }
+
+    private void spawnOutline(org.bukkit.World world, org.bukkit.Location loc, org.bukkit.Particle particle) {
+        // Create a simple box outline around the chest at y+0.5..1.5
+        double baseY = loc.getY() + 1.0;
+        double x = loc.getX();
+        double y = baseY;
+        double z = loc.getZ();
+        double offset = 0.45;
+        double[][] corners = {
+            {0.5 - offset, 0.5, 0.5 - offset},
+            {0.5 + offset, 0.5, 0.5 - offset},
+            {0.5 - offset, 0.5, 0.5 + offset},
+            {0.5 + offset, 0.5, 0.5 + offset}
+        };
+        for (double[] c : corners) {
+            world.spawnParticle(particle, x + c[0], y + c[1], z + c[2], 1, 0, 0, 0, 0);
+            world.spawnParticle(particle, x + c[0], y + 0.8, z + c[2], 1, 0, 0, 0, 0);
+        }
+        // Top face edges
+        for (int i = 0; i < 4; i++) {
+            double[] a = corners[i];
+            double[] b = corners[(i + 1) % 4];
+            double mx = (a[0] + b[0]) / 2;
+            double mz = (a[2] + b[2]) / 2;
+            world.spawnParticle(particle, x + mx, y + 0.8, z + mz, 1, 0, 0, 0, 0);
         }
     }
 
