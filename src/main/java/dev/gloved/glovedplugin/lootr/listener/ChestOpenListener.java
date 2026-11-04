@@ -88,8 +88,10 @@ public class ChestOpenListener implements Listener {
         UUID uuid = player.getUniqueId();
         byte[] blob = lootService.getInventoryBlob(id, uuid);
         int eliteFlag = lootService.getEliteFlag(id, uuid);
-        String title = baseTitle + (eliteFlag == 1 ? suffix : "");
+        boolean eliteAvailable = manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable();
+        String title = baseTitle + (eliteFlag == 1 && eliteAvailable ? suffix : "");
         Inventory inv;
+        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " eliteFlag=" + eliteFlag + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
         if (blob != null && blob.length > 0) {
             inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
             ItemStack[] items = InventorySerializer.deserialize(blob);
@@ -126,6 +128,7 @@ public class ChestOpenListener implements Listener {
                 }
             }
         }
+        GlovedPlugin.logDebug("Lootr isElite final=" + isElite + " eliteFlag=" + eliteFlag + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
 
         int size = containerState.getInventory().getSize();
         if (isElite) {
