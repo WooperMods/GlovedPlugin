@@ -131,6 +131,15 @@ public class LootrCommand implements BasicCommand {
                     sender.sendMessage("§cOnly players can generate");
                     return;
                 }
+                String mode = "normal";
+                if (args.length >= 2) {
+                    mode = args[1].toLowerCase();
+                    if (!mode.equals("normal") && !mode.equals("elite") && !mode.equals("blank")) {
+                        sender.sendMessage("§cUsage: /lootr generate [normal|elite]");
+                        return;
+                    }
+                    if (mode.equals("blank")) mode = "normal";
+                }
                 org.bukkit.Location loc = player.getLocation().clone().subtract(0, 1, 0);
                 org.bukkit.block.Block b = loc.getBlock();
                 if (!b.getType().isAir() && b.getType() != org.bukkit.Material.CHEST) {
@@ -153,7 +162,13 @@ public class LootrCommand implements BasicCommand {
                 );
                 String chosen = tables.get(new java.util.Random().nextInt(tables.size()));
                 manager.getRegistry().register(genId, chosen);
-                sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                if (mode.equals("elite")) {
+                    dev.gloved.glovedplugin.lootr.manager.PlayerLootService lootService = new dev.gloved.glovedplugin.lootr.manager.PlayerLootService(manager.getDatabase().getConnection());
+                    lootService.setEliteFlag(genId, player.getUniqueId(), 1);
+                    sender.sendMessage("§aGenerated Elite Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                } else {
+                    sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                }
                 return;
             case "list":
                 sender.sendMessage("§eRegistered containers:");
