@@ -3,7 +3,6 @@ package dev.gloved.glovedplugin.lootr.command;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
-import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.jetbrains.annotations.NotNull;
 
@@ -26,7 +25,7 @@ public class LootrCommand implements BasicCommand {
         }
         if (args.length == 0) {
             sender.sendMessage("§eLootr module active");
-            sender.sendMessage("§7Use /lootr reload|info|stats|clear|reset|list|convert|generate");
+            sender.sendMessage("§7Use /lootr reload|info|stats|clear|reset|list|convert");
             return;
         }
         String sub = args[0].toLowerCase();
@@ -131,31 +130,6 @@ public class LootrCommand implements BasicCommand {
                 sender.sendMessage("§eRegistered containers:");
                 listContainers(sender, manager);
                 return;
-            case "generate":
-                if (!(sender instanceof org.bukkit.entity.Player player)) {
-                    sender.sendMessage("§cOnly players can generate");
-                    return;
-                }
-                String genLootTable = args.length >= 2 ? args[1] : "minecraft:chests/simple_dungeon";
-                // Validate loot table
-                org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(genLootTable);
-                if (key == null || Bukkit.getLootTable(key) == null) {
-                    sender.sendMessage("§cInvalid loot table: " + genLootTable);
-                    return;
-                }
-                org.bukkit.Location loc = player.getLocation().add(0, 1, 0);
-                org.bukkit.block.Block genBlock = loc.getBlock();
-                if (genBlock.getType() != org.bukkit.Material.AIR) {
-                    sender.sendMessage("§cBlock in the way at " + genBlock.getX() + "," + genBlock.getY() + "," + genBlock.getZ());
-                    return;
-                }
-                genBlock.setType(org.bukkit.Material.CHEST);
-                // Ensure block state updates
-                org.bukkit.block.Container containerBlock = (org.bukkit.block.Container) genBlock.getState();
-                dev.gloved.glovedplugin.lootr.model.ContainerId genId = new dev.gloved.glovedplugin.lootr.model.ContainerId(genBlock.getWorld().getUID(), genBlock.getX(), genBlock.getY(), genBlock.getZ());
-                manager.getRegistry().register(genId, genLootTable);
-                sender.sendMessage("§aGenerated Lootr chest at " + genBlock.getX() + "," + genBlock.getY() + "," + genBlock.getZ() + " with loot " + genLootTable);
-                return;
             default:
                 sender.sendMessage("§cUnknown subcommand");
                 return;
@@ -165,7 +139,7 @@ public class LootrCommand implements BasicCommand {
     @Override
     public Collection<String> suggest(CommandSourceStack stack, String[] args) {
         if (args.length == 1) {
-            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert", "generate");
+            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("clear")) {
             return plugin.getServer().getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList();

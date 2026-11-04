@@ -35,9 +35,11 @@ public class LootrManager {
         autoSaveTask = new BukkitRunnable() {
             @Override
             public void run() {
-                try (java.sql.Connection conn = database.getConnection();
-                     java.sql.Statement stmt = conn.createStatement()) {
-                    stmt.execute("PRAGMA wal_checkpoint(FULL)");
+                try {
+                    java.sql.Connection conn = database.getConnection();
+                    try (java.sql.Statement stmt = conn.createStatement()) {
+                        stmt.execute("PRAGMA wal_checkpoint(FULL)");
+                    }
                 } catch (Exception e) {
                     plugin.getLogger().warning("Lootr auto-save failed: " + e.getMessage());
                 }
@@ -55,22 +57,26 @@ public class LootrManager {
                 if (particle == null) return;
                 java.util.List<ContainerPos> containers = new java.util.ArrayList<>();
                 // Load all containers once per tick
-                try (java.sql.Connection conn = database.getConnection();
-                     java.sql.PreparedStatement ps = conn.prepareStatement("SELECT id, world, x, y, z FROM containers")) {
-                    try (java.sql.ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            containers.add(new ContainerPos(rs.getString("id"), rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z")));
+                try {
+                    java.sql.Connection conn = database.getConnection();
+                    try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT id, world, x, y, z FROM containers")) {
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                containers.add(new ContainerPos(rs.getString("id"), rs.getString("world"), rs.getInt("x"), rs.getInt("y"), rs.getInt("z")));
+                            }
                         }
                     }
                 } catch (Exception ignored) {}
                 if (containers.isEmpty()) return;
                 for (org.bukkit.entity.Player player : plugin.getServer().getOnlinePlayers()) {
                     java.util.Set<String> opened = new java.util.HashSet<>();
-                    try (java.sql.Connection conn = database.getConnection();
-                         java.sql.PreparedStatement ps = conn.prepareStatement("SELECT container_id FROM player_loot WHERE player_uuid = ?")) {
-                        ps.setString(1, player.getUniqueId().toString());
-                        try (java.sql.ResultSet rs = ps.executeQuery()) {
-                            while (rs.next()) opened.add(rs.getString("container_id"));
+                    try {
+                        java.sql.Connection conn = database.getConnection();
+                        try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT container_id FROM player_loot WHERE player_uuid = ?")) {
+                            ps.setString(1, player.getUniqueId().toString());
+                            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                                while (rs.next()) opened.add(rs.getString("container_id"));
+                            }
                         }
                     } catch (Exception ignored) {}
                     for (ContainerPos cp : containers) {
