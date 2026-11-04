@@ -40,7 +40,6 @@ public class ProtectionListener implements Listener {
         Block block = e.getBlock();
         if (!isProtected(block)) return;
         if (manager.getConfig().protectionBreak == false) return;
-        if (e.getPlayer().hasPermission("gloved.lootr.bypass")) return;
         java.util.UUID playerId = e.getPlayer().getUniqueId();
         ContainerId id = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
         long now = System.currentTimeMillis();

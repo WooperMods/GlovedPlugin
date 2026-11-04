@@ -37,15 +37,14 @@ public class ChestOpenListener implements Listener {
         this.lootService = new PlayerLootService(manager.getDatabase().getConnection());
     }
 
-    @EventHandler
+    @org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent e) {
+        if (e.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) return;
         if (!e.hasBlock()) return;
+        if (e.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) return;
         Block block = e.getClickedBlock();
         if (block == null) return;
         if (!(block.getState() instanceof Container)) return;
-        if (!e.getAction().toString().contains("RIGHT_CLICK")) return;
-        Player player = e.getPlayer();
-        if (player.hasPermission("gloved.lootr.bypass")) return;
         // world disable check
         if (manager.getConfig().disabledWorlds != null && manager.getConfig().disabledWorlds.contains(block.getWorld().getName())) return;
         // container type filter
@@ -57,36 +56,48 @@ public class ChestOpenListener implements Listener {
         Container containerState = (Container) block.getState();
         if (!(containerState instanceof Lootable)) return;
 
+        Player player = e.getPlayer();
         ContainerId id = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+        boolean justRegistered = false;
         if (!manager.getRegistry().isRegistered(id)) {
             Lootable lootable = (Lootable) containerState;
             LootTable table = lootable.getLootTable();
             if (table != null) {
                 manager.getRegistry().register(id, table.getKey().toString());
+                // Clear vanilla loot
+                lootable.setLootTable(null);
+                lootable.setSeed(0);
+                containerState.update(true, false);
+                block.getState().update();
+                // Clear inventory
+                containerState.getInventory().clear();
                 GlovedPlugin.logDebug("Lootr registered container " + id.toStringKey() + " with loot " + table.getKey());
+                justRegistered = true;
             } else {
                 return;
             }
         }
 
         e.setCancelled(true);
-        openPerPlayerInventory(player, block, containerState, id);
+        openPerPlayerInventory(player, block, containerState, id, justRegistered);
     }
 
-    private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id) {
+    private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
         if (manager.getConfig().particlesEnabled) {
             org.bukkit.Particle particle = parseParticle(manager.getConfig().particleType);
             if (particle != null) {
-                block.getWorld().spawnParticle(
-                    particle,
-                    block.getLocation().add(0.5,0.5,0.5),
-                    5, 0.2, 0.2, 0.2, 0
-                );
+                // particles only unlooted?
+                boolean unlooted = !lootService.hasOpened(id, player.getUniqueId());
+                if (!manager.getConfig().particlesOnlyUnlooted || unlooted) {
+                    block.getWorld().spawnParticle(
+                        particle,
+                        block.getLocation().add(0.5,0.5,0.5),
+                        5, 0.2, 0.2, 0.2, 0
+                    );
+                }
             }
         }
-        if (manager.getConfig().playSound) {
-            player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
-        }
+        // sound handled later
 
         byte[] blob = lootService.getInventoryBlob(id, player.getUniqueId());
         Inventory inv;
@@ -106,11 +117,18 @@ public class ChestOpenListener implements Listener {
         }
 
         inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), manager.getConfig().inventoryTitle);
-        Lootable lootable = (Lootable) containerState;
-        LootTable table = lootable.getLootTable();
-        if (table != null) {
-            LootContext ctx = new LootContext.Builder(block.getLocation()).build();
-            table.fillInventory(inv, new Random(), ctx);
+        String lootTableKeyStr = manager.getRegistry().getLootTable(id);
+        if (lootTableKeyStr != null) {
+            try {
+                org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
+                if (key != null) {
+                    org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
+                    if (table != null) {
+                        LootContext ctx = new LootContext.Builder(block.getLocation()).build();
+                        table.fillInventory(inv, new Random(), ctx);
+                    }
+                }
+            } catch (Exception ignored) {}
         }
         if (manager.getConfig().elitemobsEnabled && EliteMobsIntegration.isAvailable()) {
             int combatLevel = EliteMobsIntegration.getCombatLevel(player);
