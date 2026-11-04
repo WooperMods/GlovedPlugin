@@ -3,6 +3,13 @@ version: '0.1.0'
 main: dev.gloved.glovedplugin.GlovedPlugin
 api-version: '26.3'
 softdepend: [FreeMinecraftModels, ResourcePackManager, PacketEvents, EliteMobs]
+commands:
+  gloved:
+    description: GlovedPlugin admin command
+    usage: /gloved <subcommand>
+  lootr:
+    description: Lootr admin commands
+    usage: /lootr <subcommand>
 permissions:
   gloved.edit:
     description: Edit the server menu in-game

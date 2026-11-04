@@ -123,6 +123,8 @@ public final class GlovedPlugin extends JavaPlugin {
         Menu menuCommand = new Menu();
         this.registerCommand("menu", "Custom menu for Commands", menuCommand);
         this.registerCommand("gloved", "GlovedPlugin admin command", new GlovedCommand(this));
+        var lootrCmd = getCommand("lootr");
+        if (lootrCmd != null) lootrCmd.setExecutor(new dev.gloved.glovedplugin.lootr.command.LootrCommand(this));
         logInfo("Registered Menu Command!");
 
         // Hot-reload safe: PlayerJoin doesn't fire for already-online players

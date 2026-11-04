@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.lootr.manager;
 
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
-import org.bukkit.entity.Player;
+import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
@@ -9,7 +9,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Base64;
 import java.util.UUID;
 
 public class PlayerLootService {
@@ -41,9 +40,26 @@ public class PlayerLootService {
         } catch (SQLException ignored) {}
     }
 
-    // Placeholder serialization
-    public byte[] serializeInventory(Inventory inv) {
-        // Simple placeholder: return empty
-        return new byte[0];
+    public byte[] getInventoryBlob(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT inventory_blob FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getBytes("inventory_blob");
+            }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    public void saveInventory(ContainerId id, UUID player, Inventory inv) {
+        byte[] data = InventorySerializer.serialize(inv);
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO player_loot(container_id, player_uuid, inventory_blob, opened) VALUES(?,?,?,1) ON CONFLICT(container_id, player_uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            ps.setBytes(3, data);
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
     }
 }

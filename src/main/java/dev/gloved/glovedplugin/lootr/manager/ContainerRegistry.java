@@ -1,10 +1,6 @@
 package dev.gloved.glovedplugin.lootr.manager;
 
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
-import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.block.ContainerState;
-import org.bukkit.loot.Lootable;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -12,7 +8,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
 
 public class ContainerRegistry {
     private final Connection conn;
@@ -36,17 +31,15 @@ public class ContainerRegistry {
         }
     }
 
-    public void register(Block block, String lootTable) {
-        World w = block.getWorld();
-        ContainerId id = new ContainerId(w.getUID(), block.getX(), block.getY(), block.getZ());
+    public void register(ContainerId id, String lootTable) {
         if (isRegistered(id)) return;
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR IGNORE INTO containers(id, world, x, y, z, loot_table, created_at) VALUES(?,?,?,?,?,?,?)")) {
             ps.setString(1, id.toStringKey());
-            ps.setString(2, w.getName());
-            ps.setInt(3, block.getX());
-            ps.setInt(4, block.getY());
-            ps.setInt(5, block.getZ());
+            ps.setString(2, id.world().toString());
+            ps.setInt(3, id.x());
+            ps.setInt(4, id.y());
+            ps.setInt(5, id.z());
             ps.setString(6, lootTable);
             ps.setLong(7, System.currentTimeMillis());
             ps.executeUpdate();

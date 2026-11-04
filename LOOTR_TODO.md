@@ -11,6 +11,13 @@
 - [x] Basic container detection on interact
 - [x] Basic per-player inventory open placeholder
 - [x] Integrate module into GlovedPlugin onEnable/onDisable
+- [x] Per-player inventory persistence in SQLite with BLOB serialization
+- [x] InventorySerializer using BukkitObjectStreams
+- [x] PlayerLootService save/load
+- [x] Inventory close handling to persist changes back to DB
+- [x] Particle visual indicators on open
+- [x] Auto-save task stub
+- [x] Protection listeners scaffold for break/explosion/piston/hopper
 
 ## In Progress
 - [ ] Full container auto-registration on chunk load / structure generate
