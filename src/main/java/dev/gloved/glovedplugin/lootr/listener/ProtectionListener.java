@@ -40,6 +40,11 @@ public class ProtectionListener implements Listener {
         Block block = e.getBlock();
         if (!isProtected(block)) return;
         if (manager.getConfig().protectionBreak == false) return;
+        if (!e.getPlayer().isSneaking()) {
+            e.setCancelled(true);
+            e.getPlayer().sendMessage("§cYou must be crouching to break Lootr chests");
+            return;
+        }
         java.util.UUID playerId = e.getPlayer().getUniqueId();
         ContainerId id = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
         long now = System.currentTimeMillis();
