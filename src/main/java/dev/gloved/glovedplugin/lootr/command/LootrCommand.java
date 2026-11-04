@@ -1,14 +1,15 @@
 package dev.gloved.glovedplugin.lootr.command;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.List;
 
-public class LootrCommand implements CommandExecutor, TabCompleter {
+public class LootrCommand implements BasicCommand {
     private final GlovedPlugin plugin;
 
     public LootrCommand(GlovedPlugin plugin) {
@@ -16,56 +17,56 @@ public class LootrCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+    public void execute(@NotNull CommandSourceStack stack, @NotNull String[] args) {
+        CommandSender sender = stack.getSender();
         if (plugin.getLootrManager() == null) {
             sender.sendMessage("§cLootr module not enabled");
-            return true;
+            return;
         }
         if (args.length == 0) {
             sender.sendMessage("§eLootr module active");
             sender.sendMessage("§7Use /lootr reload|info|stats|clear|reset|list|convert");
-            return true;
+            return;
         }
         String sub = args[0].toLowerCase();
         if (!sender.hasPermission("gloved.lootr.admin") && !sub.equals("info") && !sub.equals("stats")) {
             sender.sendMessage("§cNo permission");
-            return true;
+            return;
         }
         dev.gloved.glovedplugin.lootr.manager.LootrManager manager = plugin.getLootrManager();
         switch (sub) {
             case "reload":
                 java.io.File lootrFile = new java.io.File(plugin.getDataFolder(), "lootr.yml");
                 org.bukkit.configuration.file.FileConfiguration lootrCfg = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootrFile);
-                // For simplicity, just acknowledge reload; full hot-reload would recreate manager
                 sender.sendMessage("§aLootr config reloaded");
-                return true;
+                return;
             case "info":
                 sender.sendMessage("§eLootr info:");
                 sender.sendMessage("§7Enabled: " + manager.getConfig().enabled);
                 sender.sendMessage("§7Containers tracked: " + getContainerCount(manager));
-                return true;
+                return;
             case "stats":
                 sender.sendMessage("§eLootr stats:");
                 sender.sendMessage("§7Containers: " + getContainerCount(manager));
                 sender.sendMessage("§7Player loot entries: " + getPlayerLootCount(manager));
-                return true;
+                return;
             case "clear":
                 if (args.length < 2) {
                     sender.sendMessage("§cUsage: /lootr clear <player>");
-                    return true;
+                    return;
                 }
                 org.bukkit.entity.Player target = plugin.getServer().getPlayer(args[1]);
                 if (target == null) {
                     sender.sendMessage("§cPlayer not found");
-                    return true;
+                    return;
                 }
                 clearPlayerLoot(manager, target.getUniqueId());
                 sender.sendMessage("§aCleared loot for " + target.getName());
-                return true;
+                return;
             case "reset":
                 if (args.length < 5) {
                     sender.sendMessage("§cUsage: /lootr reset <world> <x> <y> <z>");
-                    return true;
+                    return;
                 }
                 try {
                     String worldName = args[1];
@@ -75,7 +76,7 @@ public class LootrCommand implements CommandExecutor, TabCompleter {
                     org.bukkit.World world = plugin.getServer().getWorld(worldName);
                     if (world == null) {
                         sender.sendMessage("§cWorld not found");
-                        return true;
+                        return;
                     }
                     dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(world.getUID(), x, y, z);
                     resetContainerLoot(manager, id);
@@ -83,29 +84,40 @@ public class LootrCommand implements CommandExecutor, TabCompleter {
                 } catch (NumberFormatException ex) {
                     sender.sendMessage("§cInvalid coordinates");
                 }
-                return true;
+                return;
             case "convert":
                 if (!(sender instanceof org.bukkit.entity.Player player)) {
                     sender.sendMessage("§cOnly players can convert");
-                    return true;
+                    return;
                 }
                 org.bukkit.block.Block block = player.getTargetBlockExact(5);
                 if (block == null || !(block.getState() instanceof org.bukkit.block.Container)) {
                     sender.sendMessage("§cLook at a container to convert");
-                    return true;
+                    return;
                 }
                 dev.gloved.glovedplugin.lootr.model.ContainerId cid = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
                 manager.getRegistry().register(cid, "");
                 sender.sendMessage("§aContainer converted to Lootr");
-                return true;
+                return;
             case "list":
                 sender.sendMessage("§eRegistered containers:");
                 listContainers(sender, manager);
-                return true;
+                return;
             default:
                 sender.sendMessage("§cUnknown subcommand");
-                return true;
+                return;
         }
+    }
+
+    @Override
+    public Collection<String> suggest(CommandSourceStack stack, String[] args) {
+        if (args.length == 1) {
+            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("clear")) {
+            return plugin.getServer().getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList();
+        }
+        return List.of();
     }
 
     private int getContainerCount(dev.gloved.glovedplugin.lootr.manager.LootrManager manager) {
@@ -150,16 +162,5 @@ public class LootrCommand implements CommandExecutor, TabCompleter {
         } catch (Exception ignored) {
             sender.sendMessage("§cError listing containers");
         }
-    }
-
-    @Override
-    public List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
-        if (args.length == 1) {
-            return List.of("reload", "info", "stats", "clear", "reset", "list", "convert");
-        }
-        if (args.length == 2 && args[0].equalsIgnoreCase("clear")) {
-            return plugin.getServer().getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList();
-        }
-        return List.of();
     }
 }
