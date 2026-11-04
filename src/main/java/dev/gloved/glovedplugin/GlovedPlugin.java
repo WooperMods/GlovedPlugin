@@ -119,6 +119,10 @@ public final class GlovedPlugin extends JavaPlugin {
                     lootrBackfill.set("elite.regular-max-items", 6);
                     changed = true;
                 }
+                if (!lootrBackfill.isSet("elite.extra-chance")) {
+                    lootrBackfill.set("elite.extra-chance", 0.65);
+                    changed = true;
+                }
                 if (changed) lootrBackfill.save(lootrFile);
             } catch (Exception e) {
                 logInfo("Could not backfill lootr.yml defaults: " + e);

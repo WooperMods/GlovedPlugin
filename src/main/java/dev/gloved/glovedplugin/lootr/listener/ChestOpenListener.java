@@ -139,14 +139,18 @@ public class ChestOpenListener implements Listener {
             title = baseTitle + suffix;
             inv = Bukkit.createInventory(null, size, title);
             int combatLevel = EliteMobsIntegration.getCombatLevel(player);
-            int min = manager.getConfig().eliteMinItems;
-            int max = manager.getConfig().eliteMaxItems;
-            if (min < 1) min = 1;
+            // Guarantee the minimum (elite.min-items), then one coin toss per extra
+            // elite item at elite.extra-chance (default 65%) until a miss or the
+            // elite.max-items cap.
+            int min = Math.max(1, manager.getConfig().eliteMinItems);
+            int max = Math.min(manager.getConfig().eliteMaxItems, size);
             if (max < min) max = min;
             java.util.Random rand = new java.util.Random();
-            int baseCount = min + rand.nextInt(max - min + 1);
-            int count = Math.min(size, baseCount * 4); // elite chests get 4x items (doubled twice)
-            GlovedPlugin.logDebug("Lootr elite chest generating " + count + " items (base=" + baseCount + ") for " + player.getName());
+            int count = min;
+            while (count < max && rand.nextDouble() < manager.getConfig().eliteExtraChance) {
+                count++;
+            }
+            GlovedPlugin.logDebug("Lootr elite chest generating " + count + "/" + max + " items (min=" + min + ") for " + player.getName());
             addEliteItems(inv, player, combatLevel, count, rand);
             GlovedPlugin.logDebug("Lootr elite chest generated " + inv.getSize() + " slots, " + count + " requested for " + player.getName());
         } else {
