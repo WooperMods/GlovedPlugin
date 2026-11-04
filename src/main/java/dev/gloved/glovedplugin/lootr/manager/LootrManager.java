@@ -8,6 +8,7 @@ public class LootrManager {
     private final GlovedPlugin plugin;
     private final LootrConfig config;
     private final LootrDatabase database;
+    private ContainerRegistry registry;
 
     public LootrManager(GlovedPlugin plugin, LootrConfig config) {
         this.plugin = plugin;
@@ -18,6 +19,7 @@ public class LootrManager {
     public void load() {
         try {
             database.init();
+            registry = new ContainerRegistry(database.getConnection());
         } catch (Exception e) {
             plugin.getLogger().severe("Failed to init Lootr DB: " + e);
         }
@@ -37,5 +39,9 @@ public class LootrManager {
 
     public LootrDatabase getDatabase() {
         return database;
+    }
+
+    public ContainerRegistry getRegistry() {
+        return registry;
     }
 }
