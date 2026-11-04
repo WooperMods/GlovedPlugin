@@ -105,6 +105,24 @@ public final class GlovedPlugin extends JavaPlugin {
         java.io.File lootrFile = new java.io.File(getDataFolder(), "lootr.yml");
         if (!lootrFile.exists()) {
             saveResource("lootr.yml", false);
+        } else {
+            // Backfill new lootr keys into existing server files without
+            // overwriting anything the admin has set.
+            try {
+                org.bukkit.configuration.file.FileConfiguration lootrBackfill = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootrFile);
+                boolean changed = false;
+                if (!lootrBackfill.isSet("elite.regular-chance")) {
+                    lootrBackfill.set("elite.regular-chance", 0.25);
+                    changed = true;
+                }
+                if (!lootrBackfill.isSet("elite.regular-max-items")) {
+                    lootrBackfill.set("elite.regular-max-items", 5);
+                    changed = true;
+                }
+                if (changed) lootrBackfill.save(lootrFile);
+            } catch (Exception e) {
+                logInfo("Could not backfill lootr.yml defaults: " + e);
+            }
         }
         org.bukkit.configuration.file.FileConfiguration lootrCfg = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(lootrFile);
         dev.gloved.glovedplugin.lootr.config.LootrConfig lootrConfig = dev.gloved.glovedplugin.lootr.config.LootrConfig.load(lootrCfg);

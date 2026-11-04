@@ -141,28 +141,10 @@ public class ChestOpenListener implements Listener {
             if (max < min) max = min;
             java.util.Random rand = new java.util.Random();
             int baseCount = min + rand.nextInt(max - min + 1);
-            int count = Math.min(size, baseCount * 2); // elite chests get 2x items
-            
-            int generated = 0;
-            int attempts = 0;
-            while (generated < count && attempts < count * 10) {
-                ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel);
-                attempts++;
-                if (item != null && item.getType() != org.bukkit.Material.AIR) {
-                    // place in random empty slot
-                    int tries = 0;
-                    while (tries < size * 2) {
-                        int slot = rand.nextInt(size);
-                        if (inv.getItem(slot) == null) {
-                            inv.setItem(slot, item.clone());
-                            generated++;
-                            break;
-                        }
-                        tries++;
-                    }
-                }
-            }
-            GlovedPlugin.logDebug("Lootr elite chest generated " + generated + "/" + count + " items for " + player.getName());
+            int count = Math.min(size, baseCount * 4); // elite chests get 4x items (doubled twice)
+            GlovedPlugin.logDebug("Lootr elite chest generating " + count + " items (base=" + baseCount + ") for " + player.getName());
+            addEliteItems(inv, player, combatLevel, count, rand);
+            GlovedPlugin.logDebug("Lootr elite chest generated " + inv.getSize() + " slots, " + count + " requested for " + player.getName());
         } else {
             inv = Bukkit.createInventory(null, size, title);
             String lootTableKeyStr = manager.getRegistry().getLootTable(id);
@@ -182,6 +164,22 @@ public class ChestOpenListener implements Listener {
                     GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
                 }
             }
+            // Elite items can also hide in regular chests
+            double regularChance = manager.getConfig().eliteRegularChance;
+            if (eliteAvailable && regularChance > 0 && new Random().nextDouble() < regularChance) {
+                int maxItems = Math.max(1, manager.getConfig().eliteRegularMaxItems);
+                // Elite item count: each additional item is less likely, up to maxItems.
+                int eliteCount = 1;
+                double extraChance = 0.5;
+                Random rollRandom = new Random();
+                while (eliteCount < maxItems && rollRandom.nextDouble() < extraChance) {
+                    eliteCount++;
+                    extraChance *= 0.6;
+                }
+                int combatLevel = EliteMobsIntegration.getCombatLevel(player);
+                GlovedPlugin.logDebug("Lootr regular chest elite roll success: " + eliteCount + " items, combatLevel=" + combatLevel);
+                addEliteItems(inv, player, combatLevel, eliteCount, rollRandom);
+            }
         }
 
         lootService.saveInventory(id, uuid, inv);
@@ -191,6 +189,29 @@ public class ChestOpenListener implements Listener {
         if (manager.getConfig().playSound) {
             player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
         }
+    }
+
+    private void addEliteItems(Inventory inv, Player player, int combatLevel, int count, java.util.Random rand) {
+        int size = inv.getSize();
+        int generated = 0;
+        int attempts = 0;
+        while (generated < count && attempts < count * 10) {
+            ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel);
+            attempts++;
+            if (item != null && item.getType() != org.bukkit.Material.AIR) {
+                int tries = 0;
+                while (tries < size * 2) {
+                    int slot = rand.nextInt(size);
+                    if (inv.getItem(slot) == null) {
+                        inv.setItem(slot, item.clone());
+                        generated++;
+                        break;
+                    }
+                    tries++;
+                }
+            }
+        }
+        GlovedPlugin.logDebug("Lootr elite items placed: requested=" + count + " placed=" + generated + " inventorySize=" + size + " player=" + player.getName());
     }
 
     @EventHandler

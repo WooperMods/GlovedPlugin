@@ -25,5 +25,9 @@ elite:
   min-items: 1
   max-items: 3
   title-suffix: "&6[Elite]"
+  # Chance a regular chest hides elite items
+  regular-chance: 0.25
+  # Hard cap for elite items in a regular chest
+  regular-max-items: 5
 storage:
   auto-save-interval: 5
