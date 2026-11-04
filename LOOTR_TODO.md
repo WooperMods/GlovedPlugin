@@ -21,7 +21,7 @@
 - [x] Auto-registration on chunk load
 
 ## In Progress
-- [ ] EliteMobs procedural gear mix – real API integration for scaling to combat level
+- [x] EliteMobs procedural gear mix – real API integration for scaling to combat level
 - [ ] Protection listeners: break double-confirm logic
 - [ ] Auto-save task async DB writes
 - [ ] Admin commands full implementation
