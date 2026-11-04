@@ -140,27 +140,18 @@ public class ChestOpenListener implements Listener {
             if (min < 1) min = 1;
             if (max < min) max = min;
             int count = min + new Random().nextInt(max - min + 1);
-            org.bukkit.Material[] materials = {
-                org.bukkit.Material.DIAMOND_SWORD,
-                org.bukkit.Material.IRON_SWORD,
-                org.bukkit.Material.BOW,
-                org.bukkit.Material.DIAMOND_AXE,
-                org.bukkit.Material.IRON_AXE,
-                org.bukkit.Material.DIAMOND_PICKAXE,
-                org.bukkit.Material.IRON_PICKAXE,
-                org.bukkit.Material.DIAMOND_HELMET,
-                org.bukkit.Material.DIAMOND_CHESTPLATE,
-                org.bukkit.Material.DIAMOND_LEGGINGS,
-                org.bukkit.Material.DIAMOND_BOOTS
-            };
-            Random rnd = new Random();
-            for (int i = 0; i < count; i++) {
-                org.bukkit.Material mat = materials[rnd.nextInt(materials.length)];
-                ItemStack item = new ItemStack(mat);
-                item = EliteMobsIntegration.applyEliteLevel(item, combatLevel);
-                inv.addItem(item);
+            org.bukkit.Location loc = block.getLocation();
+            int generated = 0;
+            int attempts = 0;
+            while (generated < count && attempts < count * 10) {
+                ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel, loc);
+                attempts++;
+                if (item != null && item.getType() != org.bukkit.Material.AIR) {
+                    inv.addItem(item);
+                    generated++;
+                }
             }
-            GlovedPlugin.logDebug("Lootr elite chest generated " + count + " items for " + player.getName());
+            GlovedPlugin.logDebug("Lootr elite chest generated " + generated + "/" + count + " items for " + player.getName());
         } else {
             inv = Bukkit.createInventory(null, size, title);
             String lootTableKeyStr = manager.getRegistry().getLootTable(id);

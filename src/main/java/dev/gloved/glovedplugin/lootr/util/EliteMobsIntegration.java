@@ -1,5 +1,7 @@
 package dev.gloved.glovedplugin.lootr.util;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -54,6 +56,22 @@ public class EliteMobsIntegration {
             // Fallback to 1
         } catch (Exception ignored) {}
         return 1;
+    }
+
+    public static ItemStack generateRandomLoot(Player player, int level, Location location) {
+        if (!isAvailable()) return null;
+        try {
+            org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
+            if (p == null) return null;
+            ClassLoader cl = p.getClass().getClassLoader();
+            Class<?> lootTables = Class.forName("com.magmaguy.elitemobs.items.LootTables", true, cl);
+            Method generateLoot = lootTables.getMethod("generateLoot", int.class, Location.class, Player.class);
+            Object result = generateLoot.invoke(null, level, location, player);
+            return (ItemStack) result;
+        } catch (Exception e) {
+            // Log could be added
+            return null;
+        }
     }
 
     public static ItemStack applyEliteLevel(ItemStack item, int level) {
