@@ -7,6 +7,7 @@ import dev.gloved.glovedplugin.lootr.model.ContainerId;
 import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
 import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.block.Container;
 import org.bukkit.entity.Player;
@@ -82,9 +83,12 @@ public class ChestOpenListener implements Listener {
     }
 
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
-        String title = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
-
-        byte[] blob = lootService.getInventoryBlob(id, player.getUniqueId());
+        String baseTitle = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
+        String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().eliteTitleSuffix);
+        UUID uuid = player.getUniqueId();
+        byte[] blob = lootService.getInventoryBlob(id, uuid);
+        int eliteFlag = lootService.getEliteFlag(id, uuid);
+        String title = baseTitle + (eliteFlag == 1 ? suffix : "");
         Inventory inv;
         if (blob != null && blob.length > 0) {
             inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
@@ -93,7 +97,7 @@ public class ChestOpenListener implements Listener {
                 if (items[i] != null) inv.setItem(i, items[i]);
             }
             inventoryMap.put(inv, id);
-            playerMap.put(inv, player.getUniqueId());
+            playerMap.put(inv, uuid);
             player.openInventory(inv);
             if (manager.getConfig().playSound) {
                 player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
@@ -101,57 +105,83 @@ public class ChestOpenListener implements Listener {
             return;
         }
 
-        inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
-        String lootTableKeyStr = manager.getRegistry().getLootTable(id);
-        GlovedPlugin.logDebug("Lootr open: container=" + id.toStringKey() + " lootTableKey=" + lootTableKeyStr + " blobExists=" + (lootService.getInventoryBlob(id, player.getUniqueId()) != null));
-        int itemsBefore = 0;
-        for (int i = 0; i < inv.getSize(); i++) if (inv.getItem(i) != null) itemsBefore++;
-        if (lootTableKeyStr != null && !lootTableKeyStr.isEmpty()) {
-            try {
-                org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
-                if (key != null) {
-                    org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
-                    if (table != null) {
-                        LootContext ctx = new LootContext.Builder(block.getLocation()).build();
-                        table.fillInventory(inv, new Random(), ctx);
-                        GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success");
-                    } else {
-                        GlovedPlugin.logDebug("Lootr fillInventory: table is null for key " + key);
-                    }
-                } else {
-                    GlovedPlugin.logDebug("Lootr fillInventory: NamespacedKey null for string " + lootTableKeyStr);
+        boolean isElite = false;
+        if (manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable()) {
+            if (eliteFlag == 1) {
+                isElite = true;
+            } else {
+                double luck = 0;
+                if (player.getAttribute(Attribute.LUCK) != null) {
+                    luck = player.getAttribute(Attribute.LUCK).getValue();
                 }
-            } catch (Exception e) {
-                GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
-            }
-        } else {
-            GlovedPlugin.logDebug("Lootr fillInventory: no loot table key");
-        }
-        int itemsAfter = 0;
-        for (int i = 0; i < inv.getSize(); i++) if (inv.getItem(i) != null) itemsAfter++;
-        GlovedPlugin.logDebug("Lootr items before=" + itemsBefore + " after=" + itemsAfter);
-        if (manager.getConfig().elitemobsEnabled && EliteMobsIntegration.isAvailable()) {
-            int combatLevel = EliteMobsIntegration.getCombatLevel(player);
-            // Mix EliteMobs items: add a random weapon/armor with elite level
-            if (new java.util.Random().nextDouble() < 0.3) {
-                ItemStack eliteItem = new ItemStack(org.bukkit.Material.DIAMOND_SWORD);
-                eliteItem = EliteMobsIntegration.applyEliteLevel(eliteItem, combatLevel);
-                inv.addItem(eliteItem);
-            }
-            // Optionally tag existing items
-            if (manager.getConfig().elitemobsMixVanilla) {
-                for (int i = 0; i < inv.getSize(); i++) {
-                    ItemStack is = inv.getItem(i);
-                    if (is != null && is.getType().isItem() && new java.util.Random().nextDouble() < 0.1) {
-                        inv.setItem(i, EliteMobsIntegration.applyEliteLevel(is, combatLevel));
-                    }
+                double chance = manager.getConfig().eliteChance + luck * manager.getConfig().eliteLuckMultiplier;
+                if (chance < 0) chance = 0;
+                if (chance > 1) chance = 1;
+                if (new Random().nextDouble() < chance) {
+                    isElite = true;
+                    lootService.setEliteFlag(id, uuid, 1);
+                    GlovedPlugin.logDebug("Lootr elite roll success for player " + player.getName() + " container " + id.toStringKey() + " chance=" + chance);
+                } else {
+                    GlovedPlugin.logDebug("Lootr elite roll fail for player " + player.getName() + " container " + id.toStringKey() + " chance=" + chance);
                 }
             }
         }
 
-        lootService.saveInventory(id, player.getUniqueId(), inv);
+        int size = containerState.getInventory().getSize();
+        if (isElite) {
+            title = baseTitle + suffix;
+            inv = Bukkit.createInventory(null, size, title);
+            int combatLevel = EliteMobsIntegration.getCombatLevel(player);
+            int min = manager.getConfig().eliteMinItems;
+            int max = manager.getConfig().eliteMaxItems;
+            if (min < 1) min = 1;
+            if (max < min) max = min;
+            int count = min + new Random().nextInt(max - min + 1);
+            org.bukkit.Material[] materials = {
+                org.bukkit.Material.DIAMOND_SWORD,
+                org.bukkit.Material.IRON_SWORD,
+                org.bukkit.Material.BOW,
+                org.bukkit.Material.DIAMOND_AXE,
+                org.bukkit.Material.IRON_AXE,
+                org.bukkit.Material.DIAMOND_PICKAXE,
+                org.bukkit.Material.IRON_PICKAXE,
+                org.bukkit.Material.DIAMOND_HELMET,
+                org.bukkit.Material.DIAMOND_CHESTPLATE,
+                org.bukkit.Material.DIAMOND_LEGGINGS,
+                org.bukkit.Material.DIAMOND_BOOTS
+            };
+            Random rnd = new Random();
+            for (int i = 0; i < count; i++) {
+                org.bukkit.Material mat = materials[rnd.nextInt(materials.length)];
+                ItemStack item = new ItemStack(mat);
+                item = EliteMobsIntegration.applyEliteLevel(item, combatLevel);
+                inv.addItem(item);
+            }
+            GlovedPlugin.logDebug("Lootr elite chest generated " + count + " items for " + player.getName());
+        } else {
+            inv = Bukkit.createInventory(null, size, title);
+            String lootTableKeyStr = manager.getRegistry().getLootTable(id);
+            GlovedPlugin.logDebug("Lootr open: container=" + id.toStringKey() + " lootTableKey=" + lootTableKeyStr);
+            if (lootTableKeyStr != null && !lootTableKeyStr.isEmpty()) {
+                try {
+                    org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
+                    if (key != null) {
+                        org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
+                        if (table != null) {
+                            LootContext ctx = new LootContext.Builder(block.getLocation()).build();
+                            table.fillInventory(inv, new Random(), ctx);
+                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success");
+                        }
+                    }
+                } catch (Exception e) {
+                    GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
+                }
+            }
+        }
+
+        lootService.saveInventory(id, uuid, inv);
         inventoryMap.put(inv, id);
-        playerMap.put(inv, player.getUniqueId());
+        playerMap.put(inv, uuid);
         player.openInventory(inv);
         if (manager.getConfig().playSound) {
             player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);

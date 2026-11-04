@@ -20,9 +20,12 @@ public class LootrConfig {
     public boolean particlesOnlyUnlooted;
     public String inventoryTitle;
     public boolean playSound;
-    public boolean elitemobsEnabled;
-    public boolean elitemobsMixVanilla;
-    public String elitemobsScale;
+    public boolean eliteEnabled;
+    public double eliteChance;
+    public double eliteLuckMultiplier;
+    public int eliteMinItems;
+    public int eliteMaxItems;
+    public String eliteTitleSuffix;
     public int autoSaveInterval;
 
     public static LootrConfig load(FileConfiguration cfg) {
@@ -45,9 +48,12 @@ public class LootrConfig {
         c.particlesOnlyUnlooted = cfg.getBoolean("visuals.particles-only-unlooted", true);
         c.inventoryTitle = cfg.getString("inventory.title", "&8[&6✦&8] &eLoot Chest");
         c.playSound = cfg.getBoolean("inventory.play-sound", true);
-        c.elitemobsEnabled = cfg.getBoolean("elitemobs.enabled", true);
-        c.elitemobsMixVanilla = cfg.getBoolean("elitemobs.mix-vanilla", true);
-        c.elitemobsScale = cfg.getString("elitemobs.scale", "COMBAT_LEVEL");
+        c.eliteEnabled = cfg.getBoolean("elite.enabled", true);
+        c.eliteChance = cfg.getDouble("elite.chance", 0.08);
+        c.eliteLuckMultiplier = cfg.getDouble("elite.luck-multiplier", 0.02);
+        c.eliteMinItems = cfg.getInt("elite.min-items", 1);
+        c.eliteMaxItems = cfg.getInt("elite.max-items", 3);
+        c.eliteTitleSuffix = cfg.getString("elite.title-suffix", "&6[Elite]");
         c.autoSaveInterval = cfg.getInt("storage.auto-save-interval", 5);
         return c;
     }

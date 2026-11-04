@@ -42,6 +42,11 @@ public class LootrDatabase {
                 "FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE" +
                 ");"
             );
+            try {
+                stmt.execute("ALTER TABLE player_loot ADD COLUMN elite_flag INTEGER NOT NULL DEFAULT 0");
+            } catch (SQLException ignored) {
+                // column already exists
+            }
         }
         plugin.getLogger().info("Lootr SQLite database initialized");
     }
