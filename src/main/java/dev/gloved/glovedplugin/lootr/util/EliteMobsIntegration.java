@@ -14,17 +14,21 @@ public class EliteMobsIntegration {
         try {
             Class.forName("com.magmaguy.elitemobs.playerdata.database.PlayerData");
             eliteMobsAvailable = true;
-            // Reflection fallback for combat level via PlayerData manager
-            // Simplified: try to find a method that returns combat level
-            // Actual implementation would locate PlayerDataManager.getPlayerData(player)
-            // For now just mark available
         } catch (ClassNotFoundException ignored) {
             eliteMobsAvailable = false;
         }
     }
 
     public static boolean isAvailable() {
-        return eliteMobsAvailable;
+        try {
+            org.bukkit.plugin.Plugin p = org.bukkit.Bukkit.getPluginManager().getPlugin("EliteMobs");
+            if (p == null || !p.isEnabled()) return false;
+            // Verify class is loadable via the plugin's classloader
+            Class.forName("com.magmaguy.elitemobs.playerdata.database.PlayerData", true, p.getClass().getClassLoader());
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     public static int getCombatLevel(Player player) {
@@ -53,9 +57,12 @@ public class EliteMobsIntegration {
     }
 
     public static ItemStack applyEliteLevel(ItemStack item, int level) {
-        if (!eliteMobsAvailable || item == null) return item;
+        if (item == null) return item;
+        if (!isAvailable()) return item;
         try {
-            Class<?> eliteItemManager = Class.forName("com.magmaguy.elitemobs.api.utils.EliteItemManager");
+            org.bukkit.plugin.Plugin p = org.bukkit.Bukkit.getPluginManager().getPlugin("EliteMobs");
+            ClassLoader cl = p != null ? p.getClass().getClassLoader() : null;
+            Class<?> eliteItemManager = Class.forName("com.magmaguy.elitemobs.api.utils.EliteItemManager", true, cl);
             Method setLevel = eliteItemManager.getMethod("setEliteLevel", ItemStack.class, int.class);
             setLevel.invoke(null, item, level);
             return item;
