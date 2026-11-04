@@ -64,26 +64,40 @@ public class LootrCommand implements BasicCommand {
                 sender.sendMessage("§aCleared loot for " + target.getName());
                 return;
             case "reset":
-                if (args.length < 5) {
-                    sender.sendMessage("§cUsage: /lootr reset <world> <x> <y> <z>");
-                    return;
-                }
-                try {
-                    String worldName = args[1];
-                    int x = Integer.parseInt(args[2]);
-                    int y = Integer.parseInt(args[3]);
-                    int z = Integer.parseInt(args[4]);
-                    org.bukkit.World world = plugin.getServer().getWorld(worldName);
-                    if (world == null) {
-                        sender.sendMessage("§cWorld not found");
+                dev.gloved.glovedplugin.lootr.model.ContainerId resetId = null;
+                if (args.length == 1) {
+                    if (!(sender instanceof org.bukkit.entity.Player player)) {
+                        sender.sendMessage("§cOnly players can reset by looking at a container");
                         return;
                     }
-                    dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(world.getUID(), x, y, z);
-                    resetContainerLoot(manager, id);
-                    sender.sendMessage("§aReset loot for container at " + worldName + " " + x + "," + y + "," + z);
-                } catch (NumberFormatException ex) {
-                    sender.sendMessage("§cInvalid coordinates");
+                    org.bukkit.block.Block block = player.getTargetBlockExact(5);
+                    if (block == null || !(block.getState() instanceof org.bukkit.block.Container)) {
+                        sender.sendMessage("§cLook at a container to reset");
+                        return;
+                    }
+                    resetId = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                } else if (args.length >= 5) {
+                    try {
+                        String worldName = args[1];
+                        int x = Integer.parseInt(args[2]);
+                        int y = Integer.parseInt(args[3]);
+                        int z = Integer.parseInt(args[4]);
+                        org.bukkit.World world = plugin.getServer().getWorld(worldName);
+                        if (world == null) {
+                            sender.sendMessage("§cWorld not found");
+                            return;
+                        }
+                        resetId = new dev.gloved.glovedplugin.lootr.model.ContainerId(world.getUID(), x, y, z);
+                    } catch (NumberFormatException ex) {
+                        sender.sendMessage("§cInvalid coordinates");
+                        return;
+                    }
+                } else {
+                    sender.sendMessage("§cUsage: /lootr reset [world x y z] or look at a container and run /lootr reset");
+                    return;
                 }
+                resetContainerLoot(manager, resetId);
+                sender.sendMessage("§aReset loot for container at " + resetId.x() + "," + resetId.y() + "," + resetId.z());
                 return;
             case "convert":
                 if (!(sender instanceof org.bukkit.entity.Player player)) {
