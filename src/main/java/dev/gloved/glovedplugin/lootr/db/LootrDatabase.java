@@ -20,7 +20,8 @@ public class LootrDatabase {
         File dbFile = new File(plugin.getDataFolder(), "lootr.db");
         if (!dbFile.getParentFile().exists()) dbFile.getParentFile().mkdirs();
         connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-        try (PreparedStatement stmt = connection.prepareStatement(
+        try (java.sql.Statement stmt = connection.createStatement()) {
+            stmt.execute(
                 "CREATE TABLE IF NOT EXISTS containers (" +
                 "id TEXT PRIMARY KEY," +
                 "world TEXT NOT NULL," +
@@ -29,7 +30,9 @@ public class LootrDatabase {
                 "z INTEGER NOT NULL," +
                 "loot_table TEXT," +
                 "created_at INTEGER NOT NULL" +
-                ");" +
+                ");"
+            );
+            stmt.execute(
                 "CREATE TABLE IF NOT EXISTS player_loot (" +
                 "container_id TEXT NOT NULL," +
                 "player_uuid TEXT NOT NULL," +
@@ -38,8 +41,7 @@ public class LootrDatabase {
                 "PRIMARY KEY(container_id, player_uuid)," +
                 "FOREIGN KEY(container_id) REFERENCES containers(id) ON DELETE CASCADE" +
                 ");"
-        )) {
-            stmt.execute();
+            );
         }
         plugin.getLogger().info("Lootr SQLite database initialized");
     }
