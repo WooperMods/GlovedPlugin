@@ -261,7 +261,7 @@ public class ChestOpenListener implements Listener {
                 }
             }
             // Bias quality by sampling a few candidates and picking the best
-            ItemStack item = EliteMobsIntegration.generateRandomLootBest(player, tier, 3);
+            ItemStack item = EliteMobsIntegration.generateRandomLootBest(player, tier, 5);
             attempts++;
             GlovedPlugin.logDebug("Lootr addEliteItems attempt tier=" + tier + " item=" + (item != null ? item.getType() : "null") + " generated=" + generated + "/" + count);
             if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
