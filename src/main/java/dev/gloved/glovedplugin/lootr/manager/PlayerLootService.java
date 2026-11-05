@@ -83,6 +83,7 @@ public class PlayerLootService {
                 ps.setString(2, id.toStringKey());
                 ps.setString(3, player.toString());
                 int updated = ps.executeUpdate();
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag UPDATE updated=" + updated + " id=" + id.toStringKey() + " player=" + player);
                 if (updated == 0) {
                     try (PreparedStatement ins = conn.prepareStatement(
                             "INSERT INTO player_loot(container_id, player_uuid, elite_flag, opened) VALUES(?,?,?,0)")) {
@@ -90,9 +91,12 @@ public class PlayerLootService {
                         ins.setString(2, player.toString());
                         ins.setInt(3, flag);
                         ins.executeUpdate();
+                        dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag INSERTED id=" + id.toStringKey() + " player=" + player);
                     }
                 }
             }
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag SQLException " + e.getMessage() + " id=" + id.toStringKey() + " player=" + player);
+        }
     }
 }

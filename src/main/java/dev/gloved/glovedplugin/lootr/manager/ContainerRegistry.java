@@ -18,22 +18,29 @@ public class ContainerRegistry {
     }
 
     public boolean isRegistered(ContainerId id) {
-        if (cache.contains(id)) return true;
+        if (cache.contains(id)) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.isRegistered cache hit " + id.toStringKey());
+            return true;
+        }
         try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM containers WHERE id = ?")) {
             ps.setString(1, id.toStringKey());
             try (ResultSet rs = ps.executeQuery()) {
                 boolean found = rs.next();
                 if (found) cache.add(id);
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.isRegistered db found=" + found + " id=" + id.toStringKey());
                 return found;
             }
         } catch (SQLException e) {
-            System.out.println("[Lootr] SQLException on isRegistered " + id.toStringKey() + ": " + e.getMessage());
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on isRegistered " + id.toStringKey() + ": " + e.getMessage());
             return false;
         }
     }
 
     public void register(ContainerId id, String lootTable) {
-        if (isRegistered(id)) return;
+        if (isRegistered(id)) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.register skip already registered id=" + id.toStringKey());
+            return;
+        }
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT OR IGNORE INTO containers(id, world, x, y, z, loot_table, created_at) VALUES(?,?,?,?,?,?,?)")) {
             ps.setString(1, id.toStringKey());
@@ -45,12 +52,12 @@ public class ContainerRegistry {
             ps.setLong(7, System.currentTimeMillis());
             int rows = ps.executeUpdate();
             cache.add(id);
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.register inserted rows=" + rows + " id=" + id.toStringKey() + " loot=" + lootTable);
             if (rows == 0) {
-                // Log for debugging
-                System.out.println("[Lootr] INSERT OR IGNORE affected 0 rows for " + id.toStringKey());
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("[Lootr] INSERT OR IGNORE affected 0 rows for " + id.toStringKey());
             }
         } catch (SQLException e) {
-            System.out.println("[Lootr] SQLException on register " + id.toStringKey() + ": " + e.getMessage());
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on register " + id.toStringKey() + ": " + e.getMessage());
         }
     }
 
