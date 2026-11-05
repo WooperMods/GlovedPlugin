@@ -54,7 +54,8 @@ public class ProtectionListener implements Listener {
         if (last != null && now - last <= confirmTimeMs) {
             // confirmed, allow break and cleanup registry
             playerConfirms.remove(id);
-            manager.getRegistry().register(id, null); // placeholder, actual removal would be better
+            // The chest is being destroyed: drop the registration and its per-player loot.
+            manager.getRegistry().unregister(id);
             // allow break - do not cancel
             return;
         } else {

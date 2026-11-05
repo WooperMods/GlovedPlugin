@@ -135,10 +135,9 @@ public class LootrCommand implements BasicCommand {
                 if (args.length >= 2) {
                     mode = args[1].toLowerCase();
                     if (!mode.equals("normal") && !mode.equals("elite") && !mode.equals("blank")) {
-                        sender.sendMessage("§cUsage: /lootr generate [normal|elite]");
+                        sender.sendMessage("§cUsage: /lootr generate [normal|elite|blank]");
                         return;
                     }
-                    if (mode.equals("blank")) mode = "normal";
                 }
                 org.bukkit.Location loc = player.getLocation().clone().subtract(0, 1, 0);
                 org.bukkit.block.Block b = loc.getBlock();
@@ -160,16 +159,21 @@ public class LootrCommand implements BasicCommand {
                     "minecraft:chests/end_city_treasure",
                     "minecraft:chests/nether_bridge"
                 );
-                String chosen = tables.get(new java.util.Random().nextInt(tables.size()));
+                // blank = empty chest with no loot table at all
+                String chosen = mode.equals("blank") ? "" : tables.get(new java.util.Random().nextInt(tables.size()));
                 dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate mode=" + mode + " loc=" + b.getX() + "," + b.getY() + "," + b.getZ() + " chosen=" + chosen);
-                manager.getRegistry().register(genId, chosen);
-                if (mode.equals("elite")) {
+                boolean forceElite = mode.equals("elite");
+                // Upsert so an explicit admin command always overwrites whatever
+                // was previously stored for this position (stale loot table or a
+                // stale elite marker left over from an earlier generate).
+                manager.getRegistry().upsert(genId, chosen, forceElite);
+                if (forceElite) {
                     dev.gloved.glovedplugin.lootr.manager.PlayerLootService lootService = new dev.gloved.glovedplugin.lootr.manager.PlayerLootService(manager.getDatabase().getConnection());
                     lootService.setEliteFlag(genId, player.getUniqueId(), 1);
                     dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate elite flag set for " + genId.toStringKey() + " player=" + player.getUniqueId());
-                    sender.sendMessage("§aGenerated Elite Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                    sender.sendMessage("§aGenerated Elite Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + (chosen.isEmpty() ? "" : " with " + chosen));
                 } else {
-                    sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
+                    sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + (chosen.isEmpty() ? "" : " with " + chosen));
                 }
                 return;
             case "list":

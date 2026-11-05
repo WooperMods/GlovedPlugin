@@ -81,12 +81,17 @@ public class LootrManager {
                             java.util.Set<dev.gloved.glovedplugin.lootr.model.ContainerId> seenInChunk = new java.util.HashSet<>();
                             for (org.bukkit.block.BlockState state : chunk.getTileEntities()) {
                                 if (!(state instanceof org.bukkit.block.Container container)) continue;
+                                org.bukkit.block.Block block = container.getBlock();
+                                dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                                // Presence check for orphan cleanup: ANY container block counts as
+                                // still existing, even if it has no loot table. Lootr clears the
+                                // loot table when it takes a container over, and /lootr generate
+                                // creates chests without one, so requiring a loot table here
+                                // would wrongly unregister live containers.
+                                seenInChunk.add(id);
                                 if (!(container instanceof org.bukkit.loot.Lootable lootable)) continue;
                                 org.bukkit.loot.LootTable table = lootable.getLootTable();
                                 if (table == null) continue;
-                                org.bukkit.block.Block block = container.getBlock();
-                                dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
-                                seenInChunk.add(id);
                                 if (!registry.isRegistered(id)) {
                                     registry.register(id, table.getKey().toString());
                                 }
@@ -95,10 +100,11 @@ public class LootrManager {
                                 if (ploc.distanceSquared(loc) > rangeSq) continue;
                                 player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
                             }
-                            // Orphan cleanup: remove registered containers in this chunk that no longer have a block
+                            // Orphan cleanup: remove registered containers in this chunk whose block is gone
                             java.util.List<dev.gloved.glovedplugin.lootr.model.ContainerId> registered = registry.findAllInChunk(world.getUID(), cx, cz);
                             for (dev.gloved.glovedplugin.lootr.model.ContainerId regId : registered) {
                                 if (!seenInChunk.contains(regId)) {
+                                    dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr orphan cleanup unregistering " + regId.toStringKey());
                                     registry.unregister(regId);
                                 }
                             }

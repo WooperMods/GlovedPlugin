@@ -29,9 +29,15 @@ public class LootrDatabase {
                 "y INTEGER NOT NULL," +
                 "z INTEGER NOT NULL," +
                 "loot_table TEXT," +
+                "is_elite INTEGER NOT NULL DEFAULT 0," +
                 "created_at INTEGER NOT NULL" +
                 ");"
             );
+            try {
+                stmt.execute("ALTER TABLE containers ADD COLUMN is_elite INTEGER NOT NULL DEFAULT 0");
+            } catch (SQLException ignored) {
+                // column already exists
+            }
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS player_loot (" +
                 "container_id TEXT NOT NULL," +

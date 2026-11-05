@@ -95,9 +95,13 @@ public class ChestOpenListener implements Listener {
         byte[] blob = lootService.getInventoryBlob(id, uuid);
         int eliteFlag = lootService.getEliteFlag(id, uuid);
         boolean eliteAvailable = manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable();
-        String title = baseTitle + (eliteFlag == 1 && eliteAvailable ? suffix : "");
+        // Container-level elite marker: an admin-forced elite chest is elite for
+        // every player who opens it, not just the one who generated it.
+        boolean containerElite = manager.getRegistry().isElite(id);
+        boolean eliteChest = eliteAvailable && (eliteFlag == 1 || containerElite);
+        String title = baseTitle + (eliteChest ? suffix : "");
         Inventory inv;
-        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " eliteFlag=" + eliteFlag + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
+        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
         if (blob != null && blob.length > 0) {
             inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
             ItemStack[] items = InventorySerializer.deserialize(blob);
@@ -115,8 +119,12 @@ public class ChestOpenListener implements Listener {
 
         boolean isElite = false;
         if (manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable()) {
-            if (eliteFlag == 1) {
+            if (eliteChest) {
                 isElite = true;
+                if (eliteFlag != 1) {
+                    lootService.setEliteFlag(id, uuid, 1);
+                    GlovedPlugin.logDebug("Lootr container-level elite applied for player " + player.getName() + " container " + id.toStringKey());
+                }
             } else {
                 double luck = 0;
                 if (player.getAttribute(Attribute.LUCK) != null) {
@@ -165,14 +173,27 @@ public class ChestOpenListener implements Listener {
                     if (key != null) {
                         org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
                         if (table != null) {
-                            LootContext ctx = new LootContext.Builder(block.getLocation()).build();
+                            // Provide the killer (player) and their luck so loot
+                            // tables that reference the opener behave correctly.
+                            LootContext.Builder ctxBuilder = new LootContext.Builder(block.getLocation())
+                                    .killer(player);
+                            if (player.getAttribute(Attribute.LUCK) != null) {
+                                ctxBuilder = ctxBuilder.luck((float) player.getAttribute(Attribute.LUCK).getValue());
+                            }
+                            LootContext ctx = ctxBuilder.build();
                             table.fillInventory(inv, new Random(), ctx);
-                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success");
+                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success items=" + countItems(inv));
+                        } else {
+                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " not found");
                         }
+                    } else {
+                        GlovedPlugin.logDebug("Lootr fillInventory: invalid key " + lootTableKeyStr);
                     }
                 } catch (Exception e) {
                     GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
                 }
+            } else {
+                GlovedPlugin.logDebug("Lootr fillInventory: no loot table key for " + id.toStringKey());
             }
             // Elite items can also hide in regular chests: a coin-toss roll per item
             // using elite.regular-chance. One success = 1 elite item, each further
@@ -202,6 +223,14 @@ public class ChestOpenListener implements Listener {
         if (manager.getConfig().playSound) {
             player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
         }
+    }
+
+    private int countItems(Inventory inv) {
+        int count = 0;
+        for (ItemStack item : inv.getContents()) {
+            if (item != null && item.getType() != org.bukkit.Material.AIR) count++;
+        }
+        return count;
     }
 
     private void addEliteItems(Inventory inv, Player player, int combatLevel, int count, java.util.Random rand, double upJitterChance, int upJitterMax) {

@@ -37,27 +37,54 @@ public class ContainerRegistry {
     }
 
     public void register(ContainerId id, String lootTable) {
-        if (isRegistered(id)) {
-            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.register skip already registered id=" + id.toStringKey());
-            return;
-        }
+        // Preserve any existing elite marker; only the loot table is refreshed.
+        upsert(id, lootTable, isElite(id));
+    }
+
+    /**
+     * Registers or updates a container, overwriting the stored loot table and
+     * elite marker. Used by {@code /lootr generate} and {@code /lootr convert}
+     * so an explicit admin action always wins over the previously stored state.
+     */
+    public void upsert(ContainerId id, String lootTable, boolean elite) {
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT OR IGNORE INTO containers(id, world, x, y, z, loot_table, created_at) VALUES(?,?,?,?,?,?,?)")) {
+                "INSERT INTO containers(id, world, x, y, z, loot_table, is_elite, created_at) VALUES(?,?,?,?,?,?,?,?) " +
+                "ON CONFLICT(id) DO UPDATE SET loot_table = excluded.loot_table, is_elite = excluded.is_elite")) {
             ps.setString(1, id.toStringKey());
             ps.setString(2, id.world().toString());
             ps.setInt(3, id.x());
             ps.setInt(4, id.y());
             ps.setInt(5, id.z());
             ps.setString(6, lootTable);
-            ps.setLong(7, System.currentTimeMillis());
-            int rows = ps.executeUpdate();
+            ps.setInt(7, elite ? 1 : 0);
+            ps.setLong(8, System.currentTimeMillis());
+            ps.executeUpdate();
             cache.add(id);
-            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.register inserted rows=" + rows + " id=" + id.toStringKey() + " loot=" + lootTable);
-            if (rows == 0) {
-                dev.gloved.glovedplugin.GlovedPlugin.logDebug("[Lootr] INSERT OR IGNORE affected 0 rows for " + id.toStringKey());
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.upsert id=" + id.toStringKey() + " loot=" + lootTable + " elite=" + elite);
+        } catch (SQLException e) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on upsert " + id.toStringKey() + ": " + e.getMessage());
+        }
+    }
+
+    public boolean isElite(ContainerId id) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT is_elite FROM containers WHERE id = ?")) {
+            ps.setString(1, id.toStringKey());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() && rs.getInt("is_elite") == 1;
             }
         } catch (SQLException e) {
-            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on register " + id.toStringKey() + ": " + e.getMessage());
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on isElite " + id.toStringKey() + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    public void setElite(ContainerId id, boolean elite) {
+        try (PreparedStatement ps = conn.prepareStatement("UPDATE containers SET is_elite = ? WHERE id = ?")) {
+            ps.setInt(1, elite ? 1 : 0);
+            ps.setString(2, id.toStringKey());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr SQLException on setElite " + id.toStringKey() + ": " + e.getMessage());
         }
     }
 
