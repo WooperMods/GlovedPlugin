@@ -34,7 +34,7 @@ elite:
   title-suffix: "&6[Elite]"
   # Elite items can also hide in regular chests
   # Chance per elite item roll in a regular chest (coin toss per item)
-  regular-chance: 0.75
+  regular-chance: 0.65
   regular-max-items: 6
 storage:
   auto-save-interval: 5
