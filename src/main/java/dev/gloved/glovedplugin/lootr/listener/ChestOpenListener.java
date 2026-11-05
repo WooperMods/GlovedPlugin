@@ -63,6 +63,7 @@ public class ChestOpenListener implements Listener {
         Player player = e.getPlayer();
         ContainerId id = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
         boolean justRegistered = false;
+        GlovedPlugin.logDebug("Lootr interact player=" + player.getName() + " id=" + id.toStringKey() + " isRegistered=" + manager.getRegistry().isRegistered(id));
         if (!manager.getRegistry().isRegistered(id)) {
             Lootable lootable = (Lootable) containerState;
             LootTable table = lootable.getLootTable();
@@ -87,6 +88,7 @@ public class ChestOpenListener implements Listener {
     }
 
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
+        GlovedPlugin.logDebug("Lootr openPerPlayerInventory start id=" + id.toStringKey() + " justRegistered=" + justRegistered);
         String baseTitle = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
         String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().eliteTitleSuffix);
         UUID uuid = player.getUniqueId();
@@ -228,6 +230,7 @@ public class ChestOpenListener implements Listener {
             }
             ItemStack item = EliteMobsIntegration.generateRandomLoot(player, tier);
             attempts++;
+            GlovedPlugin.logDebug("Lootr addEliteItems attempt tier=" + tier + " item=" + (item != null ? item.getType() : "null") + " generated=" + generated + "/" + count);
             if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
             int slot = -1;
             if (!emptySlots.isEmpty()) {

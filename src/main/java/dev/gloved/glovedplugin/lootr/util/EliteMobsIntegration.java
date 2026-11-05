@@ -24,11 +24,15 @@ public class EliteMobsIntegration {
     public static boolean isAvailable() {
         try {
             org.bukkit.plugin.Plugin p = org.bukkit.Bukkit.getPluginManager().getPlugin("EliteMobs");
-            if (p == null || !p.isEnabled()) return false;
+            if (p == null || !p.isEnabled()) {
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.isAvailable false: plugin missing or disabled p=" + p);
+                return false;
+            }
             // Verify class is loadable via the plugin's classloader
             Class.forName("com.magmaguy.elitemobs.playerdata.database.PlayerData", true, p.getClass().getClassLoader());
             return true;
         } catch (Throwable t) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.isAvailable false: throwable " + t);
             return false;
         }
     }
@@ -83,7 +87,10 @@ public class EliteMobsIntegration {
     }
 
     public static ItemStack generateRandomLoot(Player player, int level) {
-        if (!isAvailable()) return null;
+        if (!isAvailable()) {
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.generateRandomLoot not available for player " + player.getName() + " level " + level);
+            return null;
+        }
         try {
             org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
             if (p == null) return null;
@@ -91,9 +98,11 @@ public class EliteMobsIntegration {
             Class<?> lootTables = Class.forName("com.magmaguy.elitemobs.items.LootTables", true, cl);
             Method generateItemStack = lootTables.getMethod("generateItemStack", int.class, Player.class, Class.forName("com.magmaguy.elitemobs.mobconstructor.EliteEntity", true, cl));
             Object result = generateItemStack.invoke(null, level, player, null);
-            return (ItemStack) result;
+            ItemStack stack = (ItemStack) result;
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.generateRandomLoot result=" + (stack != null ? stack.getType() : "null") + " for player " + player.getName() + " level " + level);
+            return stack;
         } catch (Exception e) {
-            // Log could be added
+            dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.generateRandomLoot exception " + e);
             return null;
         }
     }

@@ -161,10 +161,12 @@ public class LootrCommand implements BasicCommand {
                     "minecraft:chests/nether_bridge"
                 );
                 String chosen = tables.get(new java.util.Random().nextInt(tables.size()));
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate mode=" + mode + " loc=" + b.getX() + "," + b.getY() + "," + b.getZ() + " chosen=" + chosen);
                 manager.getRegistry().register(genId, chosen);
                 if (mode.equals("elite")) {
                     dev.gloved.glovedplugin.lootr.manager.PlayerLootService lootService = new dev.gloved.glovedplugin.lootr.manager.PlayerLootService(manager.getDatabase().getConnection());
                     lootService.setEliteFlag(genId, player.getUniqueId(), 1);
+                    dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate elite flag set for " + genId.toStringKey() + " player=" + player.getUniqueId());
                     sender.sendMessage("§aGenerated Elite Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
                 } else {
                     sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + " with " + chosen);
