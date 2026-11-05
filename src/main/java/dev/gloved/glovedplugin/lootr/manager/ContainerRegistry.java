@@ -65,4 +65,54 @@ public class ContainerRegistry {
         }
         return null;
     }
+
+    public void unregister(ContainerId id) {
+        try {
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM containers WHERE id = ?")) {
+                ps.setString(1, id.toStringKey());
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_loot WHERE container_id = ?")) {
+                ps.setString(1, id.toStringKey());
+                ps.executeUpdate();
+            }
+            cache.remove(id);
+        } catch (SQLException e) {
+            System.out.println("[Lootr] SQLException on unregister " + id.toStringKey() + ": " + e.getMessage());
+        }
+    }
+
+    public java.util.List<ContainerId> findAllInChunk(java.util.UUID world, int chunkX, int chunkZ) {
+        java.util.List<ContainerId> out = new java.util.ArrayList<>();
+        int minX = chunkX << 4;
+        int maxX = minX + 15;
+        int minZ = chunkZ << 4;
+        int maxZ = minZ + 15;
+        String worldStr = world.toString();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT id FROM containers WHERE world = ? AND x BETWEEN ? AND ? AND z BETWEEN ? AND ?")) {
+            ps.setString(1, worldStr);
+            ps.setInt(2, minX);
+            ps.setInt(3, maxX);
+            ps.setInt(4, minZ);
+            ps.setInt(5, maxZ);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String idStr = rs.getString("id");
+                    String[] parts = idStr.split(":");
+                    if (parts.length == 4) {
+                        java.util.UUID w = java.util.UUID.fromString(parts[0]);
+                        int x = Integer.parseInt(parts[1]);
+                        int y = Integer.parseInt(parts[2]);
+                        int z = Integer.parseInt(parts[3]);
+                        ContainerId cid = new ContainerId(w, x, y, z);
+                        out.add(cid);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("[Lootr] SQLException on findAllInChunk " + world + " " + chunkX + "," + chunkZ + ": " + e.getMessage());
+        }
+        return out;
+    }
 }

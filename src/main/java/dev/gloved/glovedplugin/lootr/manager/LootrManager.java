@@ -12,6 +12,7 @@ public class LootrManager {
     private ContainerRegistry registry;
     private BukkitRunnable autoSaveTask;
     private BukkitRunnable particleTask;
+    private BukkitRunnable orphanCleanupTask;
 
     public LootrManager(GlovedPlugin plugin, LootrConfig config) {
         this.plugin = plugin;
@@ -77,6 +78,7 @@ public class LootrManager {
                         for (int cz = playerChunkZ - chunkRadius; cz <= playerChunkZ + chunkRadius; cz++) {
                             org.bukkit.Chunk chunk = world.getChunkAt(cx, cz);
                             if (!chunk.isLoaded()) continue;
+                            java.util.Set<dev.gloved.glovedplugin.lootr.model.ContainerId> seenInChunk = new java.util.HashSet<>();
                             for (org.bukkit.block.BlockState state : chunk.getTileEntities()) {
                                 if (!(state instanceof org.bukkit.block.Container container)) continue;
                                 if (!(container instanceof org.bukkit.loot.Lootable lootable)) continue;
@@ -84,6 +86,7 @@ public class LootrManager {
                                 if (table == null) continue;
                                 org.bukkit.block.Block block = container.getBlock();
                                 dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                                seenInChunk.add(id);
                                 if (!registry.isRegistered(id)) {
                                     registry.register(id, table.getKey().toString());
                                 }
@@ -91,6 +94,13 @@ public class LootrManager {
                                 org.bukkit.Location loc = new org.bukkit.Location(world, block.getX() + 0.5, block.getY() + 1.0, block.getZ() + 0.5);
                                 if (ploc.distanceSquared(loc) > rangeSq) continue;
                                 player.spawnParticle(particle, loc, 1, 0, 0, 0, 0);
+                            }
+                            // Orphan cleanup: remove registered containers in this chunk that no longer have a block
+                            java.util.List<dev.gloved.glovedplugin.lootr.model.ContainerId> registered = registry.findAllInChunk(world.getUID(), cx, cz);
+                            for (dev.gloved.glovedplugin.lootr.model.ContainerId regId : registered) {
+                                if (!seenInChunk.contains(regId)) {
+                                    registry.unregister(regId);
+                                }
                             }
                         }
                     }
@@ -119,6 +129,29 @@ public class LootrManager {
             return org.bukkit.Particle.valueOf(name.toUpperCase());
         } catch (Exception e) {
             return org.bukkit.Particle.HAPPY_VILLAGER;
+        }
+    }
+
+    private void forEachContainerInPlayerRange(org.bukkit.entity.Player player, int range, java.util.function.BiConsumer<org.bukkit.block.BlockState, dev.gloved.glovedplugin.lootr.model.ContainerId> consumer) {
+        org.bukkit.World world = player.getWorld();
+        org.bukkit.Location ploc = player.getLocation();
+        int chunkRadius = range / 16 + 1;
+        int playerChunkX = ploc.getBlockX() >> 4;
+        int playerChunkZ = ploc.getBlockZ() >> 4;
+        for (int cx = playerChunkX - chunkRadius; cx <= playerChunkX + chunkRadius; cx++) {
+            for (int cz = playerChunkZ - chunkRadius; cz <= playerChunkZ + chunkRadius; cz++) {
+                org.bukkit.Chunk chunk = world.getChunkAt(cx, cz);
+                if (!chunk.isLoaded()) continue;
+                for (org.bukkit.block.BlockState state : chunk.getTileEntities()) {
+                    if (!(state instanceof org.bukkit.block.Container container)) continue;
+                    if (!(container instanceof org.bukkit.loot.Lootable lootable)) continue;
+                    org.bukkit.loot.LootTable table = lootable.getLootTable();
+                    if (table == null) continue;
+                    org.bukkit.block.Block block = container.getBlock();
+                    dev.gloved.glovedplugin.lootr.model.ContainerId id = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                    consumer.accept(state, id);
+                }
+            }
         }
     }
 
