@@ -97,7 +97,7 @@ public class LootrCommand implements BasicCommand {
                     return;
                 }
                 resetContainerLoot(manager, resetId);
-                sender.sendMessage("§aReset loot for container at " + resetId.x() + "," + resetId.y() + "," + resetId.z());
+                sender.sendMessage("§aReset loot for container at " + resetId.x() + "," + resetId.y() + "," + resetId.z() + " §7(elite status preserved)");
                 return;
             case "convert":
                 if (!(sender instanceof org.bukkit.entity.Player player)) {
@@ -215,7 +215,11 @@ public class LootrCommand implements BasicCommand {
     }
 
     private void resetContainerLoot(dev.gloved.glovedplugin.lootr.manager.LootrManager manager, dev.gloved.glovedplugin.lootr.model.ContainerId id) {
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement("DELETE FROM player_loot WHERE container_id = ?")) {
+        // Clear loot and opened state but keep elite_flag, so players who had an
+        // elite chest get a fresh elite chest on next open instead of re-rolling
+        // the normal-chest elite chance.
+        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement(
+                "UPDATE player_loot SET inventory_blob = NULL, opened = 0 WHERE container_id = ?")) {
             ps.setString(1, id.toStringKey());
             ps.executeUpdate();
         } catch (Exception ignored) {}
