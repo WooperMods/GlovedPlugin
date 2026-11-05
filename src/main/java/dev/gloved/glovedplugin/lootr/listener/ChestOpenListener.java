@@ -151,7 +151,7 @@ public class ChestOpenListener implements Listener {
                 count++;
             }
             GlovedPlugin.logDebug("Lootr elite chest generating " + count + "/" + max + " items (min=" + min + ") for " + player.getName());
-            addEliteItems(inv, player, combatLevel, count, rand);
+            addEliteItems(inv, player, combatLevel, count, rand, manager.getConfig().eliteUpJitterChance, manager.getConfig().eliteUpJitterMax);
             GlovedPlugin.logDebug("Lootr elite chest generated " + inv.getSize() + " slots, " + count + " requested for " + player.getName());
         } else {
             inv = Bukkit.createInventory(null, size, title);
@@ -188,7 +188,7 @@ public class ChestOpenListener implements Listener {
                 if (eliteCount > 0) {
                     int combatLevel = EliteMobsIntegration.getCombatLevel(player);
                     GlovedPlugin.logDebug("Lootr regular chest elite roll success: " + eliteCount + " items, combatLevel=" + combatLevel);
-                    addEliteItems(inv, player, combatLevel, eliteCount, rollRandom);
+                    addEliteItems(inv, player, combatLevel, eliteCount, rollRandom, 0.0, 0);
                 }
             }
         }
@@ -202,7 +202,7 @@ public class ChestOpenListener implements Listener {
         }
     }
 
-    private void addEliteItems(Inventory inv, Player player, int combatLevel, int count, java.util.Random rand) {
+    private void addEliteItems(Inventory inv, Player player, int combatLevel, int count, java.util.Random rand, double upJitterChance, int upJitterMax) {
         int size = inv.getSize();
         // Slots still open. When empty slots run out, elite items overwrite
         // vanilla loot (random slot) instead of failing to place.
@@ -218,6 +218,14 @@ public class ChestOpenListener implements Listener {
             // Mirror the mob-drop level jitter: each item rolls around the base
             // level (mostly −0/−1, rare −2, small level-scaled +1 chance).
             int tier = EliteMobsIntegration.jitterItemLevel(combatLevel);
+            // Elite chest upward jitter: chance per step to go +1 level
+            if (upJitterChance > 0 && upJitterMax > 0) {
+                int steps = 0;
+                while (steps < upJitterMax && rand.nextDouble() < upJitterChance) {
+                    tier++;
+                    steps++;
+                }
+            }
             ItemStack item = EliteMobsIntegration.generateRandomLoot(player, tier);
             attempts++;
             if (item == null || item.getType() == org.bukkit.Material.AIR) continue;

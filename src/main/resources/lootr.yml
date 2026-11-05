@@ -27,6 +27,10 @@ elite:
   min-items: 3
   max-items: 12
   extra-chance: 0.65
+  # Upward level jitter for elite chest items: chance per step to go +1 level,
+  # up to up-jitter-max steps. Applied after mob-drop jitter.
+  up-jitter-chance: 0.65
+  up-jitter-max: 3
   title-suffix: "&6[Elite]"
   # Elite items can also hide in regular chests
   # Chance per elite item roll in a regular chest (coin toss per item)

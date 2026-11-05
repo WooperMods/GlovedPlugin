@@ -123,6 +123,14 @@ public final class GlovedPlugin extends JavaPlugin {
                     lootrBackfill.set("elite.extra-chance", 0.65);
                     changed = true;
                 }
+                if (!lootrBackfill.isSet("elite.up-jitter-chance")) {
+                    lootrBackfill.set("elite.up-jitter-chance", 0.65);
+                    changed = true;
+                }
+                if (!lootrBackfill.isSet("elite.up-jitter-max")) {
+                    lootrBackfill.set("elite.up-jitter-max", 3);
+                    changed = true;
+                }
                 if (changed) lootrBackfill.save(lootrFile);
             } catch (Exception e) {
                 logInfo("Could not backfill lootr.yml defaults: " + e);
