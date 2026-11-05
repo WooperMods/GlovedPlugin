@@ -60,7 +60,7 @@ public class LootrConfig {
         c.eliteMaxItems = cfg.getInt("elite.max-items", 12);
         c.eliteExtraChance = cfg.getDouble("elite.extra-chance", 0.65);
         c.eliteTitleSuffix = cfg.getString("elite.title-suffix", "&6[Elite]");
-        c.eliteRegularChance = cfg.getDouble("elite.regular-chance", 0.5);
+        c.eliteRegularChance = cfg.getDouble("elite.regular-chance", 0.75);
         c.eliteRegularMaxItems = cfg.getInt("elite.regular-max-items", 6);
         c.eliteUpJitterChance = cfg.getDouble("elite.up-jitter-chance", 0.65);
         c.eliteUpJitterMax = cfg.getInt("elite.up-jitter-max", 3);
