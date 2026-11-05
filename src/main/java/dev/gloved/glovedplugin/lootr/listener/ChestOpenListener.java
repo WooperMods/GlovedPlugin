@@ -94,15 +94,19 @@ public class ChestOpenListener implements Listener {
         UUID uuid = player.getUniqueId();
         byte[] blob = lootService.getInventoryBlob(id, uuid);
         int eliteFlag = lootService.getEliteFlag(id, uuid);
+        Long firstOpened = lootService.getFirstOpened(id, uuid);
         boolean eliteAvailable = manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable();
         // Container-level elite marker: an admin-forced elite chest is elite for
         // every player who opens it, not just the one who generated it.
         boolean containerElite = manager.getRegistry().isElite(id);
+        final long REROLL_MS = 24L * 60 * 60 * 1000;
+        long now = System.currentTimeMillis();
+        boolean expired = firstOpened == null || now - firstOpened >= REROLL_MS;
         boolean eliteChest = eliteAvailable && (eliteFlag == 1 || containerElite);
         String title = baseTitle + (eliteChest ? suffix : "");
         Inventory inv;
-        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
-        if (blob != null && blob.length > 0) {
+        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " firstOpened=" + firstOpened + " expired=" + expired + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
+        if (blob != null && blob.length > 0 && !expired) {
             inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
             ItemStack[] items = InventorySerializer.deserialize(blob);
             for (int i = 0; i < Math.min(items.length, inv.getSize()); i++) {
@@ -119,12 +123,10 @@ public class ChestOpenListener implements Listener {
 
         boolean isElite = false;
         if (manager.getConfig().eliteEnabled && EliteMobsIntegration.isAvailable()) {
-            if (eliteChest) {
+            if (containerElite) {
                 isElite = true;
-                if (eliteFlag != 1) {
-                    lootService.setEliteFlag(id, uuid, 1);
-                    GlovedPlugin.logDebug("Lootr container-level elite applied for player " + player.getName() + " container " + id.toStringKey());
-                }
+                lootService.setEliteFlag(id, uuid, 1);
+                GlovedPlugin.logDebug("Lootr container-level elite applied for player " + player.getName() + " container " + id.toStringKey());
             } else {
                 double luck = 0;
                 if (player.getAttribute(Attribute.LUCK) != null) {
@@ -135,18 +137,18 @@ public class ChestOpenListener implements Listener {
                 if (chance > 1) chance = 1;
                 if (new Random().nextDouble() < chance) {
                     isElite = true;
-                    lootService.setEliteFlag(id, uuid, 1);
                     GlovedPlugin.logDebug("Lootr elite roll success for player " + player.getName() + " container " + id.toStringKey() + " chance=" + chance);
                 } else {
                     GlovedPlugin.logDebug("Lootr elite roll fail for player " + player.getName() + " container " + id.toStringKey() + " chance=" + chance);
                 }
             }
         }
+        lootService.setEliteFlag(id, uuid, isElite ? 1 : 0);
         GlovedPlugin.logDebug("Lootr isElite final=" + isElite + " eliteFlag=" + eliteFlag + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
 
+        title = baseTitle + (isElite ? suffix : "");
         int size = containerState.getInventory().getSize();
         if (isElite) {
-            title = baseTitle + suffix;
             inv = Bukkit.createInventory(null, size, title);
             int combatLevel = EliteMobsIntegration.getCombatLevel(player);
             // Guarantee the minimum (elite.min-items), then one coin toss per extra
@@ -216,6 +218,7 @@ public class ChestOpenListener implements Listener {
             }
         }
 
+        lootService.setFirstOpened(id, uuid, now);
         lootService.saveInventory(id, uuid, inv);
         inventoryMap.put(inv, id);
         playerMap.put(inv, uuid);

@@ -53,6 +53,11 @@ public class LootrDatabase {
             } catch (SQLException ignored) {
                 // column already exists
             }
+            try {
+                stmt.execute("ALTER TABLE player_loot ADD COLUMN first_opened INTEGER");
+            } catch (SQLException ignored) {
+                // column already exists
+            }
         }
         plugin.getLogger().info("Lootr SQLite database initialized");
     }

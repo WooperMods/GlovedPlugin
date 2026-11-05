@@ -75,6 +75,42 @@ public class PlayerLootService {
         return 0;
     }
 
+    public Long getFirstOpened(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT first_opened FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    long v = rs.getLong("first_opened");
+                    if (!rs.wasNull()) return v;
+                }
+            }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    public void setFirstOpened(ContainerId id, UUID player, long timestamp) {
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE player_loot SET first_opened = ? WHERE container_id = ? AND player_uuid = ?")) {
+                ps.setLong(1, timestamp);
+                ps.setString(2, id.toStringKey());
+                ps.setString(3, player.toString());
+                int updated = ps.executeUpdate();
+                if (updated == 0) {
+                    try (PreparedStatement ins = conn.prepareStatement(
+                            "INSERT INTO player_loot(container_id, player_uuid, first_opened, opened) VALUES(?,?,?,0)")) {
+                        ins.setString(1, id.toStringKey());
+                        ins.setString(2, player.toString());
+                        ins.setLong(3, timestamp);
+                        ins.executeUpdate();
+                    }
+                }
+            }
+        } catch (SQLException ignored) {}
+    }
+
     public void setEliteFlag(ContainerId id, UUID player, int flag) {
         try {
             try (PreparedStatement ps = conn.prepareStatement(

@@ -225,7 +225,7 @@ public class LootrCommand implements BasicCommand {
         // elite chest get a fresh elite chest on next open instead of re-rolling
         // the normal-chest elite chance.
         try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement(
-                "UPDATE player_loot SET inventory_blob = NULL, opened = 0 WHERE container_id = ?")) {
+                "UPDATE player_loot SET inventory_blob = NULL, opened = 0, first_opened = NULL WHERE container_id = ?")) {
             ps.setString(1, id.toStringKey());
             ps.executeUpdate();
         } catch (Exception ignored) {}
