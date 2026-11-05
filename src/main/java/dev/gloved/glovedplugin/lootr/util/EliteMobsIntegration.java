@@ -61,6 +61,27 @@ public class EliteMobsIntegration {
         return 1;
     }
 
+    /**
+     * Applies EliteMobs' own per-item level jitter ({@code LootTables.setItemTier}),
+     * the same roll every mob drop uses: small level-scaled chance of +1, 10% of
+     * −2, 40% of −1, 50% unchanged, floored at 0. Chest loot then varies around
+     * the player's combat level exactly like mob drops.
+     */
+    public static int jitterItemLevel(int level) {
+        if (!isAvailable()) return level;
+        try {
+            org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
+            if (p == null) return level;
+            ClassLoader cl = p.getClass().getClassLoader();
+            Class<?> lootTables = Class.forName("com.magmaguy.elitemobs.items.LootTables", true, cl);
+            Method setItemTier = lootTables.getMethod("setItemTier", int.class);
+            Object result = setItemTier.invoke(null, level);
+            return (int) (double) (Double) result;
+        } catch (Exception e) {
+            return level;
+        }
+    }
+
     public static ItemStack generateRandomLoot(Player player, int level) {
         if (!isAvailable()) return null;
         try {

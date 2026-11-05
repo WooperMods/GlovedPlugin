@@ -215,7 +215,10 @@ public class ChestOpenListener implements Listener {
         int overwrote = 0;
         int attempts = 0;
         while (generated < count && attempts < count * 10) {
-            ItemStack item = EliteMobsIntegration.generateRandomLoot(player, combatLevel);
+            // Mirror the mob-drop level jitter: each item rolls around the base
+            // level (mostly −0/−1, rare −2, small level-scaled +1 chance).
+            int tier = EliteMobsIntegration.jitterItemLevel(combatLevel);
+            ItemStack item = EliteMobsIntegration.generateRandomLoot(player, tier);
             attempts++;
             if (item == null || item.getType() == org.bukkit.Material.AIR) continue;
             int slot = -1;
