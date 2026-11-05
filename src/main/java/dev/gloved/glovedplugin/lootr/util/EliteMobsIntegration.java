@@ -86,6 +86,41 @@ public class EliteMobsIntegration {
         }
     }
 
+    public static int scoreItemQuality(ItemStack stack) {
+        if (stack == null) return 0;
+        try {
+            if (!stack.hasItemMeta()) return 0;
+            var meta = stack.getItemMeta();
+            int score = 0;
+            // Vanilla enchantments as a proxy
+            score += meta.getEnchants().size() * 10;
+            // Lore length is a proxy for EliteMobs custom enchantments
+            if (meta.hasLore()) {
+                score += meta.getLore().size();
+            }
+            // Prefer rarer materials as a weak signal
+            score += stack.getType().getMaxStackSize() > 1 ? 0 : 1;
+            return score;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static ItemStack generateRandomLootBest(Player player, int level, int attempts) {
+        if (!isAvailable()) return null;
+        ItemStack best = null;
+        int bestScore = -1;
+        for (int i = 0; i < attempts; i++) {
+            ItemStack candidate = generateRandomLoot(player, level);
+            int score = scoreItemQuality(candidate);
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
     public static ItemStack generateRandomLoot(Player player, int level) {
         if (!isAvailable()) {
             dev.gloved.glovedplugin.GlovedPlugin.logDebug("EliteMobsIntegration.generateRandomLoot not available for player " + player.getName() + " level " + level);
