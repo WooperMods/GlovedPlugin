@@ -337,20 +337,26 @@ public class MinionAI {
                     double distSqToOwner = minion.getLocation().distanceSquared(owner.getLocation());
                     double idleRadius = 4.0;
                     double curFollowDist = Math.sqrt(distSqToOwner);
-                    // Stuck follow detection
-                    if (curFollowDist < lastFollowDist - 0.1) {
+                    // Stuck follow detection: only when outside idle radius
+                    if (curFollowDist > idleRadius) {
+                        if (curFollowDist < lastFollowDist - 0.1) {
+                            lastFollowDist = curFollowDist;
+                            followStuckSince = 0L;
+                        } else {
+                            if (followStuckSince == 0L) followStuckSince = now;
+                            if (now - followStuckSince >= 60) {
+                                // Stuck following, teleport near owner
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + ", teleporting");
+                                teleportNearPlayer(owner, minion);
+                                lastFollowDist = Double.MAX_VALUE;
+                                followStuckSince = 0L;
+                                followAnchor = null;
+                            }
+                        }
+                    } else {
+                        // Within idle radius, reset stuck tracking
                         lastFollowDist = curFollowDist;
                         followStuckSince = 0L;
-                    } else {
-                        if (followStuckSince == 0L) followStuckSince = now;
-                        if (now - followStuckSince >= 60) {
-                            // Stuck following, teleport near owner
-                            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + ", teleporting");
-                            teleportNearPlayer(owner, minion);
-                            lastFollowDist = Double.MAX_VALUE;
-                            followStuckSince = 0L;
-                            followAnchor = null;
-                        }
                     }
                     if (distSqToOwner <= idleRadius * idleRadius) {
                         // Close enough, stop pathfinding and stand still
