@@ -3,6 +3,7 @@ package dev.gloved.glovedplugin.summon;
 import com.destroystokyo.paper.entity.Pathfinder;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
@@ -319,9 +320,10 @@ public class MinionAI {
                         lastTargetDist = Double.MAX_VALUE;
                         stuckSince = 0L;
                     } else {
-                        // Move towards target
-                        if (pathfinder != null) {
-                            pathfinder.moveTo(target, 1.2);
+                        // Move towards target using NpcApi computed next waypoint
+                        Location next = reachabilityService.getNextWaypoint(mob, target.getLocation());
+                        if (pathfinder != null && next != null) {
+                            pathfinder.moveTo(next, 1.2);
                         }
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = profile.attackRange * profile.attackRange;
@@ -367,8 +369,9 @@ public class MinionAI {
                     } else {
                         // Direct capability-aware follow to owner using NpcApi reachability
                         if (reachabilityService.canReach(mob, owner.getLocation())) {
-                            if (pathfinder != null) {
-                                pathfinder.moveTo(owner, 1.2);
+                            Location next = reachabilityService.getNextWaypoint(mob, owner.getLocation());
+                            if (pathfinder != null && next != null) {
+                                pathfinder.moveTo(next, 1.2);
                             }
                             followAnchor = null;
                         } else {
@@ -382,8 +385,9 @@ public class MinionAI {
                                 lastFollowUpdate = now;
                             }
                             if (followAnchor != null && reachabilityService.canReach(mob, followAnchor)) {
-                                if (pathfinder != null) {
-                                    pathfinder.moveTo(followAnchor, 1.0);
+                                Location nextAnchor = reachabilityService.getNextWaypoint(mob, followAnchor);
+                                if (pathfinder != null && nextAnchor != null) {
+                                    pathfinder.moveTo(nextAnchor, 1.0);
                                 }
                             } else {
                                 followAnchor = null;
