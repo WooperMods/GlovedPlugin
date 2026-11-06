@@ -38,6 +38,7 @@ dependencies {
     compileOnly "io.papermc.paper:paper-api:26.3.build.+"
     compileOnly "com.magmaguy:EliteMobs:10.9.10"
     compileOnly "org.xerial:sqlite-jdbc:3.48.0.0"
+    compileOnly "com.github.Eisi05:NpcApi-Paper:3.6.3"
 }
 
 
