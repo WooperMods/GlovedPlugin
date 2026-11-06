@@ -11,6 +11,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.*;
 
@@ -331,9 +332,9 @@ public class MinionAI {
                             cachedTargetWaypointTick = now;
                         }
                         Location next = cachedTargetWaypoint;
-                        if (pathfinder != null && next != null) {
+                        if (next != null) {
                             double speed = getMobSpeed(mob);
-                            pathfinder.moveTo(next, speed);
+                            moveMobTowards(mob, next, speed);
                         }
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = profile.attackRange * profile.attackRange;
@@ -371,10 +372,8 @@ public class MinionAI {
                         followStuckSince = 0L;
                     }
                     if (distSqToOwner <= idleRadius * idleRadius) {
-                        // Close enough, stop pathfinding and stand still
-                        if (pathfinder != null) {
-                            try { pathfinder.stopPathfinding(); } catch (Exception ignored) {}
-                        }
+                        // Close enough, stop movement and stand still
+                        mob.setVelocity(new Vector(0,0,0));
                         lastFollowDist = curFollowDist;
                     } else {
                         // Direct capability-aware follow to owner using NpcApi reachability
@@ -384,9 +383,9 @@ public class MinionAI {
                                 cachedFollowWaypointTick = now;
                             }
                             Location next = cachedFollowWaypoint;
-                            if (pathfinder != null && next != null) {
+                            if (next != null) {
                                 double speed = getMobSpeed(mob);
-                                pathfinder.moveTo(next, speed);
+                                moveMobTowards(mob, next, speed);
                             }
                             followAnchor = null;
                         } else {
@@ -405,9 +404,9 @@ public class MinionAI {
                                     cachedFollowWaypointTick = now;
                                 }
                                 Location nextAnchor = cachedFollowWaypoint;
-                                if (pathfinder != null && nextAnchor != null) {
+                                if (nextAnchor != null) {
                                     double speed = getMobSpeed(mob) * 0.85;
-                                    pathfinder.moveTo(nextAnchor, speed);
+                                    moveMobTowards(mob, nextAnchor, speed);
                                 }
                             } else {
                                 followAnchor = null;
@@ -438,6 +437,21 @@ public class MinionAI {
         }
         // Fallback to exact player location
         minion.teleport(base);
+    }
+
+    private static void moveMobTowards(org.bukkit.entity.Mob mob, Location target, double speedFactor) {
+        if (mob == null || target == null) return;
+        Location current = mob.getLocation();
+        double distance = current.distance(target);
+        if (distance < 0.5) {
+            mob.setVelocity(new Vector(0,0,0));
+            return;
+        }
+        Vector dir = target.toVector().subtract(current.toVector()).normalize();
+        // Preserve some vertical movement for flying mobs
+        double speed = speedFactor * 0.2; // approximate blocks per tick
+        Vector vel = dir.multiply(speed);
+        mob.setVelocity(vel);
     }
 
     private static double getMobSpeed(org.bukkit.entity.Mob mob) {
