@@ -98,7 +98,13 @@ public class SummonListener implements Listener {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
-        if (!(event.getDamager() instanceof LivingEntity damager)) {
+        LivingEntity damager = null;
+        if (event.getDamager() instanceof LivingEntity le) {
+            damager = le;
+        } else if (event.getDamager() instanceof org.bukkit.entity.Projectile proj && proj.getShooter() instanceof LivingEntity le) {
+            damager = le;
+        }
+        if (damager == null) {
             GlovedPlugin.logDebug("[Summon Armor] Damager not living");
             return;
         }
