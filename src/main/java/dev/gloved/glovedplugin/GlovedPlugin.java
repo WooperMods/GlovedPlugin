@@ -144,6 +144,7 @@ public final class GlovedPlugin extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.ChestOpenListener(this, this.lootrManager), this);
             getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.ProtectionListener(this.lootrManager), this);
             getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.ChestAutoRegisterListener(this.lootrManager), this);
+            getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.lootr.listener.LootrChestPlaceListener(this, this.lootrManager), this);
             logInfo("Lootr module enabled");
         }
 

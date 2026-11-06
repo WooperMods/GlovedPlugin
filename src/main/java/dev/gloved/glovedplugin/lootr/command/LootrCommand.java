@@ -139,14 +139,6 @@ public class LootrCommand implements BasicCommand {
                         return;
                     }
                 }
-                org.bukkit.Location loc = player.getLocation().clone().subtract(0, 1, 0);
-                org.bukkit.block.Block b = loc.getBlock();
-                if (!b.getType().isAir() && b.getType() != org.bukkit.Material.CHEST) {
-                    sender.sendMessage("§cBlock in the way");
-                    return;
-                }
-                b.setType(org.bukkit.Material.CHEST);
-                dev.gloved.glovedplugin.lootr.model.ContainerId genId = new dev.gloved.glovedplugin.lootr.model.ContainerId(player.getWorld().getUID(), b.getX(), b.getY(), b.getZ());
                 java.util.List<String> tables = java.util.List.of(
                     "minecraft:chests/simple_dungeon",
                     "minecraft:chests/abandoned_mineshaft",
@@ -161,19 +153,36 @@ public class LootrCommand implements BasicCommand {
                 );
                 // blank = empty chest with no loot table at all
                 String chosen = mode.equals("blank") ? "" : tables.get(new java.util.Random().nextInt(tables.size()));
-                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate mode=" + mode + " loc=" + b.getX() + "," + b.getY() + "," + b.getZ() + " chosen=" + chosen);
-                boolean forceElite = mode.equals("elite");
-                // Upsert so an explicit admin command always overwrites whatever
-                // was previously stored for this position (stale loot table or a
-                // stale elite marker left over from an earlier generate).
-                manager.getRegistry().upsert(genId, chosen, forceElite);
-                if (forceElite) {
-                    dev.gloved.glovedplugin.lootr.manager.PlayerLootService lootService = new dev.gloved.glovedplugin.lootr.manager.PlayerLootService(manager.getDatabase().getConnection());
-                    lootService.setEliteFlag(genId, player.getUniqueId(), 1);
-                    dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate elite flag set for " + genId.toStringKey() + " player=" + player.getUniqueId());
-                    sender.sendMessage("§aGenerated Elite Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + (chosen.isEmpty() ? "" : " with " + chosen));
+                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate mode=" + mode + " chosen=" + chosen);
+                // Create Lootr chest item
+                org.bukkit.inventory.ItemStack item = new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHEST);
+                org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+                if (meta != null) {
+                    String displayName = mode.equals("elite") ? "§6Elite Chest" : "§6Loot Chest";
+                    meta.setDisplayName(displayName);
+                    java.util.List<String> lore = new java.util.ArrayList<>();
+                    lore.add("§7Right-click to place");
+                    if (!chosen.isEmpty()) {
+                        lore.add("§7Loot table: " + chosen);
+                    } else if (mode.equals("blank")) {
+                        lore.add("§7Blank chest");
+                    }
+                    lore.add("§7Mode: " + mode);
+                    meta.setLore(lore);
+                    org.bukkit.NamespacedKey keyMode = new org.bukkit.NamespacedKey(plugin, "lootr_mode");
+                    org.bukkit.NamespacedKey keyLoot = new org.bukkit.NamespacedKey(plugin, "lootr_loot");
+                    org.bukkit.NamespacedKey keyId = new org.bukkit.NamespacedKey(plugin, "lootr_id");
+                    org.bukkit.persistence.PersistentDataContainer pdc = meta.getPersistentDataContainer();
+                    pdc.set(keyMode, org.bukkit.persistence.PersistentDataType.STRING, mode);
+                    pdc.set(keyLoot, org.bukkit.persistence.PersistentDataType.STRING, chosen);
+                    pdc.set(keyId, org.bukkit.persistence.PersistentDataType.STRING, java.util.UUID.randomUUID().toString());
+                    item.setItemMeta(meta);
+                }
+                player.getInventory().addItem(item);
+                if (mode.equals("elite")) {
+                    sender.sendMessage("§aGiven Elite Lootr chest item" + (chosen.isEmpty() ? "" : " with " + chosen));
                 } else {
-                    sender.sendMessage("§aGenerated Lootr chest at " + b.getX() + "," + b.getY() + "," + b.getZ() + (chosen.isEmpty() ? "" : " with " + chosen));
+                    sender.sendMessage("§aGiven Lootr chest item" + (chosen.isEmpty() ? " (blank)" : " with " + chosen));
                 }
                 return;
             case "list":

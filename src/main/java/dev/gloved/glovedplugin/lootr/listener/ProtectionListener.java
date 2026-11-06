@@ -39,6 +39,8 @@ public class ProtectionListener implements Listener {
     public void onBlockBreak(BlockBreakEvent e) {
         Block block = e.getBlock();
         if (!isProtected(block)) return;
+        // Lootr chests should never drop a chest item
+        e.setDropItems(false);
         if (manager.getConfig().protectionBreak == false) return;
         if (!e.getPlayer().isSneaking()) {
             e.setCancelled(true);

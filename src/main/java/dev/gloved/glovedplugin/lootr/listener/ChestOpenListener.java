@@ -103,7 +103,7 @@ public class ChestOpenListener implements Listener {
         long now = System.currentTimeMillis();
         boolean expired = firstOpened == null || now - firstOpened >= REROLL_MS;
         boolean eliteChest = eliteAvailable && (eliteFlag == 1 || containerElite);
-        String title = baseTitle + (eliteChest ? suffix : "");
+        String title = eliteChest ? "§6Elite Chest" : baseTitle;
         Inventory inv;
         GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " firstOpened=" + firstOpened + " expired=" + expired + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
         if (blob != null && blob.length > 0 && !expired) {
@@ -146,7 +146,7 @@ public class ChestOpenListener implements Listener {
         lootService.setEliteFlag(id, uuid, isElite ? 1 : 0);
         GlovedPlugin.logDebug("Lootr isElite final=" + isElite + " eliteFlag=" + eliteFlag + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
 
-        title = baseTitle + (isElite ? suffix : "");
+        title = isElite ? "§6Elite Chest" : baseTitle;
         int size = containerState.getInventory().getSize();
         if (isElite) {
             inv = Bukkit.createInventory(null, size, title);

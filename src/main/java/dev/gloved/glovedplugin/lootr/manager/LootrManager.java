@@ -89,12 +89,17 @@ public class LootrManager {
                                 // creates chests without one, so requiring a loot table here
                                 // would wrongly unregister live containers.
                                 seenInChunk.add(id);
-                                if (!(container instanceof org.bukkit.loot.Lootable lootable)) continue;
-                                org.bukkit.loot.LootTable table = lootable.getLootTable();
-                                if (table == null) continue;
-                                if (!registry.isRegistered(id)) {
-                                    registry.register(id, table.getKey().toString());
+                                boolean isRegistered = registry.isRegistered(id);
+                                if (!isRegistered) {
+                                    if (container instanceof org.bukkit.loot.Lootable lootable) {
+                                        org.bukkit.loot.LootTable table = lootable.getLootTable();
+                                        if (table != null) {
+                                            registry.register(id, table.getKey().toString());
+                                            isRegistered = true;
+                                        }
+                                    }
                                 }
+                                if (!isRegistered) continue;
                                 if (opened.contains(id.toStringKey())) continue;
                                 org.bukkit.Location loc = new org.bukkit.Location(world, block.getX() + 0.5, block.getY() + 1.0, block.getZ() + 0.5);
                                 if (ploc.distanceSquared(loc) > rangeSq) continue;
