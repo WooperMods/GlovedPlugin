@@ -365,22 +365,29 @@ public class MinionAI {
                         }
                         lastFollowDist = curFollowDist;
                     } else {
-                        if (followAnchor == null || now - lastFollowUpdate > 40) {
-                            double radius = 3.0 + Math.random() * 2.0;
-                            double angle = Math.random() * Math.PI * 2;
-                            double dx = Math.cos(angle) * radius;
-                            double dz = Math.sin(angle) * radius;
-                            followAnchor = owner.getLocation().clone().add(dx, 0, dz);
-                            lastFollowUpdate = now;
-                        }
-                        // Heuristic pre-filter: skip wall-separated anchors
-                        if (reachabilityService.canReach(mob, followAnchor)) {
+                        // Direct capability-aware follow to owner using NpcApi reachability
+                        if (reachabilityService.canReach(mob, owner.getLocation())) {
                             if (pathfinder != null) {
-                                pathfinder.moveTo(followAnchor, 1.0);
+                                pathfinder.moveTo(owner, 1.2);
                             }
-                        } else {
-                            // Anchor unreachable, drop it to force new anchor next tick
                             followAnchor = null;
+                        } else {
+                            // Fallback: try a small offset anchor if direct owner unreachable
+                            if (followAnchor == null || now - lastFollowUpdate > 40) {
+                                double radius = 3.0 + Math.random() * 2.0;
+                                double angle = Math.random() * Math.PI * 2;
+                                double dx = Math.cos(angle) * radius;
+                                double dz = Math.sin(angle) * radius;
+                                followAnchor = owner.getLocation().clone().add(dx, 0, dz);
+                                lastFollowUpdate = now;
+                            }
+                            if (followAnchor != null && reachabilityService.canReach(mob, followAnchor)) {
+                                if (pathfinder != null) {
+                                    pathfinder.moveTo(followAnchor, 1.0);
+                                }
+                            } else {
+                                followAnchor = null;
+                            }
                         }
                         lastFollowDist = curFollowDist;
                     }
