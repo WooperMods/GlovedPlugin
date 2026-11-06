@@ -167,7 +167,7 @@ public final class GlovedPlugin extends JavaPlugin {
         try {
             NpcApi.createInstance(this, new NpcConfig());
             logInfo("NpcApi initialized for capability-aware pathfinding");
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logWarning("Failed to initialize NpcApi: " + e.getMessage());
         }
 
@@ -338,7 +338,7 @@ public final class GlovedPlugin extends JavaPlugin {
         try {
             NpcApi.disable();
             logInfo("NpcApi disabled");
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         try {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
