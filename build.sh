@@ -12,7 +12,7 @@ cd "${PROJECT_DIR}"
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export PATH="${JAVA_HOME}/bin:${PATH}"
 
-./gradlew clean build --no-daemon
+./gradlew clean shadowJar --no-daemon
 
 JAR_PATH="${PROJECT_DIR}/build/libs/GlovedPlugin.jar"
 
