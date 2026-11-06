@@ -1,11 +1,12 @@
 # GlovedPlugin – Agent Notes
 
 ## Build & Deploy
-- Build: `./gradlew clean build --no-daemon`
-- Dev shortcut: `./build.sh` – sets `JAVA_HOME=/usr/lib/jvm/java-17-openjdk`, runs Gradle, copies `build/libs/GlovedPlugin.jar` to `~/Downloads` and to `/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins`
-- Jar name is fixed to `GlovedPlugin.jar` (no version). `processResources` expands `version` into `paper-plugin.yml`
-- Paper API 26.3+, `compileOnly io.papermc.paper:paper-api:26.3.build.+`, Java 25 toolchain, Gradle 8.14.4 wrapper
-- Release: `bun scripts/release.ts [major|minor|patch|X.Y.Z]` – bumps version, changelog, tag, GitHub release
+- Never run Gradle directly. Always use `./build.sh` unless the script is broken. It sets `JAVA_HOME=/usr/lib/jvm/java-17-openjdk`, runs `./gradlew clean shadowJar --no-daemon`, and copies `build/libs/GlovedPlugin.jar` to `~/Downloads` and `/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins`.
+- Jar name is fixed to `GlovedPlugin.jar` (no version). `processResources` expands `version` into `paper-plugin.yml`.
+- Shadow jar bundles implementation deps; `jar` task outputs `GlovedPlugin-plain.jar`. Never deploy the plain jar.
+- Paper API 26.3+, `compileOnly io.papermc.paper:paper-api:26.3.build.+`, Java 25 toolchain, Gradle 8.14.4 wrapper.
+- NpcApi-Paper 3.6.3 is bundled via `implementation`, initialized in `GlovedPlugin.onEnable` with `NpcApi.createInstance`. Disable is guarded with `Throwable` catch to survive PlugMan reloads.
+- Release: `bun scripts/release.ts [major|minor|patch|X.Y.Z]` – bumps version, changelog, tag, GitHub release.
 
 ## Structure
 - Entry: `GlovedPlugin.java`
@@ -48,8 +49,12 @@
 - Detection is lore-first for EliteMobs enchant items. Lore line containing `can summon`/`can spawn`/`summon`/`spawn` is parsed to snake_case profile name; profile cached in PDC key `gloved:summon_profile`. PDC keys `elitemobsitem` and `custom_item_id` are ignored.
 - `SummonProfile` fields: `mob-types` list (random per spawn), `ai`, `tamed`, `friendly`, `invulnerable`, `chance`, `cooldown_ticks`, `lifetime_ticks`, `minions`, `max-active`, `valid-slots`, `target-mode`, `damage-proxy`, `follow-range`, `attack-range`, `nametag-format`, `nametag-color`, `nametag-visible`.
 - `max-active` is per-profile and enforced in `SummonManager.canSummon`.
-- `MinionAI` uses Paper `Pathfinder` for natural follow with stable anchor and idle radius ~4 blocks; teleports if beyond `follow-range`.
-- Target candidates filtered to within `follow-range` of owner. Sticky target for 200 ticks. Stable distribution per minion via `minion.getUniqueId().hashCode() % candidates.size()`. Protection override pulls far minions >6 blocks away to closest threat within 10 blocks of owner.
+- `MinionAI` uses Paper `Pathfinder` with capability-aware reachability via `ReachabilityService`. NpcApi `PathfindingUtils.findPath` is tried first, falls back to `Pathfinder.findPath().canReachFinalPoint()`.
+- Unreachable enemies are cached per minion with 10 s TTL and location invalidation: cache is cleared if target moves. Heuristic pre-filters drop candidates with vertical delta >8 blocks, distance >64², or unreachable via probe.
+- Target stuck detection drops target after 60 ticks of no progress; unreachable probe also caches target immediately.
+- Follow uses stable anchor with idle radius ~4 blocks. Stuck follow detection only runs outside idle radius; within idle radius stuck timer is reset to avoid teleport spam.
+- Teleport near player preserves Y to work underground; small random XZ offset avoids solid blocks.
+- Target candidates filtered to `profile.followRange` of owner. Sticky target for 200 ticks. Stable distribution per minion via `minion.getUniqueId().hashCode() % candidates.size()`. Protection override pulls far minions >6 blocks away to closest threat within 10 blocks of owner.
 - Damage proxy redirects melee and projectile damage to player-credited damage for enchants/loot. `forceFullAttackStrength` sets attack cooldown to full.
 - Minions cleaned up on plugin disable via `SummonInstanceTracker.removeAll()`.
 - No code change needed to add new summons; add profile to `summon.yml` and EliteMobs enchant with matching lore.
