@@ -19,7 +19,6 @@ public class ContainerRegistry {
 
     public boolean isRegistered(ContainerId id) {
         if (cache.contains(id)) {
-            dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.isRegistered cache hit " + id.toStringKey());
             return true;
         }
         try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM containers WHERE id = ?")) {
@@ -27,7 +26,6 @@ public class ContainerRegistry {
             try (ResultSet rs = ps.executeQuery()) {
                 boolean found = rs.next();
                 if (found) cache.add(id);
-                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr ContainerRegistry.isRegistered db found=" + found + " id=" + id.toStringKey());
                 return found;
             }
         } catch (SQLException e) {

@@ -36,6 +36,10 @@ public final class GlovedPlugin extends JavaPlugin {
     private GlovedBridge glovedBridge;
     private final java.util.Set<java.util.UUID> pvpDisabled = new java.util.HashSet<>();
     private dev.gloved.glovedplugin.lootr.manager.LootrManager lootrManager;
+    private dev.gloved.glovedplugin.summon.SummonConfig summonConfig;
+    private dev.gloved.glovedplugin.summon.SummonManager summonManager;
+    private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
+    private dev.gloved.glovedplugin.summon.MinionAI minionAI;
 
     {
         logger = getLogger();
@@ -156,6 +160,15 @@ public final class GlovedPlugin extends JavaPlugin {
         this.glovedBridge = new GlovedBridge(this, this.combatListener);
         FmmBridge.invalidate();
 
+        // Modular summon module
+        this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
+        this.summonTracker = new dev.gloved.glovedplugin.summon.SummonInstanceTracker(this);
+        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker);
+        this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonConfig, this.summonTracker), this);
+        logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled"));
+
         // Register menu command using Paper's registerCommand API
         Menu menuCommand = new Menu();
         this.registerCommand("menu", "Custom menu for Commands", menuCommand);
@@ -186,6 +199,9 @@ public final class GlovedPlugin extends JavaPlugin {
         Menu.refreshTitle(this.menuConfig);
         this.weaponRegistry.load(this);
         FmmBridge.invalidate();
+        if (this.summonConfig != null) {
+            this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
+        }
         if (this.combatListener != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 this.combatListener.applyReach(player);
@@ -312,6 +328,11 @@ public final class GlovedPlugin extends JavaPlugin {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
         EditSessionCache.storeAll(this);
+        // Cleanup summoned minions
+        if (summonTracker != null) {
+            summonTracker.removeAll();
+            GlovedPlugin.logInfo("Cleaned up all summoned minions on disable");
+        }
         // Close any open menu views so a hot-reload doesn't leave ghost
         // inventories / cursor items attached. Fully guarded: an exception
         // here would abort the disable and orphan our listeners, leaving a

@@ -12,6 +12,7 @@
 - Menu: `MenuConfig.java` – centered layout engine; `Menus/MenuInv.java`; `commands/GlovedCommand.java`; `handlers/MenuHandler.java`
 - Combat: `combat/` package. Runtime config `combat.yml`. Arc hit detection in `ArcHitbox.java`, listener in `CombatListener.java`, registry in `WeaponRegistry.java`
 - Lootr: `lootr/` package. Runtime config `lootr.yml`. `LootrManager` (particle + orphan-cleanup scan), `ContainerRegistry`, `PlayerLootService` (SQLite `lootr.db`), `ChestOpenListener`, `EliteMobsIntegration` (reflection)
+- Summon: `summon/` package. Runtime config `summon.yml`. Profile-based minion spawns triggered by EliteMobs enchants. `SummonConfig`, `SummonProfile`, `SummonManager`, `SummonEnchant`, `MinionAI`, `DamageProxy`, `SummonInstanceTracker`, `SummonListener`
 - Config: `config.yml` – menu items with `anchor`/`offset-x`/`offset-y`/`slot`, opener item. `combat.yml` – weapon presets, `spare_tamed`, `spare_named`, `min_attack_strength`, `adventure_mode_while_armed`, `sneak_bypass`
 
 ## Commands
@@ -43,7 +44,39 @@
 - `/lootr reset` preserves `elite_flag` (UPDATE, not DELETE).
 - Paper API 26.3 LootContext builder has `.killer(player)` and `.luck(float)` — `.withPlayer`/`.withRandom`/`.withLuck` do not exist. There is no `World.getChunkIfLoaded(int,int)` — use `getChunkAt` + `isLoaded()`.
 
+## Summon quirks
+- Detection is lore-first for EliteMobs enchant items. Lore line containing `can summon`/`can spawn`/`summon`/`spawn` is parsed to snake_case profile name; profile cached in PDC key `gloved:summon_profile`. PDC keys `elitemobsitem` and `custom_item_id` are ignored.
+- `SummonProfile` fields: `mob-types` list (random per spawn), `ai`, `tamed`, `friendly`, `invulnerable`, `chance`, `cooldown_ticks`, `lifetime_ticks`, `minions`, `max-active`, `valid-slots`, `target-mode`, `damage-proxy`, `follow-range`, `attack-range`, `nametag-format`, `nametag-color`, `nametag-visible`.
+- `max-active` is per-profile and enforced in `SummonManager.canSummon`.
+- `MinionAI` uses Paper `Pathfinder` for natural follow with stable anchor and idle radius ~4 blocks; teleports if beyond `follow-range`.
+- Target candidates filtered to within `follow-range` of owner. Sticky target for 200 ticks. Stable distribution per minion via `minion.getUniqueId().hashCode() % candidates.size()`. Protection override pulls far minions >6 blocks away to closest threat within 10 blocks of owner.
+- Damage proxy redirects melee and projectile damage to player-credited damage for enchants/loot. `forceFullAttackStrength` sets attack cooldown to full.
+- Minions cleaned up on plugin disable via `SummonInstanceTracker.removeAll()`.
+- No code change needed to add new summons; add profile to `summon.yml` and EliteMobs enchant with matching lore.
+
+## EliteMobs Custom Items – quick guide for summon enchants
+- Custom items live in `/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins/EliteMobs/customitems/`. Subfolders are allowed; filename including `.yml` must be unique. Relative path is `plugins/EliteMobs/customitems/`.
+- Minimal file:
+  ```
+  isEnabled: true
+  material: DIAMOND_SWORD
+  name: '&4Bee Swarm Blade'
+  lore:
+    - '&7Can summon bee_swarm on hit.'
+    - '&7EliteMobs custom enchant'
+  enchantments:
+    - 'elitemobs:bee_swarm,1'
+  level: 10
+  itemType: custom
+  soulbound: true
+  ```
+- `enchantments` uses namespaced IDs: `elitemobs:<enchant_id>,<level>` for EliteMobs custom enchants, vanilla names e.g. `SHARPNESS,5` also allowed.
+- Lore line containing `can summon ... on hit` / `can spawn ... on hit` is what GlovedPlugin parses to detect the summon profile. Profile name is derived from the text between trigger and `on hit`, lowercased and spaces → `_`.
+- For unique weapons that should only drop from specific loot tables, set `itemType: unique` and reference the file name in the loot table. `custom` makes it eligible for random elite drops and shops.
+- Reload EliteMobs after editing: `/em reload` or server restart.
+- Custom enchant definitions live in `/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins/EliteMobs/enchantments/`. Default summon enchants are provider-owned YAML+Lua; do not edit core files directly – create a copy with a new ID if you need a variant.
+
 ## Conventions
 - Conventional Commits enforced for repo commits
-- Config values are backfilled on enable/reload; existing keys are never overwritten. To change a `lootr.yml` default change all three: `src/main/resources/lootr.yml`, the fallback in `LootrConfig.load`, and the backfill default in `GlovedPlugin.onEnable` — plus the live server yml for immediate effect.
+- Config values are backfilled on enable/reload; existing keys are never overwritten. To change a `lootr.yml`/`summon.yml` default change all three: `src/main/resources/*.yml`, the fallback in `*Config.load`, and the backfill default in `GlovedPlugin.onEnable` — plus the live server yml for immediate effect.
 - `combat.yml` is saved as resource on load
