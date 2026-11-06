@@ -60,6 +60,11 @@ public class SummonManager {
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
             LivingEntity mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
             if (mob == null) continue;
+            // Disable vanilla AI to prevent unwanted behaviors like pollination/wander
+            try {
+                mob.setAI(false);
+                mob.setCanPickupItems(false);
+            } catch (Exception ignored) {}
             // Tame if applicable
             if (mob instanceof Tameable t && profile.tamed) {
                 t.setTamed(true);

@@ -133,6 +133,10 @@ public class MinionAI {
             long stuckSince = 0L;
             double lastFollowDist = Double.MAX_VALUE;
             long followStuckSince = 0L;
+            Location cachedTargetWaypoint = null;
+            long cachedTargetWaypointTick = -1L;
+            Location cachedFollowWaypoint = null;
+            long cachedFollowWaypointTick = -1L;
             @Override
             public void run() {
                 if (minion.isDead() || !tracker.isSummoned(minion.getUniqueId())) {
@@ -203,16 +207,17 @@ public class MinionAI {
                         // Only probe if candidate is far enough to be suspicious
                         double distSq = minion.getLocation().distanceSquared(le.getLocation());
                         if (distSq > 64 * 64) return true;
-                        // Lightweight reachability probe
-                        try {
-                            boolean reachable = reachabilityService.canReach(mob, le.getLocation());
-                            if (!reachable) {
-                                MinionAI.cacheUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation());
-                            }
-                            return !reachable;
-                        } catch (Exception e) {
-                            return false;
-                        }
+                        // Lightweight reachability probe - disabled for performance, rely on target check later
+                        // try {
+                        //     boolean reachable = reachabilityService.canReach(mob, le.getLocation());
+                        //     if (!reachable) {
+                        //         MinionAI.cacheUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation());
+                        //     }
+                        //     return !reachable;
+                        // } catch (Exception e) {
+                        //     return false;
+                        // }
+                        return false;
                     });
                 }
                 long now = Bukkit.getCurrentTick();
@@ -320,10 +325,15 @@ public class MinionAI {
                         lastTargetDist = Double.MAX_VALUE;
                         stuckSince = 0L;
                     } else {
-                        // Move towards target using NpcApi computed next waypoint
-                        Location next = reachabilityService.getNextWaypoint(mob, target.getLocation());
+                        // Move towards target using NpcApi computed next waypoint with caching
+                        if (now - cachedTargetWaypointTick > 5 || cachedTargetWaypoint == null) {
+                            cachedTargetWaypoint = reachabilityService.getNextWaypoint(mob, target.getLocation());
+                            cachedTargetWaypointTick = now;
+                        }
+                        Location next = cachedTargetWaypoint;
                         if (pathfinder != null && next != null) {
-                            pathfinder.moveTo(next, 1.2);
+                            double speed = getMobSpeed(mob);
+                            pathfinder.moveTo(next, speed);
                         }
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = profile.attackRange * profile.attackRange;
@@ -369,9 +379,14 @@ public class MinionAI {
                     } else {
                         // Direct capability-aware follow to owner using NpcApi reachability
                         if (reachabilityService.canReach(mob, owner.getLocation())) {
-                            Location next = reachabilityService.getNextWaypoint(mob, owner.getLocation());
+                            if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null) {
+                                cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, owner.getLocation());
+                                cachedFollowWaypointTick = now;
+                            }
+                            Location next = cachedFollowWaypoint;
                             if (pathfinder != null && next != null) {
-                                pathfinder.moveTo(next, 1.2);
+                                double speed = getMobSpeed(mob);
+                                pathfinder.moveTo(next, speed);
                             }
                             followAnchor = null;
                         } else {
@@ -385,9 +400,14 @@ public class MinionAI {
                                 lastFollowUpdate = now;
                             }
                             if (followAnchor != null && reachabilityService.canReach(mob, followAnchor)) {
-                                Location nextAnchor = reachabilityService.getNextWaypoint(mob, followAnchor);
+                                if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null || !cachedFollowWaypoint.equals(followAnchor)) {
+                                    cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, followAnchor);
+                                    cachedFollowWaypointTick = now;
+                                }
+                                Location nextAnchor = cachedFollowWaypoint;
                                 if (pathfinder != null && nextAnchor != null) {
-                                    pathfinder.moveTo(nextAnchor, 1.0);
+                                    double speed = getMobSpeed(mob) * 0.85;
+                                    pathfinder.moveTo(nextAnchor, speed);
                                 }
                             } else {
                                 followAnchor = null;
@@ -418,6 +438,20 @@ public class MinionAI {
         }
         // Fallback to exact player location
         minion.teleport(base);
+    }
+
+    private static double getMobSpeed(org.bukkit.entity.Mob mob) {
+        if (mob == null) return 1.0;
+        try {
+            var attr = mob.getAttribute(Attribute.MOVEMENT_SPEED);
+            if (attr != null) {
+                double base = attr.getValue();
+                // Normalize to Paper pathfinder speed scale. Default mob speed ~0.2 -> ~1.0
+                double speed = Math.max(0.2, Math.min(2.5, base / 0.2));
+                return speed;
+            }
+        } catch (Exception ignored) {}
+        return 1.2;
     }
 
     private static boolean isReachable(org.bukkit.entity.Mob mob, org.bukkit.Location loc) {
