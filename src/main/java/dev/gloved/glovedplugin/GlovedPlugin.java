@@ -18,6 +18,9 @@ import dev.gloved.glovedplugin.editor.EditSessionCache;
 import dev.gloved.glovedplugin.handlers.MenuHandler;
 import dev.gloved.glovedplugin.handlers.TorchHandler;
 
+import de.eisi05.npc.api.NpcApi;
+import de.eisi05.npc.api.objects.NpcConfig;
+
 import java.util.logging.Logger;
 
 /**
@@ -159,6 +162,14 @@ public final class GlovedPlugin extends JavaPlugin {
         this.combatListener = new CombatListener(this, this.weaponRegistry);
         this.glovedBridge = new GlovedBridge(this, this.combatListener);
         FmmBridge.invalidate();
+
+        // Initialize NpcApi for pathfinding capabilities
+        try {
+            NpcApi.createInstance(this, new NpcConfig());
+            logInfo("NpcApi initialized for capability-aware pathfinding");
+        } catch (Exception e) {
+            logWarning("Failed to initialize NpcApi: " + e.getMessage());
+        }
 
         // Modular summon module
         this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
@@ -324,6 +335,10 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
+        try {
+            NpcApi.disable();
+            logInfo("NpcApi disabled");
+        } catch (Exception ignored) {}
         try {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
