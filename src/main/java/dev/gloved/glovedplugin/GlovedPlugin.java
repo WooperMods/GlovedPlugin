@@ -161,6 +161,10 @@ public final class GlovedPlugin extends JavaPlugin {
         this.weaponRegistry.load(this);
         this.combatListener = new CombatListener(this, this.weaponRegistry);
         this.glovedBridge = new GlovedBridge(this, this.combatListener);
+        // Try connect to mod bridge for players already online
+        try {
+            this.glovedBridge.refreshOnlinePlayers();
+        } catch (Exception ignored) {}
         FmmBridge.invalidate();
 
         // Initialize NpcApi for pathfinding capabilities
@@ -218,6 +222,12 @@ public final class GlovedPlugin extends JavaPlugin {
                 this.combatListener.applyReach(player);
                 this.combatListener.applyGameMode(player);
             }
+        }
+        // Refresh mod bridge for online players after reload
+        if (this.glovedBridge != null) {
+            try {
+                this.glovedBridge.refreshOnlinePlayers();
+            } catch (Exception ignored) {}
         }
     }
 

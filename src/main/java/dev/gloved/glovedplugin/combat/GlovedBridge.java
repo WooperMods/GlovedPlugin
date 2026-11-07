@@ -73,10 +73,20 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
         } catch (Exception e) {
             return;
         }
+        startBeaconTask(id);
+    }
+
+    private void cancelBeacon(UUID id) {
+        org.bukkit.scheduler.BukkitTask task = beaconTasks.remove(id);
+        if (task != null) {
+            try {
+                task.cancel();
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void startBeaconTask(UUID id) {
         cancelBeacon(id);
-        // Paper silently drops outgoing plugin messages until the client's
-        // channel registration arrives, so retry until the channel is listed
-        // (or the client handshakes, or we give up on vanilla clients).
         final int[] attempts = {0};
         org.bukkit.scheduler.BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             Player player;
@@ -109,12 +119,12 @@ public final class GlovedBridge implements Listener, PluginMessageListener {
         beaconTasks.put(id, task);
     }
 
-    private void cancelBeacon(UUID id) {
-        org.bukkit.scheduler.BukkitTask task = beaconTasks.remove(id);
-        if (task != null) {
-            try {
-                task.cancel();
-            } catch (Exception ignored) {}
+    public void refreshOnlinePlayers() {
+        if (!bridgeOn()) return;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            UUID id = player.getUniqueId();
+            if (modded.contains(id)) continue;
+            startBeaconTask(id);
         }
     }
 
