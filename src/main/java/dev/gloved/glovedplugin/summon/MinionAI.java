@@ -25,6 +25,7 @@ public class MinionAI {
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> unreachableCache = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, org.bukkit.Location>> unreachableLocationCache = new java.util.concurrent.ConcurrentHashMap<>();
     private static final long UNREACHABLE_TTL_MS = 10_000L;
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, Long> lastWaypointLog = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MinionAI(GlovedPlugin plugin, SummonInstanceTracker tracker) {
         this.plugin = plugin;
@@ -134,6 +135,7 @@ public class MinionAI {
             long stuckSince = 0L;
             double lastFollowDist = Double.MAX_VALUE;
             long followStuckSince = 0L;
+            long followUnreachableSince = 0L;
             Location cachedTargetWaypoint = null;
             long cachedTargetWaypointTick = -1L;
             Location cachedFollowWaypoint = null;
@@ -148,6 +150,7 @@ public class MinionAI {
                 if (mob == null) {
                     // Non-mob entities just follow owner
                     if (minion.getLocation().distanceSquared(owner.getLocation()) > profile.followRange * profile.followRange) {
+                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " non-mob too far from owner " + owner.getName() + ", teleporting");
                         minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
                     }
                     return;
@@ -195,8 +198,9 @@ public class MinionAI {
                 // Filter candidates to those within the teleport-back / follow range of the owner
                 double maxTargetSq = profile.followRange * profile.followRange;
                 candidates.removeIf(le -> le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
-                // Heuristic pre-filter: drop wall-separated candidates quickly
+                // Heuristic pre-filter: drop wall-separated candidates quickly and out-of-range candidates
                 if (mob != null && !candidates.isEmpty()) {
+                    double maxChaseSq = profile.followRange * profile.followRange * 4;
                     candidates.removeIf(le -> {
                         if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) {
                             return true;
@@ -204,21 +208,18 @@ public class MinionAI {
                         // Quick vertical check: if > 8 blocks vertical diff, likely unreachable
                         double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
                         if (dy > 8) return true;
-                        // Probe reachability for remaining candidates, but limit probes to avoid spam
-                        // Only probe if candidate is far enough to be suspicious
                         double distSq = minion.getLocation().distanceSquared(le.getLocation());
-                        if (distSq > 64 * 64) return true;
-                        // Lightweight reachability probe - disabled for performance, rely on target check later
-                        // try {
-                        //     boolean reachable = reachabilityService.canReach(mob, le.getLocation());
-                        //     if (!reachable) {
-                        //         MinionAI.cacheUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation());
-                        //     }
-                        //     return !reachable;
-                        // } catch (Exception e) {
-                        //     return false;
-                        // }
-                        return false;
+                        if (distSq > maxChaseSq) return true;
+                        // Lightweight reachability probe
+                        try {
+                            boolean reachable = reachabilityService.canReach(mob, le.getLocation());
+                            if (!reachable) {
+                                MinionAI.cacheUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation());
+                            }
+                            return !reachable;
+                        } catch (Exception e) {
+                            return false;
+                        }
                     });
                 }
                 long now = Bukkit.getCurrentTick();
@@ -318,23 +319,24 @@ public class MinionAI {
 
                 if (target != null) {
                     // Probe reachability before committing
-                    if (!reachabilityService.canReach(mob, target.getLocation())) {
-                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " target " + target.getName() + " unreachable via pathfinder, dropping");
-                        MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
-                        target = null;
-                        lastTarget = null;
-                        lastTargetDist = Double.MAX_VALUE;
-                        stuckSince = 0L;
-                    } else {
-                        // Move towards target using NpcApi computed next waypoint with caching
+                    // Reachability check removed for performance; stuck detection will drop target if unreachable
+                    {
+                        // Move towards target using Pathetic computed next waypoint with caching
                         if (now - cachedTargetWaypointTick > 5 || cachedTargetWaypoint == null) {
                             cachedTargetWaypoint = reachabilityService.getNextWaypoint(mob, target.getLocation());
                             cachedTargetWaypointTick = now;
                         }
                         Location next = cachedTargetWaypoint;
                         if (next != null) {
+                            long nowMs = System.currentTimeMillis();
+                            Long last = lastWaypointLog.get(minion.getUniqueId());
+                            if (last == null || nowMs - last > 5000) {
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " target waypoint " + next + " for target " + target.getName());
+                                lastWaypointLog.put(minion.getUniqueId(), nowMs);
+                            }
                             double speed = getMobSpeed(mob);
                             moveMobTowards(mob, next, speed);
+                            faceTowards(mob, next);
                         }
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = profile.attackRange * profile.attackRange;
@@ -375,48 +377,71 @@ public class MinionAI {
                         // Close enough, stop movement and stand still
                         mob.setVelocity(new Vector(0,0,0));
                         lastFollowDist = curFollowDist;
+                        followUnreachableSince = 0L;
                     } else {
-                        // Direct capability-aware follow to owner using NpcApi reachability
-                        if (reachabilityService.canReach(mob, owner.getLocation())) {
-                            if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null) {
-                                cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, owner.getLocation());
-                                cachedFollowWaypointTick = now;
-                            }
-                            Location next = cachedFollowWaypoint;
-                            if (next != null) {
-                                double speed = getMobSpeed(mob);
-                                moveMobTowards(mob, next, speed);
-                            }
-                            followAnchor = null;
-                        } else {
-                            // Fallback: try a small offset anchor if direct owner unreachable
-                            if (followAnchor == null || now - lastFollowUpdate > 40) {
-                                double radius = 3.0 + Math.random() * 2.0;
-                                double angle = Math.random() * Math.PI * 2;
-                                double dx = Math.cos(angle) * radius;
-                                double dz = Math.sin(angle) * radius;
-                                followAnchor = owner.getLocation().clone().add(dx, 0, dz);
-                                lastFollowUpdate = now;
-                            }
-                            if (followAnchor != null && reachabilityService.canReach(mob, followAnchor)) {
-                                if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null || !cachedFollowWaypoint.equals(followAnchor)) {
-                                    cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, followAnchor);
-                                    cachedFollowWaypointTick = now;
-                                }
-                                Location nextAnchor = cachedFollowWaypoint;
-                                if (nextAnchor != null) {
-                                    double speed = getMobSpeed(mob) * 0.85;
-                                    moveMobTowards(mob, nextAnchor, speed);
-                                }
-                            } else {
-                                followAnchor = null;
+                        boolean ownerReachable = true;
+                        boolean shouldCheckReach = curFollowDist > idleRadius + 2.0;
+                        if (shouldCheckReach) {
+                            try {
+                                ownerReachable = reachabilityService.canReach(mob, owner.getLocation());
+                            } catch (Exception ignored) {
+                                ownerReachable = true;
                             }
                         }
-                        lastFollowDist = curFollowDist;
+                        if (!ownerReachable) {
+                            if (followUnreachableSince == 0L) {
+                                followUnreachableSince = now;
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " owner " + owner.getName() + " unreachable while following (dist=" + String.format("%.2f", curFollowDist) + "), waiting 1s");
+                            }
+                            if (now - followUnreachableSince >= 20 && curFollowDist >= 3.0) {
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " owner " + owner.getName() + " still unreachable after 1s, teleporting");
+                                minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
+                                lastFollowDist = Double.MAX_VALUE;
+                                followStuckSince = 0L;
+                                followUnreachableSince = 0L;
+                            } else {
+                                // Keep moving toward owner while waiting
+                                double speed = getMobSpeed(mob) * 0.85;
+                                moveMobTowards(mob, owner.getLocation(), speed);
+                                faceTowards(mob, owner.getLocation());
+                                lastFollowDist = curFollowDist;
+                            }
+                        } else {
+                            followUnreachableSince = 0L;
+                            // Follow owner using waypoint if available, otherwise direct move
+                            try {
+                                if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null) {
+                                    cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, owner.getLocation());
+                                    cachedFollowWaypointTick = now;
+                                }
+                                Location next = cachedFollowWaypoint;
+                                if (next != null) {
+                                    long nowMs = System.currentTimeMillis();
+                                    Long last = lastWaypointLog.get(minion.getUniqueId());
+                                    if (last == null || nowMs - last > 5000) {
+                                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " follow waypoint " + next + " toward owner " + owner.getName());
+                                        lastWaypointLog.put(minion.getUniqueId(), nowMs);
+                                    }
+                                    double speed = getMobSpeed(mob);
+                                    moveMobTowards(mob, next, speed);
+                                    faceTowards(mob, next);
+                                } else {
+                                    double speed = getMobSpeed(mob) * 0.85;
+                                    moveMobTowards(mob, owner.getLocation(), speed);
+                                    faceTowards(mob, owner.getLocation());
+                                }
+                            } catch (Exception ignored) {
+                                double speed = getMobSpeed(mob) * 0.85;
+                                moveMobTowards(mob, owner.getLocation(), speed);
+                                faceTowards(mob, owner.getLocation());
+                            }
+                            lastFollowDist = curFollowDist;
+                        }
                     }
                 }
                 // Teleport if too far away
-                if (minion.getLocation().distanceSquared(owner.getLocation()) > profile.followRange * profile.followRange) {
+                if (target == null && minion.getLocation().distanceSquared(owner.getLocation()) > profile.followRange * profile.followRange) {
+                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " too far from owner " + owner.getName() + " with no target, teleporting");
                     minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
                 }
             }
@@ -430,28 +455,108 @@ public class MinionAI {
         // Ensure we don't teleport inside a solid block; if so, try a few times
         for (int i = 0; i < 5; i++) {
             if (!target.getBlock().getType().isSolid()) {
+                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " teleporting near player " + owner.getName() + " via teleportNearPlayer");
                 minion.teleport(target);
                 return;
             }
             target.add((Math.random()-0.5)*1, 0, (Math.random()-0.5)*1);
         }
         // Fallback to exact player location
+        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " teleporting to owner " + owner.getName() + " fallback via teleportNearPlayer");
         minion.teleport(base);
     }
 
     private static void moveMobTowards(org.bukkit.entity.Mob mob, Location target, double speedFactor) {
         if (mob == null || target == null) return;
+        boolean isFlying = false;
+        try {
+            isFlying = mob.getAttribute(Attribute.FLYING_SPEED) != null;
+        } catch (Exception ignored) {}
         Location current = mob.getLocation();
         double distance = current.distance(target);
         if (distance < 0.5) {
-            mob.setVelocity(new Vector(0,0,0));
+            if (isFlying) {
+                // Flying mobs hover when close
+                mob.setVelocity(new Vector(0, 0, 0));
+            } else {
+                // Stop horizontal movement, keep vertical for gravity
+                Vector v = mob.getVelocity();
+                mob.setVelocity(new Vector(0, v.getY(), 0));
+            }
             return;
         }
-        Vector dir = target.toVector().subtract(current.toVector()).normalize();
-        // Preserve some vertical movement for flying mobs
-        double speed = speedFactor * 0.2; // approximate blocks per tick
+        Vector dir = target.toVector().subtract(current.toVector());
+        // Flying mobs use full 3D steering; ground mobs use horizontal only
+        if (!isFlying) {
+            dir.setY(0);
+        }
+        if (dir.lengthSquared() < 0.0001) {
+            if (isFlying) {
+                mob.setVelocity(new Vector(0, 0, 0));
+            } else {
+                // No horizontal direction, try to jump if target is above
+                double verticalDelta = target.getY() - current.getY();
+                boolean onGround = mob.isOnGround();
+                Vector v = mob.getVelocity();
+                if (onGround && verticalDelta > 0.4 && v.getY() <= 0.01) {
+                    mob.setVelocity(new Vector(0, 0.32, 0));
+                } else {
+                    mob.setVelocity(new Vector(0, v.getY(), 0));
+                }
+            }
+            return;
+        }
+        dir.normalize();
+        double speed = speedFactor * 0.2;
         Vector vel = dir.multiply(speed);
-        mob.setVelocity(vel);
+        if (isFlying) {
+            // Flying mobs get full 3D steering
+            mob.setVelocity(vel);
+        } else {
+            // Preserve existing vertical velocity for vanilla gravity/jump
+            vel.setY(mob.getVelocity().getY());
+            // Allow vanilla jump to work: only nudge up if clearly stuck on uphill
+            double verticalDelta = target.getY() - current.getY();
+            boolean onGround = mob.isOnGround();
+            if (onGround && verticalDelta > 0.1 && mob.getVelocity().getY() <= 0.01) {
+                vel.setY(Math.max(vel.getY(), 0.32));
+            }
+            // Detect stairs/slabs/low walls directly ahead and step up
+            if (onGround && mob.getVelocity().getY() <= 0.01) {
+                Location ahead = current.clone().add(dir.clone().multiply(0.7));
+                org.bukkit.block.Block feetBlock = ahead.getBlock();
+                org.bukkit.block.Block aboveBlock = ahead.clone().add(0, 1, 0).getBlock();
+                if (feetBlock.getType().isSolid() && !aboveBlock.getType().isSolid()) {
+                    vel.setY(Math.max(vel.getY(), 0.42));
+                }
+            }
+            mob.setVelocity(vel);
+        }
+    }
+
+    private static void faceTowards(org.bukkit.entity.Mob mob, Location target) {
+        if (mob == null || target == null) return;
+        Location from = mob.getLocation();
+        double dx = target.getX() - from.getX();
+        double dz = target.getZ() - from.getZ();
+        double dy = target.getY() - from.getY();
+        double distXZ = Math.sqrt(dx*dx + dz*dz);
+        float targetYaw = (float)Math.toDegrees(Math.atan2(dz, dx)) - 90f;
+        float targetPitch = distXZ == 0 ? 0 : (float)Math.toDegrees(Math.atan2(dy, distXZ));
+        targetPitch = Math.max(-90f, Math.min(90f, targetPitch));
+        try {
+            float currentYaw = from.getYaw();
+            float currentPitch = from.getPitch();
+            // Interpolate yaw with wrap-around
+            float yawDiff = targetYaw - currentYaw;
+            while (yawDiff > 180f) yawDiff -= 360f;
+            while (yawDiff < -180f) yawDiff += 360f;
+            float newYaw = currentYaw + yawDiff * 0.35f;
+            // Interpolate pitch
+            float pitchDiff = targetPitch - currentPitch;
+            float newPitch = currentPitch + pitchDiff * 0.45f;
+            mob.setRotation(newYaw, newPitch);
+        } catch (Exception ignored) {}
     }
 
     private static double getMobSpeed(org.bukkit.entity.Mob mob) {
