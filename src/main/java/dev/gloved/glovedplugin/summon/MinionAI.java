@@ -101,25 +101,7 @@ public class MinionAI {
     }
 
     private void startGlobalTask() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                // Process active summons every 20 ticks
-                for (UUID playerId : new HashSet<>(trackerActivePlayers())) {
-                    Player player = Bukkit.getPlayer(playerId);
-                    if (player == null || !player.isOnline()) continue;
-                    // For each minion of this player, ensure behavior
-                    // Simplified global sweep: iterate over tracked entities via reflection not available
-                    // We'll rely on individual tasks started on spawn
-                }
-            }
-        }.runTaskTimer(plugin, 0L, 20L);
-    }
-
-    private Set<UUID> trackerActivePlayers() {
-        // Access via reflection to avoid exposing internals, but simple approach using tracker private field?
-        // For simplicity, we keep this stub; actual per-minion logic is handled at spawn.
-        return Collections.emptySet();
+        // Custom minion-targeting goals removed: use vanilla targeting only.
     }
 
     public void monitorMinion(LivingEntity minion, Player owner, SummonProfile profile) {
@@ -128,18 +110,62 @@ public class MinionAI {
             long lastAttackTick = 0L;
             LivingEntity lastTarget = null;
             long lastTargetTick = 0L;
-            org.bukkit.Location followAnchor = null;
-            long lastFollowUpdate = 0L;
             double lastTargetDist = Double.MAX_VALUE;
             long lastTargetDistTick = 0L;
             long stuckSince = 0L;
             double lastFollowDist = Double.MAX_VALUE;
             long followStuckSince = 0L;
             long followUnreachableSince = 0L;
-            Location cachedTargetWaypoint = null;
-            long cachedTargetWaypointTick = -1L;
-            Location cachedFollowWaypoint = null;
-            long cachedFollowWaypointTick = -1L;
+            Location navGoal = null;
+            long navGoalTick = -1L;
+            long lastOwnerReachCheck = -1000L;
+            boolean ownerReachCached = true;
+            Location lastReachMobLoc = null;
+            Location lastReachOwnerLoc = null;
+
+            /**
+             * Drives the mob along a Paper path to {@code goal}. The path is only rebuilt when it is
+             * gone, when the goal moved more than 2 blocks, or every 2 seconds. Rebuilding the path
+             * every tick makes mobs cut corners and walk straight into obstacles.
+             */
+            private boolean driveTowards(org.bukkit.entity.Mob mob, Location goal, double speed, long now) {
+                if (mob == null || goal == null) return false;
+                Pathfinder pf;
+                try {
+                    pf = mob.getPathfinder();
+                } catch (Exception e) {
+                    return false;
+                }
+                if (pf == null) return false;
+                // Already at the destination: do not rebuild a path every tick at melee range.
+                if (mob.getLocation().distanceSquared(goal) <= 4.0) {
+                    try {
+                        pf.stopPathfinding();
+                    } catch (Exception ignored) {}
+                    navGoal = null;
+                    return true;
+                }
+                boolean needPath = true;
+                if (navGoal != null && navGoal.getWorld() == goal.getWorld()) {
+                    boolean hasPath = false;
+                    try {
+                        hasPath = pf.hasPath();
+                    } catch (Exception ignored) {}
+                    if (hasPath && navGoal.distanceSquared(goal) <= 4.0 && now - navGoalTick < 40) {
+                        needPath = false;
+                    }
+                }
+                if (!needPath) return true;
+                try {
+                    if (pf.moveTo(goal, speed)) {
+                        navGoal = goal.clone();
+                        navGoalTick = now;
+                        return true;
+                    }
+                } catch (Exception ignored) {}
+                return false;
+            }
+
             @Override
             public void run() {
                 if (minion.isDead() || !tracker.isSummoned(minion.getUniqueId())) {
@@ -155,6 +181,13 @@ public class MinionAI {
                     }
                     return;
                 }
+                boolean flying;
+                try {
+                    flying = mob.getAttribute(Attribute.FLYING_SPEED) != null;
+                } catch (Exception ignored) {
+                    flying = false;
+                }
+                final boolean isFlyingMob = flying;
                 // Clear any vanilla target to avoid AI conflicts
                 try {
                     mob.setTarget(null);
@@ -198,28 +231,20 @@ public class MinionAI {
                 // Filter candidates to those within the teleport-back / follow range of the owner
                 double maxTargetSq = profile.followRange * profile.followRange;
                 candidates.removeIf(le -> le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
-                // Heuristic pre-filter: drop wall-separated candidates quickly and out-of-range candidates
+                // Cheap pre-filter only. Reachability is validated once per acquired target further down,
+                // because running a full A* search for every candidate every 2 ticks is very expensive.
                 if (mob != null && !candidates.isEmpty()) {
                     double maxChaseSq = profile.followRange * profile.followRange * 4;
                     candidates.removeIf(le -> {
                         if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) {
                             return true;
                         }
-                        // Quick vertical check: if > 8 blocks vertical diff, likely unreachable
-                        double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
-                        if (dy > 8) return true;
-                        double distSq = minion.getLocation().distanceSquared(le.getLocation());
-                        if (distSq > maxChaseSq) return true;
-                        // Lightweight reachability probe
-                        try {
-                            boolean reachable = reachabilityService.canReach(mob, le.getLocation());
-                            if (!reachable) {
-                                MinionAI.cacheUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation());
-                            }
-                            return !reachable;
-                        } catch (Exception e) {
-                            return false;
+                        // Ground mobs cannot follow a target far above/below them; flying mobs can.
+                        if (!isFlyingMob) {
+                            double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
+                            if (dy > 8) return true;
                         }
+                        return minion.getLocation().distanceSquared(le.getLocation()) > maxChaseSq;
                     });
                 }
                 long now = Bukkit.getCurrentTick();
@@ -279,12 +304,7 @@ public class MinionAI {
                     lastTarget = null;
                 }
 
-                Pathfinder pathfinder = null;
-                try {
-                    pathfinder = mob.getPathfinder();
-                } catch (Exception ignored) {}
-
-                // Unreachable target detection: drop target if distance hasn't improved for ~3s
+                // Unreachable target detection: drop target if distance hasn't improved for ~5s
                 if (target != null) {
                     double curDist = minion.getLocation().distance(target.getLocation());
                     if (lastTarget != null && lastTarget.getUniqueId().equals(target.getUniqueId())) {
@@ -295,7 +315,7 @@ public class MinionAI {
                             stuckSince = 0L;
                         } else {
                             if (stuckSince == 0L) stuckSince = now;
-                            if (now - stuckSince >= 60) {
+                            if (now - stuckSince >= 100) {
                                 // Consider unreachable, drop target
                                 GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck on target " + target.getName() + ", dropping");
                                 MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
@@ -318,26 +338,16 @@ public class MinionAI {
                 }
 
                 if (target != null) {
-                    // Probe reachability before committing
-                    // Reachability check removed for performance; stuck detection will drop target if unreachable
                     {
-                        // Move towards target using Pathetic computed next waypoint with caching
-                        if (now - cachedTargetWaypointTick > 5 || cachedTargetWaypoint == null) {
-                            cachedTargetWaypoint = reachabilityService.getNextWaypoint(mob, target.getLocation());
-                            cachedTargetWaypointTick = now;
+                        double speed = getMobSpeed(mob);
+                        // Paper's navigator handles ground mobs (walking around walls, stairs) and
+                        // flying mobs (FlyingPathNavigation) the same way, so drive both through it.
+                        boolean navigating = driveTowards(mob, target.getLocation(), speed, now);
+                        if (!navigating) {
+                            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " no path to target " + target.getName() + ", direct fallback");
+                            moveMobTowards(mob, target.getLocation(), speed * 0.8);
                         }
-                        Location next = cachedTargetWaypoint;
-                        if (next != null) {
-                            long nowMs = System.currentTimeMillis();
-                            Long last = lastWaypointLog.get(minion.getUniqueId());
-                            if (last == null || nowMs - last > 5000) {
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " target waypoint " + next + " for target " + target.getName());
-                                lastWaypointLog.put(minion.getUniqueId(), nowMs);
-                            }
-                            double speed = getMobSpeed(mob);
-                            moveMobTowards(mob, next, speed);
-                            faceTowards(mob, next);
-                        }
+                        faceTowards(mob, target.getLocation());
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = profile.attackRange * profile.attackRange;
                         if (distSq <= attackRangeSq && now - lastAttackTick >= requiredArcTicks(owner)) {
@@ -359,13 +369,16 @@ public class MinionAI {
                             followStuckSince = 0L;
                         } else {
                             if (followStuckSince == 0L) followStuckSince = now;
-                            if (now - followStuckSince >= 60) {
-                                // Stuck following, teleport near owner
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + ", teleporting");
+                            boolean hasActivePath = false;
+                            try {
+                                hasActivePath = mob.getPathfinder().hasPath();
+                            } catch (Exception ignored) {}
+                            if (now - followStuckSince >= 100 && !hasActivePath) {
+                                // Stuck with no path at all, teleport near owner
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + " with no path, teleporting");
                                 teleportNearPlayer(owner, minion);
                                 lastFollowDist = Double.MAX_VALUE;
                                 followStuckSince = 0L;
-                                followAnchor = null;
                             }
                         }
                     } else {
@@ -375,18 +388,49 @@ public class MinionAI {
                     }
                     if (distSqToOwner <= idleRadius * idleRadius) {
                         // Close enough, stop movement and stand still
-                        mob.setVelocity(new Vector(0,0,0));
+                        try {
+                            mob.getPathfinder().stopPathfinding();
+                        } catch (Exception ignored) {}
+                        navGoal = null;
+                        if (isFlyingMob) {
+                            mob.setVelocity(new Vector(0,0,0));
+                        } else {
+                            Vector v = mob.getVelocity();
+                            mob.setVelocity(new Vector(0, v.getY(), 0));
+                        }
                         lastFollowDist = curFollowDist;
                         followUnreachableSince = 0L;
+                        ownerReachCached = true;
+                        lastOwnerReachCheck = -1000L;
                     } else {
                         boolean ownerReachable = true;
                         boolean shouldCheckReach = curFollowDist > idleRadius + 2.0;
                         if (shouldCheckReach) {
-                            try {
-                                ownerReachable = reachabilityService.canReach(mob, owner.getLocation());
-                            } catch (Exception ignored) {
-                                ownerReachable = true;
+                            // NpcApi pathfinding is synchronous, so only run it when the minion has
+                            // actually stopped making progress toward the owner. Normal following
+                            // never touches it.
+                            boolean noProgress = followStuckSince != 0L && now - followStuckSince >= 10;
+                            if (noProgress && now - lastOwnerReachCheck >= 20) {
+                                Location mobLoc = minion.getLocation();
+                                Location ownerLoc = owner.getLocation();
+                                boolean sameSpot = lastReachMobLoc != null && lastReachOwnerLoc != null
+                                        && lastReachMobLoc.getWorld() == mobLoc.getWorld()
+                                        && lastReachMobLoc.distanceSquared(mobLoc) < 1.0
+                                        && lastReachOwnerLoc.distanceSquared(ownerLoc) < 1.0;
+                                if (!sameSpot) {
+                                    lastOwnerReachCheck = now;
+                                    lastReachMobLoc = mobLoc.clone();
+                                    lastReachOwnerLoc = ownerLoc.clone();
+                                    try {
+                                        ownerReachCached = reachabilityService.canReach(mob, ownerLoc);
+                                    } catch (Exception ignored) {
+                                        ownerReachCached = true;
+                                    }
+                                }
                             }
+                            ownerReachable = ownerReachCached;
+                        } else {
+                            ownerReachCached = true;
                         }
                         if (!ownerReachable) {
                             if (followUnreachableSince == 0L) {
@@ -408,33 +452,12 @@ public class MinionAI {
                             }
                         } else {
                             followUnreachableSince = 0L;
-                            // Follow owner using waypoint if available, otherwise direct move
-                            try {
-                                if (now - cachedFollowWaypointTick > 5 || cachedFollowWaypoint == null) {
-                                    cachedFollowWaypoint = reachabilityService.getNextWaypoint(mob, owner.getLocation());
-                                    cachedFollowWaypointTick = now;
-                                }
-                                Location next = cachedFollowWaypoint;
-                                if (next != null) {
-                                    long nowMs = System.currentTimeMillis();
-                                    Long last = lastWaypointLog.get(minion.getUniqueId());
-                                    if (last == null || nowMs - last > 5000) {
-                                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " follow waypoint " + next + " toward owner " + owner.getName());
-                                        lastWaypointLog.put(minion.getUniqueId(), nowMs);
-                                    }
-                                    double speed = getMobSpeed(mob);
-                                    moveMobTowards(mob, next, speed);
-                                    faceTowards(mob, next);
-                                } else {
-                                    double speed = getMobSpeed(mob) * 0.85;
-                                    moveMobTowards(mob, owner.getLocation(), speed);
-                                    faceTowards(mob, owner.getLocation());
-                                }
-                            } catch (Exception ignored) {
-                                double speed = getMobSpeed(mob) * 0.85;
-                                moveMobTowards(mob, owner.getLocation(), speed);
-                                faceTowards(mob, owner.getLocation());
+                            double speed = getMobSpeed(mob) * 0.9;
+                            // Same navigator for ground and flying mobs
+                            if (!driveTowards(mob, owner.getLocation(), speed, now)) {
+                                moveMobTowards(mob, owner.getLocation(), speed * 0.8);
                             }
+                            faceTowards(mob, owner.getLocation());
                             lastFollowDist = curFollowDist;
                         }
                     }
@@ -565,23 +588,14 @@ public class MinionAI {
             var attr = mob.getAttribute(Attribute.MOVEMENT_SPEED);
             if (attr != null) {
                 double base = attr.getValue();
-                // Normalize to Paper pathfinder speed scale. Default mob speed ~0.2 -> ~1.0
-                double speed = Math.max(0.2, Math.min(2.5, base / 0.2));
-                return speed;
+                // Normalize to Paper's pathfinder speed scale, where 1 is "normal" for that mob.
+                // Vanilla mob movement speed is ~0.2-0.35, so this keeps minions at a sane pace
+                // instead of launching them at 2.5x and overshooting everything.
+                double speed = base / 0.3;
+                return Math.max(0.7, Math.min(1.8, speed));
             }
         } catch (Exception ignored) {}
         return 1.2;
-    }
-
-    private static boolean isReachable(org.bukkit.entity.Mob mob, org.bukkit.Location loc) {
-        try {
-            var pf = mob.getPathfinder();
-            if (pf == null) return true; // fallback
-            var result = pf.findPath(loc);
-            return result != null;
-        } catch (Exception e) {
-            return true; // assume reachable on error
-        }
     }
 
     private static void forceFullAttackStrength(Player player) {

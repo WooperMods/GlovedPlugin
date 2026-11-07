@@ -12,14 +12,19 @@ public class SummonInstanceTracker {
     private final GlovedPlugin plugin;
     private final Map<UUID, Set<UUID>> activeByPlayer = new ConcurrentHashMap<>();
     private final Map<UUID, UUID> entityToPlayer = new ConcurrentHashMap<>();
+    /** Cached entity handles so target goals can look up minions without world queries. */
+    private final Map<UUID, LivingEntity> activeEntities = new ConcurrentHashMap<>();
 
     public SummonInstanceTracker(GlovedPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public void track(UUID playerId, UUID entityId, int lifetimeTicks) {
+    public void track(UUID playerId, LivingEntity entity, int lifetimeTicks) {
+        if (entity == null) return;
+        UUID entityId = entity.getUniqueId();
         activeByPlayer.computeIfAbsent(playerId, k -> ConcurrentHashMap.newKeySet()).add(entityId);
         entityToPlayer.put(entityId, playerId);
+        activeEntities.put(entityId, entity);
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -30,6 +35,7 @@ public class SummonInstanceTracker {
 
     public void despawn(UUID entityId) {
         UUID playerId = entityToPlayer.remove(entityId);
+        LivingEntity cached = activeEntities.remove(entityId);
         if (playerId != null) {
             Set<UUID> set = activeByPlayer.get(playerId);
             if (set != null) {
@@ -37,8 +43,14 @@ public class SummonInstanceTracker {
                 if (set.isEmpty()) activeByPlayer.remove(playerId);
             }
         }
-        var e = Bukkit.getEntity(entityId);
-        if (e instanceof LivingEntity le && !le.isDead()) {
+        LivingEntity le = cached;
+        if (le == null) {
+            var e = Bukkit.getEntity(entityId);
+            if (e instanceof LivingEntity living) {
+                le = living;
+            }
+        }
+        if (le != null && !le.isDead()) {
             le.remove();
         }
     }
@@ -56,13 +68,28 @@ public class SummonInstanceTracker {
         return set == null ? 0 : set.size();
     }
 
+    /** Live view of all tracked summon entities (weakly consistent, no copy). */
+    public java.util.Collection<LivingEntity> getActiveMinions() {
+        return activeEntities.values();
+    }
+
+    public int getTrackedMinionCount() {
+        return activeEntities.size();
+    }
+
     public void removeAllForPlayer(UUID playerId) {
         Set<UUID> set = activeByPlayer.remove(playerId);
         if (set != null) {
             for (UUID eid : set) {
                 entityToPlayer.remove(eid);
-                var e = Bukkit.getEntity(eid);
-                if (e instanceof LivingEntity le && !le.isDead()) {
+                LivingEntity le = activeEntities.remove(eid);
+                if (le == null) {
+                    var e = Bukkit.getEntity(eid);
+                    if (e instanceof LivingEntity living) {
+                        le = living;
+                    }
+                }
+                if (le != null && !le.isDead()) {
                     le.remove();
                 }
             }
@@ -73,5 +100,7 @@ public class SummonInstanceTracker {
         for (UUID playerId : new HashSet<>(activeByPlayer.keySet())) {
             removeAllForPlayer(playerId);
         }
+        activeEntities.clear();
+        entityToPlayer.clear();
     }
 }

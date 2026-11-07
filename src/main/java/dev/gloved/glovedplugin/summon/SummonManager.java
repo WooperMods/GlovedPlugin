@@ -140,7 +140,7 @@ public class SummonManager {
                 m2.setTarget(target);
             }
             // Register tracker
-            tracker.track(player.getUniqueId(), mob.getUniqueId(), profile.lifetimeTicks);
+            tracker.track(player.getUniqueId(), mob, profile.lifetimeTicks);
             activeCount.merge(player.getUniqueId(), 1, Integer::sum);
             spawned.add(mob.getUniqueId());
             // Start AI monitoring
