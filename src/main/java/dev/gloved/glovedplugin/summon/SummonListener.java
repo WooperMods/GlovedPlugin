@@ -11,7 +11,6 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
-import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 
 import java.util.HashSet;
 import java.util.Random;
@@ -29,13 +28,16 @@ public class SummonListener implements Listener {
         this.manager = manager;
     }
 
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onPreAttack(PrePlayerAttackEntityEvent event) {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerDealsDamage(EntityDamageByEntityEvent event) {
         if (!config.isEnabled()) {
             GlovedPlugin.logDebug("[Summon] Config disabled");
             return;
         }
-        Player player = event.getPlayer();
+        if (!(event.getDamager() instanceof Player player)) {
+            GlovedPlugin.logDebug("[Summon] Damager not player");
+            return;
+        }
         if (player.isSneaking()) {
             GlovedPlugin.logDebug("[Summon] Player sneaking, abort");
             return;
@@ -47,7 +49,7 @@ public class SummonListener implements Listener {
             return;
         }
         String itemName = item.hasItemMeta() && item.getItemMeta().hasDisplayName() ? item.getItemMeta().getDisplayName() : "unnamed";
-        GlovedPlugin.logDebug("[Summon] Player " + player.getName() + " attacking with " + item.getType() + " '" + itemName + "'");
+        GlovedPlugin.logDebug("[Summon] Player " + player.getName() + " dealt damage with " + item.getType() + " '" + itemName + "'");
 
         String profileName = SummonEnchant.getProfile(item);
         GlovedPlugin.logDebug("[Summon] getProfile result: " + profileName + " for item " + item.getType());
@@ -81,9 +83,8 @@ public class SummonListener implements Listener {
             return;
         }
 
-        var attacked = event.getAttacked();
-        LivingEntity target = attacked instanceof LivingEntity le ? le : null;
-        GlovedPlugin.logDebug("[Summon] Pre-attack target: " + (target != null ? target.getType() : "null"));
+        LivingEntity target = event.getEntity() instanceof LivingEntity le ? le : null;
+        GlovedPlugin.logDebug("[Summon] Damage target: " + (target != null ? target.getType() : "null"));
         manager.setCooldown(player, profile);
         manager.spawn(player, profile, target);
         GlovedPlugin.logDebug("[Summon] Summon triggered for " + player.getName() + " profile " + profileName);
