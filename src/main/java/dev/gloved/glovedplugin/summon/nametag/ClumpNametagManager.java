@@ -98,6 +98,7 @@ public class ClumpNametagManager implements Listener {
                     managedMinions.remove(minionId);
                 }
             }
+            managedMinions.addAll(nowManaged);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[Summon] ClumpNametagManager tick error: " + t);
         }
