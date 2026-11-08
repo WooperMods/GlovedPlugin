@@ -28,63 +28,74 @@ public class SummonEnchant {
                 GlovedPlugin.logDebug("[SummonEnchant] Lore[" + i++ + "]: " + l);
             }
         }
-        if (c.has(KEY, PersistentDataType.STRING)) {
-            String cached = c.get(KEY, PersistentDataType.STRING);
-            GlovedPlugin.logDebug("[SummonEnchant] Cached profile: " + cached);
-            // If cached profile is a known bad marker, fall through to re-detect
-            if (!"elitemobsitem".equals(cached)) {
-                GlovedPlugin.logDebug("[SummonEnchant] Returning cached profile");
-                return cached;
+        // Detection rules changed (enchant-name match, no PDC fallback). Always detect from lore
+        // so stale/wrong cache entries from older versions cannot keep triggering.
+        String detected = detectEliteMobsSummon(item, meta);
+        GlovedPlugin.logDebug("[SummonEnchant] detectEliteMobsSummon result: " + detected + " for item " + item.getType());
+        String cached = c.has(KEY, PersistentDataType.STRING) ? c.get(KEY, PersistentDataType.STRING) : null;
+        if (detected != null) {
+            if (!detected.equals(cached)) {
+                c.set(KEY, PersistentDataType.STRING, detected);
+                item.setItemMeta(meta);
+                GlovedPlugin.logDebug("[SummonEnchant] Persisted profile " + detected);
             }
-            // Invalidate bad cache
-            GlovedPlugin.logDebug("[SummonEnchant] Invalid cached profile, clearing");
+            return detected;
+        }
+        if (cached != null) {
             c.remove(KEY);
             item.setItemMeta(meta);
+            GlovedPlugin.logDebug("[SummonEnchant] Cleared stale cached profile: " + cached);
         }
-        String profile = detectEliteMobsSummon(item, meta, c);
-        GlovedPlugin.logDebug("[SummonEnchant] detectEliteMobsSummon result: " + profile + " for item " + item.getType());
-        if (profile != null) {
-            c.set(KEY, PersistentDataType.STRING, profile);
-            item.setItemMeta(meta);
-            GlovedPlugin.logDebug("[SummonEnchant] Persisted profile " + profile);
-        } else {
-            GlovedPlugin.logDebug("[SummonEnchant] No profile detected for item " + item.getType());
-        }
-        return profile;
+        GlovedPlugin.logDebug("[SummonEnchant] No profile detected for item " + item.getType());
+        return null;
     }
 
-    private static String detectEliteMobsSummon(ItemStack item, ItemMeta meta, PersistentDataContainer c) {
+    private static String detectEliteMobsSummon(ItemStack item, ItemMeta meta) {
         try {
-            // Prefer lore parsing for config-driven summons
-            if (meta.hasLore()) {
-                for (String line : meta.getLore()) {
-                    String lower = line.toLowerCase();
-                    if (lower.contains("summon") || lower.contains("spawn")) {
-                        GlovedPlugin.logDebug("[SummonEnchant] Checking summon lore line: " + line);
-                        String profile = parseProfileFromLore(line);
-                        GlovedPlugin.logDebug("[SummonEnchant] Parsed profile from lore: " + profile);
-                        if (profile != null) {
-                            GlovedPlugin.logDebug("[SummonEnchant] Lore parsed profile: " + profile + " from " + line);
-                            return profile;
-                        }
-                    }
+            if (!meta.hasLore() || meta.getLore() == null) {
+                GlovedPlugin.logDebug("[SummonEnchant] No lore on item " + item.getType());
+                return null;
+            }
+            GlovedPlugin plugin = GlovedPlugin.getPlugin(GlovedPlugin.class);
+            SummonConfig cfg = plugin != null ? plugin.getSummonConfig() : null;
+            if (cfg == null) return null;
+
+            // Build stripped lore once; required: a profile's enchant-name must appear in lore
+            // (formatting stripped) for that profile to trigger.
+            java.util.List<String> strippedLore = new java.util.ArrayList<>();
+            for (String line : meta.getLore()) {
+                strippedLore.add(stripFormatting(line));
+            }
+            // Deterministic: check profiles sorted by key; prefer longest matching enchant name to avoid substring ambiguity.
+            java.util.List<SummonProfile> ordered = new java.util.ArrayList<>(cfg.getProfiles().values());
+            ordered.sort((a, b) -> {
+                String ak = a.name != null ? a.name : "";
+                String bk = b.name != null ? b.name : "";
+                return ak.compareTo(bk);
+            });
+            String bestName = null;
+            int bestLen = -1;
+            String bestNeedle = null;
+            for (SummonProfile profile : ordered) {
+                String enchantName = profile.enchantName;
+                if (enchantName == null || enchantName.isBlank()) continue;
+                String needle = stripFormatting(enchantName).toLowerCase();
+                boolean matched = false;
+                for (String line : strippedLore) {
+                    if (line.toLowerCase().contains(needle)) { matched = true; break; }
+                }
+                if (matched && needle.length() > bestLen) {
+                    bestName = profile.name;
+                    bestLen = needle.length();
+                    bestNeedle = enchantName;
                 }
             }
-            // Fallback: try PDC enchant keys, but ignore generic markers
-            int keyCount = 0;
-            for (NamespacedKey nk : c.getKeys()) {
-                keyCount++;
-                GlovedPlugin.logDebug("[SummonEnchant] PDC key[" + keyCount + "]: " + nk.getNamespace() + ":" + nk.getKey());
-                if (!"elitemobs".equals(nk.getNamespace())) continue;
-                String key = nk.getKey();
-                if ("elitemobsitem".equals(key) || "custom_item_id".equals(key)) {
-                    GlovedPlugin.logDebug("[SummonEnchant] Skipping generic elitemobs key: " + key);
-                    continue;
-                }
-                GlovedPlugin.logDebug("[SummonEnchant] Found elitemobs enchant PDC key: " + nk + " -> profile " + key);
-                return key;
+            if (bestName != null) {
+                GlovedPlugin.logDebug("[SummonEnchant] Lore matched enchant-name \"" + bestNeedle
+                        + "\" -> profile " + bestName + " for item " + item.getType());
+                return bestName;
             }
-            GlovedPlugin.logDebug("[SummonEnchant] No usable elitemobs enchant PDC keys found");
+            GlovedPlugin.logDebug("[SummonEnchant] No configured enchant-name matched lore for item " + item.getType());
         } catch (Exception e) {
             GlovedPlugin.logDebug("[SummonEnchant] Exception during detection: " + e);
             e.printStackTrace();
@@ -92,34 +103,22 @@ public class SummonEnchant {
         return null;
     }
 
-    private static String parseProfileFromLore(String line) {
-        String lower = line.toLowerCase();
-        // Expect patterns like "can spawn a bee swarm on hit" or "can summon pillager raiders on hit"
-        // Also support armor phrasing like "summons bee_swarm when hit" or "spawns ... on damage"
-        String[] trigger = {"can summon ", "can spawn ", "summons ", "spawns ", "summon ", "spawn "};
-        String[] endMarkers = {" on hit", " when hit", " on damage", " when damaged", "."};
-        for (String t : trigger) {
-            int idx = lower.indexOf(t);
-            if (idx >= 0) {
-                int start = idx + t.length();
-                int end = line.length();
-                for (String m : endMarkers) {
-                    int found = lower.indexOf(m, start);
-                    if (found >= 0 && found < end) {
-                        end = found;
-                        break;
-                    }
-                }
-                String raw = line.substring(start, end).trim();
-                // Remove leading "a " or "an "
-                if (raw.startsWith("a ")) raw = raw.substring(2);
-                if (raw.startsWith("an ")) raw = raw.substring(3);
-                // Convert to snake_case
-                String profile = raw.toLowerCase().replaceAll("[^a-z0-9 ]", "").trim().replaceAll("\\s+", "_");
-                if (!profile.isEmpty()) return profile;
-            }
+    private static String stripFormatting(String s) {
+        if (s == null) return "";
+        // Strip legacy &/§ color codes and common hex forms like &#RRGGBB / <#RRGGBB>.
+        return s.replaceAll("(?i)[&§][0-9A-FK-ORX]", "")
+                .replaceAll("(?i)[&§]#[0-9A-F]{6}", "")
+                .replaceAll("(?i)<#[0-9A-F]{6}>", "");
+    }
+
+    private static boolean isKnownProfile(String profile) {
+        try {
+            GlovedPlugin plugin = GlovedPlugin.getPlugin(GlovedPlugin.class);
+            SummonConfig cfg = plugin != null ? plugin.getSummonConfig() : null;
+            return cfg != null && cfg.getProfile(profile) != null;
+        } catch (Exception e) {
+            return false;
         }
-        return null;
     }
 
     public static boolean isValid(ItemStack item) {

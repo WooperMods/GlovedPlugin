@@ -1,18 +1,18 @@
 package dev.gloved.glovedplugin.summon;
 
+import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class SummonConfig {
     private final JavaPlugin plugin;
-    private final Map<String, SummonProfile> profiles = new HashMap<>();
-    private String defaultProfile;
+    private final Map<String, SummonProfile> profiles = new LinkedHashMap<>();
     private boolean enabled;
 
     private SummonConfig(JavaPlugin plugin) {
@@ -21,6 +21,16 @@ public class SummonConfig {
 
     public static SummonConfig load(JavaPlugin plugin) {
         SummonConfig cfg = new SummonConfig(plugin);
+        cfg.reload();
+        return cfg;
+    }
+
+    /**
+     * Re-reads {@code summon.yml} into this instance. Listeners and managers keep a reference to
+     * the same object, so {@code /gloved reload} applies changes without a restart.
+     */
+    public void reload() {
+        profiles.clear();
         File file = new File(plugin.getDataFolder(), "summon.yml");
         if (!file.exists()) {
             plugin.saveResource("summon.yml", false);
@@ -28,72 +38,98 @@ public class SummonConfig {
         FileConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         backfill(yaml);
         try { yaml.save(file); } catch (Exception ignored) {}
-        cfg.enabled = yaml.getBoolean("enabled", true);
-        cfg.defaultProfile = yaml.getString("default-profile", "bee_swarm");
+        enabled = yaml.getBoolean("enabled", true);
         if (yaml.isConfigurationSection("profiles")) {
             for (String key : yaml.getConfigurationSection("profiles").getKeys(false)) {
                 var section = yaml.getConfigurationSection("profiles." + key);
-                List<String> mobTypes = section.getStringList("mob-types");
-                if (mobTypes == null || mobTypes.isEmpty()) {
-                    String single = section.getString("mob-type", "BEE");
-                    mobTypes = List.of(single);
+                if (section.isSet("mob-types") || section.isList("mob-types")) {
+                    GlovedPlugin.logInfo("[Summon] Profile '" + key + "': 'mob-types' (list) is invalid; use 'mob-type' (single). "
+                            + (section.isSet("mob-type") ? "Ignoring 'mob-types'." : "Falling back to first entry; migrate to 'mob-type'."));
                 }
-                String ai = section.getString("ai", "tame_follow");
-                boolean tamed = section.getBoolean("tamed", true);
-                boolean friendly = section.getBoolean("friendly", true);
-                boolean invulnerable = section.getBoolean("invulnerable", true);
+                String mobType = section.getString("mob-type");
+                if (mobType == null || mobType.isBlank()) {
+                    List<String> legacy = section.getStringList("mob-types");
+                    if (legacy != null && !legacy.isEmpty()) mobType = legacy.get(0);
+                }
+                if (mobType == null || mobType.isBlank()) mobType = "BEE";
                 double chance = section.getDouble("chance", 0.3);
-                int cooldown = section.getInt("cooldown_ticks", 5);
-                int lifetime = section.getInt("lifetime_ticks", 200);
-                int minions = section.getInt("minions", 2);
+                int minionsPerHit = section.getInt("minions-per-hit", section.getInt("minions", 2));
                 int maxActive = section.getInt("max-active", 10);
-                var validSlots = section.getStringList("valid-slots");
-                String targetMode = section.getString("target-mode", "CURRENT_TARGET");
-                boolean damageProxy = section.getBoolean("damage-proxy", true);
-                double followRange = section.getDouble("follow-range", 16.0);
-                double attackRange = section.getDouble("attack-range", 4.0);
-                String nametagFormat = section.getString("nametag-format", "{player}'s {mob}");
                 String nametagColor = section.getString("nametag-color", "YELLOW");
-                boolean nametagVisible = section.getBoolean("nametag-visible", true);
-                SummonProfile profile = new SummonProfile(mobTypes, ai, tamed, friendly, invulnerable,
-                        chance, cooldown, lifetime, minions, maxActive, validSlots, targetMode, damageProxy, followRange, attackRange,
-                        nametagFormat, nametagColor, nametagVisible);
-                cfg.profiles.put(key, profile);
+                String enchantName = section.getString("enchant-name");
+                if (enchantName == null || enchantName.isBlank()) {
+                    enchantName = deriveEnchantName(key);
+                }
+                SummonProfile profile = new SummonProfile(key, mobType,
+                        chance, minionsPerHit, maxActive, nametagColor, enchantName);
+                profiles.put(key, profile);
+                GlovedPlugin.logDebug("[Summon] Loaded profile " + key + ": enchant-name=\"" + profile.enchantName
+                        + "\", minions-per-hit=" + profile.minionsPerHit
+                        + ", max-active=" + profile.maxActive + ", chance=" + profile.chance
+                        + ", mob-type=" + profile.mobType);
             }
         }
-        return cfg;
+        // Auto-generate missing EliteMobs enchantment marker files for configured profiles.
+        EliteMobsSummonFileGenerator.generate(plugin, profiles);
     }
 
     private static void backfill(FileConfiguration cfg) {
         if (!cfg.isSet("enabled")) cfg.set("enabled", true);
-        if (!cfg.isSet("default-profile")) cfg.set("default-profile", "bee_swarm");
+        // Remove top-level settings that are now hardcoded/unused.
+        for (String deprecated : List.of("default-profile")) {
+            if (cfg.isSet(deprecated)) cfg.set(deprecated, null);
+        }
         var profiles = cfg.getConfigurationSection("profiles");
         if (profiles == null) return;
         for (String key : profiles.getKeys(false)) {
             var s = profiles.getConfigurationSection(key);
-            if (!s.isSet("mob-types") && !s.isSet("mob-type")) s.set("mob-type", "BEE");
-            if (!s.isSet("ai")) s.set("ai", "tame_follow");
-            if (!s.isSet("tamed")) s.set("tamed", true);
-            if (!s.isSet("friendly")) s.set("friendly", true);
-            if (!s.isSet("invulnerable")) s.set("invulnerable", true);
+            // Migrate the renamed key: minions -> minions-per-hit.
+            if (s.isSet("minions") && !s.isSet("minions-per-hit")) {
+                s.set("minions-per-hit", s.getInt("minions", 2));
+            }
+            // Remove settings that are now hardcoded in SummonProfile or no longer used.
+            for (String deprecated : List.of("ai", "damage-proxy", "tamed", "friendly",
+                    "minions", "invulnerable", "cooldown_ticks", "lifetime_ticks",
+                    "follow-range", "attack-range", "target-mode", "nametag-format",
+                    "nametag-visible", "valid-slots")) {
+                if (s.isSet(deprecated)) s.set(deprecated, null);
+            }
+            // mob-types (list) is invalid; only mob-type (single) is supported.
+            if (s.isSet("mob-types") || s.isList("mob-types")) {
+                if (!s.isSet("mob-type") || String.valueOf(s.get("mob-type")).isBlank()) {
+                    var legacy = s.getStringList("mob-types");
+                    if (legacy != null && !legacy.isEmpty()) {
+                        s.set("mob-type", legacy.get(0));
+                    }
+                }
+                s.set("mob-types", null);
+                GlovedPlugin.logInfo("[Summon] Profile '" + key + "': migrated invalid 'mob-types' -> 'mob-type'.");
+            }
+            if (!s.isSet("mob-type") || String.valueOf(s.get("mob-type")).isBlank()) s.set("mob-type", "BEE");
             if (!s.isSet("chance")) s.set("chance", 0.3);
-            if (!s.isSet("cooldown_ticks")) s.set("cooldown_ticks", 5);
-            if (!s.isSet("lifetime_ticks")) s.set("lifetime_ticks", 200);
-            if (!s.isSet("minions")) s.set("minions", 2);
+            if (!s.isSet("minions-per-hit")) s.set("minions-per-hit", 2);
             if (!s.isSet("max-active")) s.set("max-active", 10);
-            if (!s.isSet("valid-slots")) s.set("valid-slots", java.util.List.of("MAIN_HAND"));
-            if (!s.isSet("target-mode")) s.set("target-mode", "CURRENT_TARGET");
-            if (!s.isSet("damage-proxy")) s.set("damage-proxy", true);
-            if (!s.isSet("follow-range")) s.set("follow-range", 16.0);
-            if (!s.isSet("attack-range")) s.set("attack-range", 4.0);
-            if (!s.isSet("nametag-format")) s.set("nametag-format", "{player}'s {mob}");
             if (!s.isSet("nametag-color")) s.set("nametag-color", "YELLOW");
-            if (!s.isSet("nametag-visible")) s.set("nametag-visible", true);
+            // Required: the enchant/display name that must appear in lore (formatting stripped).
+            if (!s.isSet("enchant-name") || String.valueOf(s.get("enchant-name")).isBlank()) {
+                s.set("enchant-name", deriveEnchantName(key));
+            }
         }
     }
 
+    private static String deriveEnchantName(String profileKey) {
+        if (profileKey == null || profileKey.isBlank()) return "";
+        String[] parts = profileKey.toLowerCase().replace('-', '_').split("_");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return out.toString();
+    }
+
     public boolean isEnabled() { return enabled; }
-    public String getDefaultProfile() { return defaultProfile; }
     public SummonProfile getProfile(String name) { return profiles.get(name); }
     public Map<String, SummonProfile> getProfiles() { return profiles; }
 }
