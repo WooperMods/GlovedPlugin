@@ -4,6 +4,7 @@ import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -25,7 +26,6 @@ public class SummonManager {
     private final SummonInstanceTracker tracker;
     private final MinionAI minionAI;
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
-    private final Map<UUID, Integer> activeCount = new ConcurrentHashMap<>();
 
     public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, MinionAI minionAI) {
         this.plugin = plugin;
@@ -39,9 +39,9 @@ public class SummonManager {
         long now = System.currentTimeMillis();
         Map<String, Long> playerCooldowns = cooldowns.getOrDefault(player.getUniqueId(), Collections.emptyMap());
         Long last = playerCooldowns.get(profile.mobType);
-        long required = profile.cooldownTicks * 50L;
+        long required = SummonProfile.COOLDOWN_TICKS * 50L;
         if (last != null && now - last < required) return false;
-        int count = tracker.getActiveCount(player.getUniqueId());
+        int count = tracker.getActiveCount(player.getUniqueId(), profile.name);
         if (count >= profile.maxActive) return false;
         return true;
     }
@@ -53,12 +53,16 @@ public class SummonManager {
 
     public void spawn(Player player, SummonProfile profile, LivingEntity target) {
         Location spawnLoc = resolveSpawnLocation(player, target);
-        GlovedPlugin.logDebug("[Summon] Spawning " + profile.minions + " x " + profile.mobTypes + " for " + player.getName() + " at " + spawnLoc);
+        // Never exceed the per-profile cap, even when a batch is larger than the remaining slots.
+        int active = tracker.getActiveCount(player.getUniqueId(), profile.name);
+        int toSpawn = Math.min(profile.minionsPerHit, Math.max(0, profile.maxActive - active));
+        GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + profile.minionsPerHit + " x " + profile.mobType
+                + " for " + player.getName() + " at " + spawnLoc + " (active " + active + "/" + profile.maxActive + ")");
         List<UUID> spawned = new ArrayList<>();
-        for (int i = 0; i < profile.minions; i++) {
+        for (int i = 0; i < toSpawn; i++) {
             EntityType type = profile.resolveEntityType();
             if (type == null || !type.isSpawnable()) {
-                GlovedPlugin.logDebug("[Summon] Invalid entity type: " + profile.mobTypes);
+                GlovedPlugin.logDebug("[Summon] Invalid entity type: " + profile.mobType);
                 continue;
             }
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
@@ -70,78 +74,77 @@ public class SummonManager {
                 mob.setCanPickupItems(false);
                 if (mob instanceof Mob m) {
                     MobGoals goals = plugin.getServer().getMobGoals();
-                    // Log goals before removal
                     var before = goals.getAllGoals(m);
-                    plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals before removal: " + before.size() + " goals");
+                    plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals before: " + before.size() + " goals");
                     for (var g : before) {
                         try {
                             plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
                         } catch (Exception ignored) {}
                     }
-                    // Remove all vanilla goals except jump-related ones; keep vanilla jumping/gravity
-                    var toRemove = new java.util.ArrayList<Goal>();
-                    for (var g : goals.getAllGoals(m)) {
-                        var types = g.getTypes();
-                        boolean keep = false;
-                        for (var t : types) {
-                            if (t == GoalType.JUMP) {
-                                keep = true;
-                                break;
+                    if (PhasingMob.isPhasing(m)) {
+                        // Phasing mobs (e.g. Vex): keep vanilla goals so native AI/pathing can run.
+                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " (phasing) keeping all vanilla goals");
+                    } else {
+                        // Remove all vanilla goals except jump-related ones; keep vanilla jumping/gravity
+                        var toRemove = new java.util.ArrayList<Goal>();
+                        for (var g : goals.getAllGoals(m)) {
+                            var types = g.getTypes();
+                            boolean keep = false;
+                            for (var t : types) {
+                                if (t == GoalType.JUMP) {
+                                    keep = true;
+                                    break;
+                                }
+                            }
+                            if (!keep) {
+                                toRemove.add(g);
                             }
                         }
-                        if (!keep) {
-                            toRemove.add(g);
+                        for (var g : toRemove) {
+                            try { goals.removeGoal(m, g); } catch (Exception ignored) {}
                         }
-                    }
-                    for (var g : toRemove) {
-                        try { goals.removeGoal(m, g); } catch (Exception ignored) {}
-                    }
-                    // Clear any existing target to avoid vanilla targeting
-                    m.setTarget(null);
-                    // Log goals after removal
-                    var after = goals.getAllGoals(m);
-                    plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals after removal: " + after.size() + " goals");
-                    for (var g : after) {
-                        try {
-                            plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
-                        } catch (Exception ignored) {}
+                        // Clear any existing target to avoid vanilla targeting
+                        m.setTarget(null);
+                        var after = goals.getAllGoals(m);
+                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals after removal: " + after.size() + " goals");
+                        for (var g : after) {
+                            try {
+                                plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
+                            } catch (Exception ignored) {}
+                        }
                     }
                 }
             } catch (Exception ignored) {}
-            // Tame if applicable
-            if (mob instanceof Tameable t && profile.tamed) {
+            // Any tameable minion is always tamed and owned by the summoner
+            if (mob instanceof Tameable t) {
                 t.setTamed(true);
                 t.setOwner(player);
                 t.setAdult();
             }
-            // Set custom name for tracking
-            String trackingName = "summon:" + profile.mobTypes + ":" + player.getUniqueId();
+            PhasingMob.applySpawnSettings(mob);
             // Use config nametag
             String displayName = profile.getNametag(player, type);
             mob.setCustomName(displayName);
-            mob.setCustomNameVisible(profile.nametagVisible);
+            mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE);
             // Store mob type in PDC for DamageProxy
             var pdc = mob.getPersistentDataContainer();
             NamespacedKey mobTypeKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_mobtype");
             pdc.set(mobTypeKey, PersistentDataType.STRING, type.name());
-            // Invulnerable
-            if (profile.invulnerable) {
+            NamespacedKey profileKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_profile");
+            pdc.set(profileKey, PersistentDataType.STRING, profile.name);
+            // Summoned minions are always invulnerable
+            if (SummonProfile.INVULNERABLE) {
                 mob.setInvulnerable(true);
                 if (mob.getAttribute(Attribute.MAX_HEALTH) != null) {
                     mob.getAttribute(Attribute.MAX_HEALTH).setBaseValue(1e9);
                 }
             }
-            // Friendly
-            if (profile.friendly && mob instanceof org.bukkit.entity.Mob m) {
-                m.setTarget(null);
-            }
             // Force initial target
-            if ("CURRENT_TARGET".equalsIgnoreCase(profile.targetMode) && target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
+            if (target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
                 m2.setTarget(target);
             }
             // Register tracker
-            tracker.track(player.getUniqueId(), mob, profile.lifetimeTicks);
-            activeCount.merge(player.getUniqueId(), 1, Integer::sum);
+            tracker.track(player.getUniqueId(), mob, SummonProfile.LIFETIME_TICKS);
             spawned.add(mob.getUniqueId());
             // Start AI monitoring
             minionAI.monitorMinion(mob, player, profile);

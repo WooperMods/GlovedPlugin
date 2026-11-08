@@ -2,14 +2,22 @@ package dev.gloved.glovedplugin.summon;
 
 import com.destroystokyo.paper.entity.Pathfinder;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.combat.CombatTargetRules;
+import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
+import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
+import dev.gloved.glovedplugin.summon.phasing.PhasingMinionVanillaAI;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
@@ -19,7 +27,10 @@ public class MinionAI {
     private final GlovedPlugin plugin;
     private final SummonInstanceTracker tracker;
     private final ReachabilityService reachabilityService;
+    private final SummonTargetCoordinator coordinator;
     private final Map<UUID, UUID> minionTasks = new HashMap<>();
+    private SummonManager summonManager;
+    private SummonConfig summonConfig;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> recentDamagers = new java.util.concurrent.ConcurrentHashMap<>();
     private static final long DAMAGER_TTL_MS = 10_000L;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> unreachableCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -27,11 +38,18 @@ public class MinionAI {
     private static final long UNREACHABLE_TTL_MS = 10_000L;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, Long> lastWaypointLog = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public MinionAI(GlovedPlugin plugin, SummonInstanceTracker tracker) {
+    public MinionAI(GlovedPlugin plugin, SummonInstanceTracker tracker, SummonTargetCoordinator coordinator) {
         this.plugin = plugin;
         this.tracker = tracker;
+        this.coordinator = coordinator;
         this.reachabilityService = new ReachabilityService(plugin);
         startGlobalTask();
+    }
+
+    /** Wired after construction to avoid a MinionAI <-> SummonManager cycle. */
+    public void setSummon(SummonConfig summonConfig, SummonManager summonManager) {
+        this.summonConfig = summonConfig;
+        this.summonManager = summonManager;
     }
 
     public static void recordRecentDamager(Player player, LivingEntity damager) {
@@ -138,7 +156,8 @@ public class MinionAI {
                 }
                 if (pf == null) return false;
                 // Already at the destination: do not rebuild a path every tick at melee range.
-                if (mob.getLocation().distanceSquared(goal) <= 4.0) {
+                // Keep this tight because vanilla melee reach is roughly 1.5-2 blocks.
+                if (mob.getLocation().distanceSquared(goal) <= 1.0) {
                     try {
                         pf.stopPathfinding();
                     } catch (Exception ignored) {}
@@ -168,6 +187,7 @@ public class MinionAI {
 
             @Override
             public void run() {
+                try {
                 if (minion.isDead() || !tracker.isSummoned(minion.getUniqueId())) {
                     cancel();
                     return;
@@ -175,7 +195,7 @@ public class MinionAI {
                 org.bukkit.entity.Mob mob = minion instanceof org.bukkit.entity.Mob m ? m : null;
                 if (mob == null) {
                     // Non-mob entities just follow owner
-                    if (minion.getLocation().distanceSquared(owner.getLocation()) > profile.followRange * profile.followRange) {
+                    if (minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE) {
                         GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " non-mob too far from owner " + owner.getName() + ", teleporting");
                         minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
                     }
@@ -188,58 +208,51 @@ public class MinionAI {
                     flying = false;
                 }
                 final boolean isFlyingMob = flying;
+                // Phasing/vex minions run in vanilla AI mode: keep their goals/targeting and let vanilla
+                // AI handle movement/attacks. DamageProxy converts their hits to owner-credited scaled damage.
+                if (PhasingMob.usesVanillaAI(mob)) {
+                    PhasingMinionVanillaAI.runTick(mob, owner, tracker, plugin, coordinator);
+                    return;
+                }
                 // Clear any vanilla target to avoid AI conflicts
                 try {
                     mob.setTarget(null);
                 } catch (Exception ignored) {}
 
-                // Resolve target with distribution
+                // Capacity-based stable targeting (no owner-look, no protection emergency, no "close enemy" priority).
+                // Scoring: last damaged/recent damagers highest, then distance-based.
                 LivingEntity target = null;
                 List<LivingEntity> candidates = new ArrayList<>();
-                // Player look target
-                try {
-                    Entity targetEntity = owner.getTargetEntity(30, true);
-                    if (targetEntity instanceof LivingEntity le && le != owner && !tracker.isSummoned(le.getUniqueId()) && !le.isDead()) {
-                        candidates.add(le);
-                    }
-                } catch (Exception ignored) {}
-                // Nearby hostile entities targeting player or generic monsters
-                double scanDist = profile.followRange;
+                Set<UUID> recentDamagerIds = new HashSet<>();
+                double scanDist = SummonProfile.FOLLOW_RANGE;
                 for (Entity e : owner.getNearbyEntities(scanDist, scanDist, scanDist)) {
                     if (!(e instanceof LivingEntity le)) continue;
                     if (le == owner || le.isDead() || tracker.isSummoned(le.getUniqueId())) continue;
+                    if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
                     boolean isHostile = le instanceof org.bukkit.entity.Monster;
                     boolean targetsOwner = false;
                     if (e instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
                         targetsOwner = mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId());
                     }
                     if (isHostile || targetsOwner) {
-                        if (!candidates.contains(le)) {
-                            candidates.add(le);
-                        }
+                        if (!candidates.contains(le)) candidates.add(le);
                     }
                 }
-                // Add recent damagers for neutral mobs that attacked player
                 for (UUID damagerId : MinionAI.getRecentDamagers(owner)) {
+                    recentDamagerIds.add(damagerId);
                     Entity e = owner.getWorld().getEntity(damagerId);
-                    if (e instanceof LivingEntity le && le != owner && !le.isDead() && !tracker.isSummoned(le.getUniqueId())) {
-                        if (!candidates.contains(le)) {
-                            candidates.add(le);
-                        }
+                    if (e instanceof LivingEntity le && le != owner && !le.isDead() && !tracker.isSummoned(le.getUniqueId())
+                            && !CombatTargetRules.isProtected(plugin, owner, le)) {
+                        if (!candidates.contains(le)) candidates.add(le);
                     }
                 }
-                // Filter candidates to those within the teleport-back / follow range of the owner
-                double maxTargetSq = profile.followRange * profile.followRange;
+                double maxTargetSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
                 candidates.removeIf(le -> le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
-                // Cheap pre-filter only. Reachability is validated once per acquired target further down,
-                // because running a full A* search for every candidate every 2 ticks is very expensive.
                 if (mob != null && !candidates.isEmpty()) {
-                    double maxChaseSq = profile.followRange * profile.followRange * 4;
+                    // Target range and distance from owner are the same radius (FOLLOW_RANGE).
+                    double maxChaseSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
                     candidates.removeIf(le -> {
-                        if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) {
-                            return true;
-                        }
-                        // Ground mobs cannot follow a target far above/below them; flying mobs can.
+                        if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) return true;
                         if (!isFlyingMob) {
                             double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
                             if (dy > 8) return true;
@@ -248,60 +261,23 @@ public class MinionAI {
                     });
                 }
                 long now = Bukkit.getCurrentTick();
-                // Protection override: pull far minions to very close threats
-                LivingEntity protectionTarget = null;
-                double protectionRadiusSq = 10 * 10;
-                double minionDistSqToOwner = minion.getLocation().distanceSquared(owner.getLocation());
-                boolean minionIsFar = minionDistSqToOwner > 6 * 6;
-                // Find closest enemy to owner within protection radius
-                LivingEntity closestClose = null;
-                double closestCloseDistSq = Double.MAX_VALUE;
-                for (LivingEntity le : candidates) {
-                    double dSq = le.getLocation().distanceSquared(owner.getLocation());
-                    if (dSq <= protectionRadiusSq && dSq < closestCloseDistSq) {
-                        closestCloseDistSq = dSq;
-                        closestClose = le;
-                    }
-                }
-                if (minionIsFar && closestClose != null) {
-                    // If minion currently has no target or target is far from owner, switch to protect
-                    boolean currentTargetFar = false;
-                    if (lastTarget != null && !lastTarget.isDead() && candidates.contains(lastTarget)) {
-                        double curDistSq = lastTarget.getLocation().distanceSquared(owner.getLocation());
-                        currentTargetFar = curDistSq > 12 * 12;
-                    } else {
-                        currentTargetFar = true;
-                    }
-                    if (currentTargetFar || lastTarget == null || !lastTarget.getUniqueId().equals(closestClose.getUniqueId())) {
-                        protectionTarget = closestClose;
-                    }
-                }
-
                 if (!candidates.isEmpty()) {
-                    candidates.sort((a,b) -> Double.compare(a.getLocation().distanceSquared(owner.getLocation()), b.getLocation().distanceSquared(owner.getLocation())));
-                    // Keep current target if still valid and recent, unless protection override
-                    boolean lastValid = lastTarget != null && !lastTarget.isDead() && candidates.contains(lastTarget) && (now - lastTargetTick < 200);
-                    if (protectionTarget != null) {
-                        target = protectionTarget;
-                        lastTarget = target;
-                        lastTargetTick = now;
-                    } else if (lastValid) {
-                        target = lastTarget;
-                    } else {
-                        // Stable distribution per minion: assign based on minion hash, not tick
-                        int idx = Math.abs(minion.getUniqueId().hashCode()) % candidates.size();
-                        target = candidates.get(idx);
-                        lastTarget = target;
-                        lastTargetTick = now;
-                    }
-                } else {
+                    target = coordinator.assign(owner, (LivingEntity) minion, candidates, recentDamagerIds, now);
+                }
+                if (target != null && (target.isDead() || !candidates.contains(target))) {
                     target = null;
                 }
-                // Fallback to memory if no candidates
-                if (target == null && lastTarget != null && now - lastTargetTick < 100 && !lastTarget.isDead()) {
-                    target = lastTarget;
-                } else if (target == null) {
-                    lastTarget = null;
+                if (target != null) {
+                    lastTarget = target;
+                    lastTargetTick = now;
+                } else {
+                    // Fallback to memory briefly if coordinator yielded nothing but recent target may still be valid
+                    if (lastTarget != null && now - lastTargetTick < 40 && !lastTarget.isDead()
+                            && !CombatTargetRules.isProtected(plugin, owner, lastTarget)) {
+                        target = lastTarget;
+                    } else {
+                        lastTarget = null;
+                    }
                 }
 
                 // Unreachable target detection: drop target if distance hasn't improved for ~5s
@@ -319,6 +295,7 @@ public class MinionAI {
                                 // Consider unreachable, drop target
                                 GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck on target " + target.getName() + ", dropping");
                                 MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
+                                coordinator.invalidateMinion(minion.getUniqueId());
                                 target = null;
                                 lastTarget = null;
                                 lastTargetDist = Double.MAX_VALUE;
@@ -340,8 +317,10 @@ public class MinionAI {
                 if (target != null) {
                     {
                         double speed = getMobSpeed(mob);
-                        // Paper's navigator handles ground mobs (walking around walls, stairs) and
-                        // flying mobs (FlyingPathNavigation) the same way, so drive both through it.
+                        // Phasing mobs (can fly through solid blocks) keep block-collision reachability checks
+                        // disabled (see ReachabilityService) but still use the mob's navigator for movement so
+                        // their pathfinding/flight style remains natural. Manual velocity steering overrides
+                        // their AI movement, so avoid it unless navigation fails.
                         boolean navigating = driveTowards(mob, target.getLocation(), speed, now);
                         if (!navigating) {
                             GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " no path to target " + target.getName() + ", direct fallback");
@@ -349,12 +328,42 @@ public class MinionAI {
                         }
                         faceTowards(mob, target.getLocation());
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
-                        double attackRangeSq = profile.attackRange * profile.attackRange;
+                        double attackRangeSq = defaultAttackReachSq(minion, target);
+                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " distSq=" + distSq + " attackRangeSq=" + attackRangeSq + " lastAttackTickDiff=" + (now - lastAttackTick) + " requiredArcTicks=" + requiredArcTicks(owner));
                         if (distSq <= attackRangeSq && now - lastAttackTick >= requiredArcTicks(owner)) {
-                            forceFullAttackStrength(owner);
-                            applyPlayerDamage(owner, target);
-                            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " triggered player attack on " + target.getName() + " for player " + owner.getName());
-                            lastAttackTick = now;
+                            if (CombatTargetRules.isProtected(plugin, owner, target)) {
+                                lastAttackTick = now;
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " skipped protected target " + target.getName());
+                            } else {
+                                forceFullAttackStrength(owner);
+                                // Trigger attack animation
+                                try {
+                                    ((org.bukkit.entity.LivingEntity) mob).attack(target);
+                                } catch (Exception ignored) {}
+                                // Level-scaled damage with player credit, no weapon scaling, no base mob damage
+                                int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
+                                boolean isElite = isEliteMob(target);
+                                double damage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
+                                try {
+                                    DamageSource src = DamageSource.builder(DamageType.GENERIC)
+                                            .withDirectEntity(minion)
+                                            .withCausingEntity(owner)
+                                            .build();
+                                    target.damage(damage, src);
+                                    applyKnockback(minion, owner, target);
+                                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + damage + " to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
+                                } catch (Exception e) {
+                                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
+                                }
+                                // Reset despawn timers per minion type
+                                NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
+                                String mobType = minion.getPersistentDataContainer().get(mobTypeKey, PersistentDataType.STRING);
+                                if (mobType != null) {
+                                    tracker.resetTimersForPlayerAndType(owner.getUniqueId(), mobType, SummonProfile.LIFETIME_TICKS);
+                                }
+                                trySummonFromMinion(minion, owner, target);
+                                lastAttackTick = now;
+                            }
                         }
                     }
                 } else {
@@ -453,7 +462,7 @@ public class MinionAI {
                         } else {
                             followUnreachableSince = 0L;
                             double speed = getMobSpeed(mob) * 0.9;
-                            // Same navigator for ground and flying mobs
+                            // Same navigator for ground and flying mobs (phasing mobs keep lenient reachability).
                             if (!driveTowards(mob, owner.getLocation(), speed, now)) {
                                 moveMobTowards(mob, owner.getLocation(), speed * 0.8);
                             }
@@ -463,15 +472,20 @@ public class MinionAI {
                     }
                 }
                 // Teleport if too far away
-                if (target == null && minion.getLocation().distanceSquared(owner.getLocation()) > profile.followRange * profile.followRange) {
+                if (target == null && minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE) {
                     GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " too far from owner " + owner.getName() + " with no target, teleporting");
                     minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
+                }
+                } catch (Throwable t) {
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "[Summon] MinionAI tick error for " + (minion != null ? minion.getUniqueId() : "unknown") + " (suppressed)", t);
+                    try { cancel(); } catch (Throwable ignored) {}
                 }
             }
         }.runTaskTimer(plugin, 0L, 2L);
     }
 
-    private static void teleportNearPlayer(Player owner, LivingEntity minion) {
+    public static void teleportNearPlayer(Player owner, LivingEntity minion) {
         org.bukkit.Location base = owner.getLocation().clone();
         // Teleport to player with small random XZ offset, keeping Y to work underground
         org.bukkit.Location target = base.clone().add((Math.random()-0.5)*2, 0, (Math.random()-0.5)*2);
@@ -648,6 +662,73 @@ public class MinionAI {
         if (requiredTicks < 0) requiredTicks = 0;
         long ticks = Math.max(1L, Math.round(requiredTicks));
         return ticks;
+    }
+
+    /**
+     * Minions have a 1/4th chance (of the profile's base chance) to spawn more minions of their
+     * own type on hit, following the same cooldown and max-active rules as the player.
+     */
+    private void trySummonFromMinion(LivingEntity minion, Player owner, LivingEntity target) {
+        if (summonManager == null || summonConfig == null) return;
+        Player liveOwner = Bukkit.getPlayer(owner.getUniqueId());
+        if (liveOwner == null || !liveOwner.isOnline()) return;
+        NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
+        String profileName = minion.getPersistentDataContainer().get(profileKey, PersistentDataType.STRING);
+        if (profileName == null) return;
+        SummonProfile profile = summonConfig.getProfile(profileName);
+        if (profile == null) return;
+        if (!summonManager.canSummon(liveOwner, profile)) return;
+        double minionChance = profile.chance * 0.25;
+        if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > minionChance) return;
+        summonManager.setCooldown(liveOwner, profile);
+        summonManager.spawn(liveOwner, profile, target);
+        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " triggered spawn for " + liveOwner.getName()
+                + " profile " + profileName + " (minion-chance=" + minionChance + ")");
+    }
+
+    /**
+     * Vanilla melee reach: {@code (mobWidth * 2)^2 + targetWidth}, matching
+     * {@code MeleeAttackGoal#getAttackReachSqr}, plus a 2-block bonus.
+     */
+    private static double defaultAttackReachSq(LivingEntity mob, LivingEntity target) {
+        double width = mob.getWidth();
+        double targetWidth = target.getWidth();
+        double vanillaReach = Math.sqrt((width * 2.0) * (width * 2.0) + targetWidth);
+        double reach = vanillaReach + 2.0;
+        return reach * reach;
+    }
+
+    private static void applyKnockback(LivingEntity minion, LivingEntity owner, LivingEntity target) {
+        // LivingEntity#knockback subtracts the supplied vector from the victim's velocity,
+        // so it must point from the victim toward the source (target -> owner) to push the
+        // target away from the owner.
+        Vector direction = owner.getLocation().toVector().subtract(target.getLocation().toVector());
+        direction.setY(0);
+        if (direction.lengthSquared() < 1.0E-4) {
+            // Target is basically on top of the owner: fall back to pushing off the minion.
+            direction = minion.getLocation().toVector().subtract(target.getLocation().toVector());
+            direction.setY(0);
+            if (direction.lengthSquared() < 1.0E-4) return;
+        }
+        direction.normalize();
+        double strength = 0.4;
+        try {
+            var knockback = minion.getAttribute(Attribute.ATTACK_KNOCKBACK);
+            if (knockback != null) strength += Math.max(0, knockback.getValue());
+        } catch (Exception ignored) {}
+        target.knockback(strength, direction.getX(), direction.getZ());
+    }
+
+    private static boolean isEliteMob(LivingEntity entity) {
+        try {
+            org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
+            if (p == null) return false;
+            ClassLoader cl = p.getClass().getClassLoader();
+            Class<?> eliteClass = Class.forName("com.magmaguy.elitemobs.mobconstructor.EliteEntity", true, cl);
+            return eliteClass.isInstance(entity);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private static void applyPlayerDamage(Player owner, LivingEntity target) {

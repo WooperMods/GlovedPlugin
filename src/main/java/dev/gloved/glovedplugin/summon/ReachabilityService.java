@@ -1,6 +1,7 @@
 package dev.gloved.glovedplugin.summon;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
 import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -33,7 +34,8 @@ public class ReachabilityService {
     private static java.lang.reflect.Method allowDiagMethod;
     private static java.lang.reflect.Method navCapsOfMethod;
     private static java.lang.reflect.Method asLocationsMethod;
-    private static boolean initialized = false;
+    private static volatile boolean initialized = false;
+    private static volatile boolean npcApiBroken = false;
 
     static {
         try {
@@ -64,24 +66,53 @@ public class ReachabilityService {
      * optimistic when no reliable answer can be produced so that unknown errors never cause
      * minions to be teleported or targets to be discarded.</p>
      */
+    /** @deprecated use {@link PhasingMob#isPhasing(LivingEntity)} */
+    @Deprecated(forRemoval = false)
+    public static boolean phasesThroughBlocks(LivingEntity mob) {
+        return PhasingMob.isPhasing(mob);
+    }
+
     public boolean canReach(Mob mob, Location target) {
         if (mob == null || target == null) return false;
-        if (mob.getLocation().distanceSquared(target) > MAX_SEARCH_DISTANCE_SQ) {
+        try {
+            if (mob.getLocation().distanceSquared(target) > MAX_SEARCH_DISTANCE_SQ) {
+                return true;
+            }
+            if (PhasingMob.isPhasing(mob)) {
+                return true;
+            }
+            Boolean npcResult = npcCanReach(mob, target);
+            if (npcResult != null) {
+                return npcResult;
+            }
+            return paperCanReach(mob, target);
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Reachability check failed, allowing optimistically: " + t);
             return true;
         }
-        Boolean npcResult = npcCanReach(mob, target);
-        if (npcResult != null) {
-            return npcResult;
-        }
-        return paperCanReach(mob, target);
     }
 
     /**
      * @return {@code true}/{@code false} when NpcApi produced a definitive answer,
      *         {@code null} when it is unavailable or errored and Paper should decide.
      */
+    private static void markNpcApiBroken(Throwable t) {
+        if (!npcApiBroken) {
+            npcApiBroken = true;
+            initialized = false;
+            GlovedPlugin.logInfo("[Summon] NpcApi pathfinding disabled after fatal/linkage error: " + t
+                    + " (falling back to Paper pathfinding; plugin reload may be required to restore NpcApi)");
+        }
+    }
+
+    private static boolean isFatalNpcError(Throwable t) {
+        return t instanceof LinkageError
+                || t instanceof ExceptionInInitializerError
+                || (t != null && t.getCause() instanceof LinkageError);
+    }
+
     private Boolean npcCanReach(Mob mob, Location target) {
-        if (!initialized) return null;
+        if (!initialized || npcApiBroken) return null;
         try {
             Object caps = navCapsOfMethod.invoke(null, mob.getType());
             Object builder = builderMethod.invoke(null, java.util.List.of(mob.getLocation(), target));
@@ -102,6 +133,10 @@ public class ReachabilityService {
             return !locations.isEmpty();
         } catch (java.lang.reflect.InvocationTargetException e) {
             Throwable cause = e.getCause();
+            if (isFatalNpcError(cause) || isFatalNpcError(e)) {
+                markNpcApiBroken(cause != null ? cause : e);
+                return null;
+            }
             if (cause != null && cause.getClass().getName().endsWith("PathfindingException")) {
                 String reason = pathingResultName(cause);
                 if (reason == null || reason.equals("ITERATIONS_EXCEEDED") || reason.equals("CANCELLED")) {
@@ -115,6 +150,10 @@ public class ReachabilityService {
             GlovedPlugin.logDebug("[Summon] NpcApi reachability errored: " + (cause == null ? e : cause));
             return null;
         } catch (Throwable t) {
+            if (isFatalNpcError(t)) {
+                markNpcApiBroken(t);
+                return null;
+            }
             GlovedPlugin.logDebug("[Summon] NpcApi reachability unavailable: " + t);
             return null;
         }
