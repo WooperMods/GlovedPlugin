@@ -4,13 +4,11 @@ import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.SummonConfig;
 import dev.gloved.glovedplugin.summon.SummonInstanceTracker;
 import dev.gloved.glovedplugin.summon.SummonProfile;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -25,21 +23,18 @@ import org.bukkit.scheduler.BukkitTask;
 import java.util.*;
 
 /**
- * When enough of an owner's minions of the same type/profile cluster together, hides their individual
- * nametags and shows a single proxy {@link TextDisplay} at the clump center matching that minion's
- * nametag (e.g. "Player's Bees x5").
+ * When enough of an owner's minions of the same type/profile cluster together, picks a leader
+ * (middle-most minion) to show an aggregated nametag (profile nametag + count) and hides nametags
+ * on the other clumped minions. No proxy entities are created (performance-friendly).
  */
 public class ClumpNametagManager implements Listener {
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
-
     private final GlovedPlugin plugin;
     private final SummonInstanceTracker tracker;
     private BukkitTask task;
 
-    // ownerId -> (clumpKey -> proxy entity UUID)
-    private final Map<UUID, Map<String, UUID>> proxiesByOwner = new HashMap<>();
-    // minionId -> currently hidden by clump logic
-    private final Set<UUID> hiddenMinions = new HashSet<>();
+    // minionId -> currently hidden/overridden by clump logic (needs restore)
+    private final Set<UUID> managedMinions = new HashSet<>();
+    // minionId -> original/custom name should be restored? We restore from profile PDC.
 
     public ClumpNametagManager(GlovedPlugin plugin, SummonInstanceTracker tracker) {
         this.plugin = plugin;
@@ -58,21 +53,22 @@ public class ClumpNametagManager implements Listener {
             task.cancel();
             task = null;
         }
-        removeAllProxies();
-        restoreAllHidden();
+        restoreAllManaged();
+        cleanupOrphanProxies(); // remove any leftover proxies from older implementation
     }
 
     /** Call after config reload to apply new update-ticks/enabled state. */
     public void restart() {
-        removeAllProxies();
-        restoreAllHidden();
+        restoreAllManaged();
+        cleanupOrphanProxies();
         start();
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
+        // Minions are removed by summon cleanup; restore/forget managed ids for this owner defensively.
         if (event.getPlayer() != null) {
-            removeProxiesForOwner(event.getPlayer().getUniqueId());
+            restoreManagedForOwner(event.getPlayer().getUniqueId());
         }
     }
 
@@ -80,10 +76,8 @@ public class ClumpNametagManager implements Listener {
         try {
             SummonConfig cfg = plugin.getSummonConfig();
             if (cfg == null || !cfg.isEnabled() || !cfg.isClumpedNametagsEnabled()) {
-                if (!proxiesByOwner.isEmpty() || !hiddenMinions.isEmpty()) {
-                    removeAllProxies();
-                    restoreAllHidden();
-                }
+                if (!managedMinions.isEmpty()) restoreAllManaged();
+                cleanupOrphanProxies();
                 return;
             }
             int minCount = cfg.getClumpedNametagsMinCount();
@@ -92,23 +86,16 @@ public class ClumpNametagManager implements Listener {
             double radiusSq = radius * radius;
 
             Set<UUID> owners = collectOwners();
-            // Clean up owners with no minions
-            for (UUID ownerId : new ArrayList<>(proxiesByOwner.keySet())) {
-                if (!owners.contains(ownerId)) {
-                    removeProxiesForOwner(ownerId);
-                }
-            }
-
-            Set<UUID> nowHidden = new HashSet<>();
+            Set<UUID> nowManaged = new HashSet<>();
             for (UUID ownerId : owners) {
-                processOwner(ownerId, minCount, radiusSq, format, nowHidden);
+                processOwner(ownerId, minCount, radiusSq, format, nowManaged);
             }
 
-            // Restore any minions that are no longer in a clump
-            for (UUID minionId : new ArrayList<>(hiddenMinions)) {
-                if (!nowHidden.contains(minionId)) {
+            // Restore any minions no longer managed by a clump
+            for (UUID minionId : new ArrayList<>(managedMinions)) {
+                if (!nowManaged.contains(minionId)) {
                     restoreNametag(minionId);
-                    hiddenMinions.remove(minionId);
+                    managedMinions.remove(minionId);
                 }
             }
         } catch (Throwable t) {
@@ -121,28 +108,23 @@ public class ClumpNametagManager implements Listener {
         NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
         for (LivingEntity le : tracker.getActiveMinions()) {
             if (le == null || le.isDead()) continue;
-            // Tracker exposes by player in other paths; derive owner from PDC/tracker cache
             String ownerStr = le.getPersistentDataContainer().get(ownerKey, PersistentDataType.STRING);
             if (ownerStr != null) {
                 try { owners.add(UUID.fromString(ownerStr)); } catch (Exception ignored) {}
             }
         }
-        // Also include owners known to tracker via activeByPlayer? Not directly exposed; PDC is sufficient.
         return owners;
     }
 
-    private void processOwner(UUID ownerId, int minCount, double radiusSq, String format, Set<UUID> nowHidden) {
+    private void processOwner(UUID ownerId, int minCount, double radiusSq, String format, Set<UUID> nowManaged) {
         Player owner = Bukkit.getPlayer(ownerId);
         List<LivingEntity> minions = tracker.getActiveMinions(ownerId);
-        if (minions.isEmpty()) {
-            removeProxiesForOwner(ownerId);
-            return;
-        }
+        if (minions.isEmpty()) return;
         minions.removeIf(le -> le == null || le.isDead());
+        if (minions.isEmpty()) return;
 
         SummonConfig cfg = plugin.getSummonConfig();
         NamespacedKey profileKeyPdc = new NamespacedKey(plugin, "summon_profile");
-        // Only clump minions of the same type/profile, with a nametag matching that profile.
         Map<String, List<LivingEntity>> byProfile = new HashMap<>();
         for (LivingEntity le : minions) {
             String pName = le.getPersistentDataContainer().get(profileKeyPdc, PersistentDataType.STRING);
@@ -150,43 +132,57 @@ public class ClumpNametagManager implements Listener {
             byProfile.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(le);
         }
 
-        Map<String, UUID> ownerProxies = proxiesByOwner.computeIfAbsent(ownerId, k -> new HashMap<>());
-        Set<String> activeKeys = new HashSet<>();
-
         String playerName = owner != null ? owner.getName() : "Owner";
+        Set<UUID> clumpedIds = new HashSet<>();
         for (Map.Entry<String, List<LivingEntity>> entry : byProfile.entrySet()) {
             String profileGroup = entry.getKey();
             List<List<LivingEntity>> clumps = findClumps(entry.getValue(), radiusSq, minCount);
             for (List<LivingEntity> clump : clumps) {
-                String key = profileGroup + "|" + clumpKey(clump);
-                activeKeys.add(key);
-                Location center = clumpCenter(clump);
-                if (center == null) continue;
-                String text = formatNametag(format, playerName, profileGroup, clump, owner, cfg);
-                UUID proxyId = ownerProxies.get(key);
-                TextDisplay display = resolveDisplay(proxyId);
-                if (display == null || display.isDead()) {
-                    display = spawnProxy(center, text, ownerId);
-                    if (display != null) ownerProxies.put(key, display.getUniqueId());
-                } else {
-                    updateProxy(display, center, text);
-                }
+                LivingEntity leader = pickLeader(clump);
+                if (leader == null || leader.isDead()) continue;
+                String leaderName = formatNametag(format, playerName, profileGroup, clump, owner, cfg);
+                leaderName = ChatColor.translateAlternateColorCodes('&', leaderName);
                 for (LivingEntity member : clump) {
                     if (member == null || member.isDead()) continue;
                     try {
-                        if (member.isCustomNameVisible()) member.setCustomNameVisible(false);
-                        nowHidden.add(member.getUniqueId());
+                        if (member.getUniqueId().equals(leader.getUniqueId())) {
+                            member.setCustomName(leaderName);
+                            member.setCustomNameVisible(true);
+                        } else {
+                            member.setCustomNameVisible(false);
+                        }
+                        nowManaged.add(member.getUniqueId());
+                        clumpedIds.add(member.getUniqueId());
                     } catch (Throwable ignored) {}
                 }
             }
         }
+    }
 
-        // Remove proxies for clumps that no longer exist
-        for (String key : new ArrayList<>(ownerProxies.keySet())) {
-            if (!activeKeys.contains(key)) {
-                removeProxyEntity(ownerProxies.remove(key));
-            }
+    private LivingEntity pickLeader(List<LivingEntity> clump) {
+        if (clump == null || clump.isEmpty()) return null;
+        double cx = 0, cy = 0, cz = 0;
+        World w = null;
+        int c = 0;
+        for (LivingEntity le : clump) {
+            if (le == null || le.isDead()) continue;
+            Location l = le.getLocation();
+            if (w == null) w = l.getWorld();
+            if (w == null || !w.equals(l.getWorld())) continue;
+            cx += l.getX(); cy += l.getY(); cz += l.getZ(); c++;
         }
+        if (c == 0) return clump.get(0);
+        cx /= c; cy /= c; cz /= c;
+        LivingEntity best = null;
+        double bestD = Double.MAX_VALUE;
+        for (LivingEntity le : clump) {
+            if (le == null || le.isDead() || le.getWorld() == null || !le.getWorld().equals(w)) continue;
+            Location l = le.getLocation();
+            double dx = l.getX() - cx, dy = l.getY() - cy, dz = l.getZ() - cz;
+            double d = dx * dx + dy * dy + dz * dz;
+            if (d < bestD) { bestD = d; best = le; }
+        }
+        return best != null ? best : clump.get(0);
     }
 
     private List<List<LivingEntity>> findClumps(List<LivingEntity> minions, double radiusSq, int minCount) {
@@ -234,44 +230,8 @@ public class ClumpNametagManager implements Listener {
         if (ra != rb) parent[rb] = ra;
     }
 
-    private String clumpKey(List<LivingEntity> clump) {
-        List<String> ids = new ArrayList<>();
-        for (LivingEntity le : clump) ids.add(le.getUniqueId().toString());
-        Collections.sort(ids);
-        // Stable-ish key from member composition (bounded length)
-        int hash = ids.hashCode();
-        return Integer.toHexString(hash) + ":" + ids.size();
-    }
-
-    private Location clumpCenter(List<LivingEntity> clump) {
-        double x = 0, y = 0, z = 0;
-        World w = null;
-        int c = 0;
-        for (LivingEntity le : clump) {
-            if (le == null || le.isDead()) continue;
-            Location l = le.getLocation();
-            if (w == null) w = l.getWorld();
-            if (w != null && !w.equals(l.getWorld())) continue;
-            x += l.getX();
-            y += Math.max(y, l.getY() + le.getHeight()); // track max top; we'll average base too
-            z += l.getZ();
-            c++;
-        }
-        if (c == 0 || w == null) return null;
-        // Use average X/Z and a Y above the highest member for visibility
-        double ax = 0, az = 0, maxTop = Double.NEGATIVE_INFINITY;
-        for (LivingEntity le : clump) {
-            if (le == null || le.isDead()) continue;
-            Location l = le.getLocation();
-            if (!w.equals(l.getWorld())) continue;
-            ax += l.getX(); az += l.getZ();
-            maxTop = Math.max(maxTop, l.getY() + le.getHeight());
-        }
-        return new Location(w, ax / c, maxTop + 0.4, az / c);
-    }
-
     private String formatNametag(String format, String playerName, String profileGroup,
-                                  List<LivingEntity> clump, Player owner, SummonConfig cfg) {
+                                 List<LivingEntity> clump, Player owner, SummonConfig cfg) {
         int count = clump.size();
         LivingEntity sample = clump.isEmpty() ? null : clump.get(0);
         String baseNametag = resolveBaseNametag(profileGroup, sample, owner, playerName, cfg);
@@ -292,42 +252,19 @@ public class ClumpNametagManager implements Listener {
                 return profile.getNametag(playerName, sample.getType());
             }
         }
-        if (sample != null && sample.getCustomName() != null) return sample.getCustomName();
-        return (sample != null ? sample.getType().name().toLowerCase().replace("_", " ") : "Minions");
-    }
-
-    private TextDisplay spawnProxy(Location center, String legacyText, UUID ownerId) {
-        try {
-            return center.getWorld().spawn(center, TextDisplay.class, td -> {
-                td.text(LEGACY.deserialize(ChatColor.translateAlternateColorCodes('&', legacyText)));
-                td.setBillboard(Display.Billboard.CENTER);
-                try { td.setPersistent(false); } catch (Throwable ignored) {}
-                try { td.setShadowed(true); } catch (Throwable ignored) {}
-                NamespacedKey proxyKey = new NamespacedKey(plugin, "summon_nametag_proxy");
-                td.getPersistentDataContainer().set(proxyKey, PersistentDataType.BYTE, (byte) 1);
-                NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_nametag_owner");
-                td.getPersistentDataContainer().set(ownerKey, PersistentDataType.STRING, ownerId.toString());
-            });
-        } catch (Throwable t) {
-            GlovedPlugin.logDebug("[Summon] Failed to spawn clump nametag proxy: " + t);
-            return null;
-        }
-    }
-
-    private void updateProxy(TextDisplay display, Location center, String legacyText) {
-        try {
-            if (display.getWorld() == null || !display.getWorld().equals(center.getWorld())
-                    || display.getLocation().distanceSquared(center) > 0.01) {
-                display.teleport(center);
+        if (sample != null) {
+            // try to restore from profile PDC if groupKey was type-based
+            NamespacedKey profileKeyPdc = new NamespacedKey(plugin, "summon_profile");
+            String pName = sample.getPersistentDataContainer().get(profileKeyPdc, PersistentDataType.STRING);
+            if (cfg != null && pName != null) {
+                SummonProfile profile = cfg.getProfile(pName);
+                if (profile != null) {
+                    return owner != null ? profile.getNametag(owner, sample.getType()) : profile.getNametag(playerName, sample.getType());
+                }
             }
-            display.text(LEGACY.deserialize(ChatColor.translateAlternateColorCodes('&', legacyText)));
-        } catch (Throwable ignored) {}
-    }
-
-    private TextDisplay resolveDisplay(UUID id) {
-        if (id == null) return null;
-        Entity e = Bukkit.getEntity(id);
-        return e instanceof TextDisplay td ? td : null;
+        }
+        String mob = sample != null ? sample.getType().name().toLowerCase().replace("_", " ") : "minion";
+        return (playerName == null ? "Owner" : playerName) + "'s " + mob;
     }
 
     private void restoreNametag(UUID minionId) {
@@ -346,14 +283,10 @@ public class ClumpNametagManager implements Listener {
                     if (ownerStr != null) {
                         try { owner = Bukkit.getPlayer(UUID.fromString(ownerStr)); } catch (Exception ignored) {}
                     }
-                    String displayName;
-                    if (owner != null) {
-                        displayName = profile.getNametag(owner, le.getType());
-                    } else {
-                        // Fallback when owner is offline
-                        displayName = profile.getNametag("Owner", le.getType());
-                    }
-                    le.setCustomName(displayName);
+                    String displayName = owner != null
+                            ? profile.getNametag(owner, le.getType())
+                            : profile.getNametag("Owner", le.getType());
+                    le.setCustomName(ChatColor.translateAlternateColorCodes('&', displayName));
                 }
             }
             le.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE);
@@ -362,83 +295,58 @@ public class ClumpNametagManager implements Listener {
         }
     }
 
-    private void restoreAllHidden() {
-        for (UUID id : new ArrayList<>(hiddenMinions)) {
+    private void restoreAllManaged() {
+        for (UUID id : new ArrayList<>(managedMinions)) {
             restoreNametag(id);
         }
-        hiddenMinions.clear();
+        managedMinions.clear();
     }
 
-    private void removeProxyEntity(UUID id) {
-        if (id == null) return;
-        Entity e = Bukkit.getEntity(id);
-        if (e != null && !e.isDead()) {
-            try { e.remove(); } catch (Throwable ignored) {}
-        }
-    }
-
-    public void removeProxiesForOwner(UUID ownerId) {
+    private void restoreManagedForOwner(UUID ownerId) {
         if (ownerId == null) return;
-        Map<String, UUID> map = proxiesByOwner.remove(ownerId);
-        if (map != null) {
-            for (UUID id : map.values()) removeProxyEntity(id);
-        }
-        // Also restore nametags for that owner's minions (they may no longer be in clumps / owner quit)
         NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
         String ownerStr = ownerId.toString();
-        for (UUID minionId : new ArrayList<>(hiddenMinions)) {
+        for (UUID minionId : new ArrayList<>(managedMinions)) {
             Entity e = Bukkit.getEntity(minionId);
             if (e instanceof LivingEntity le && !le.isDead()) {
                 String os = le.getPersistentDataContainer().get(ownerKey, PersistentDataType.STRING);
                 if (ownerStr.equals(os)) {
                     restoreNametag(minionId);
-                    hiddenMinions.remove(minionId);
+                    managedMinions.remove(minionId);
                 }
             } else {
-                hiddenMinions.remove(minionId);
+                managedMinions.remove(minionId);
             }
         }
     }
 
-    public void removeAllProxies() {
-        for (UUID ownerId : new ArrayList<>(proxiesByOwner.keySet())) {
-            Map<String, UUID> map = proxiesByOwner.remove(ownerId);
-            if (map != null) for (UUID id : map.values()) removeProxyEntity(id);
-        }
-        proxiesByOwner.clear();
-    }
-
-    /** Removes orphaned nametag proxy display entities (no valid owner context). */
+    /** Removes orphaned nametag proxy display entities left over from older proxy-based implementation. */
     public void cleanupOrphanProxies() {
         NamespacedKey proxyKey = new NamespacedKey(plugin, "summon_nametag_proxy");
-        NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_nametag_owner");
         int removed = 0;
-        for (World world : Bukkit.getWorlds()) {
-            for (Entity e : world.getEntities()) {
-                if (!(e instanceof TextDisplay)) continue;
-                var pdc = e.getPersistentDataContainer();
-                if (!pdc.has(proxyKey, PersistentDataType.BYTE)) continue;
-                String ownerStr = pdc.get(ownerKey, PersistentDataType.STRING);
-                boolean orphan = true;
-                if (ownerStr != null) {
-                    try {
-                        UUID ownerId = UUID.fromString(ownerStr);
-                        if (Bukkit.getPlayer(ownerId) != null && proxiesByOwner.containsKey(ownerId)) {
-                            // check if this proxy is known
-                            for (UUID known : proxiesByOwner.get(ownerId).values()) {
-                                if (known.equals(e.getUniqueId())) { orphan = false; break; }
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
-                if (orphan) {
-                    e.remove();
-                    removed++;
+        try {
+            for (World world : Bukkit.getWorlds()) {
+                for (Entity e : world.getEntities()) {
+                    if (!(e instanceof TextDisplay)) continue;
+                    if (e.getPersistentDataContainer().has(proxyKey, PersistentDataType.BYTE)) {
+                        e.remove();
+                        removed++;
+                    }
                 }
             }
-        }
+        } catch (Throwable ignored) {}
         if (removed > 0) {
-            GlovedPlugin.logDebug("[Summon] Cleaned up " + removed + " orphaned clump nametag proxy(s)");
+            GlovedPlugin.logDebug("[Summon] Cleaned up " + removed + " legacy clump nametag proxy(s)");
         }
+    }
+
+    // Back-compat no-op for any callers; proxies are no longer used.
+    public void removeAllProxies() {
+        cleanupOrphanProxies();
+    }
+
+    public void removeProxiesForOwner(UUID ownerId) {
+        restoreManagedForOwner(ownerId);
+        cleanupOrphanProxies();
     }
 }
