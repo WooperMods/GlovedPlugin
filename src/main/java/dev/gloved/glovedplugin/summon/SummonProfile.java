@@ -3,71 +3,55 @@ package dev.gloved.glovedplugin.summon;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.EquipmentSlot;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public class SummonProfile {
-    public final List<String> mobTypes;
-    public final String mobType;
-    public final String ai;
-    public final boolean tamed;
-    public final boolean friendly;
-    public final boolean invulnerable;
-    public final double chance;
-    public final int cooldownTicks;
-    public final int lifetimeTicks;
-    public final int minions;
-    public final int maxActive;
-    public final Set<EquipmentSlot> validSlots;
-    public final String targetMode;
-    public final boolean damageProxy;
-    public final double followRange;
-    public final double attackRange;
-    public final String nametagFormat;
-    public final ChatColor nametagColor;
-    public final boolean nametagVisible;
+    public static final boolean INVULNERABLE = true;
+    public static final int COOLDOWN_TICKS = 5;
+    public static final int LIFETIME_TICKS = 600;
+    /**
+     * Single unified radius: max distance minions may travel from the owner, the target scan
+     * range around the owner, and the max allowed target distance from the owner.
+     */
+    public static final double FOLLOW_RANGE = 64.0;
+    public static final String NAMETAG_FORMAT = "{player}'s {mob}";
+    public static final boolean NAMETAG_VISIBLE = true;
 
-    public SummonProfile(List<String> mobTypes, String ai, boolean tamed, boolean friendly, boolean invulnerable,
-                         double chance, int cooldownTicks, int lifetimeTicks, int minions, int maxActive,
-                         List<String> validSlots, String targetMode, boolean damageProxy,
-                         double followRange, double attackRange,
-                         String nametagFormat, String nametagColor, boolean nametagVisible) {
-        if (mobTypes == null || mobTypes.isEmpty()) {
-            this.mobTypes = new ArrayList<>();
-        } else {
-            this.mobTypes = new ArrayList<>(mobTypes);
-        }
-        this.mobType = this.mobTypes.isEmpty() ? "BEE" : this.mobTypes.get(0);
-        this.ai = ai;
-        this.tamed = tamed;
-        this.friendly = friendly;
-        this.invulnerable = invulnerable;
+    /** Config key of this profile, used to count active minions per profile. */
+    public final String name;
+    /** Single entity type id for this profile (e.g. {@code BEE}). {@code mob-types} list is invalid. */
+    public final String mobType;
+    /** Single-element view for compatibility with existing call sites. */
+    public final List<String> mobTypes;
+    public final double chance;
+    /** How many minions are spawned each time this profile triggers. */
+    public final int minionsPerHit;
+    public final int maxActive;
+    public final ChatColor nametagColor;
+    /** Enchant/display name that must appear in an item's lore (formatting stripped) to trigger this profile. */
+    public final String enchantName;
+
+    public SummonProfile(String name, String mobType, double chance, int minionsPerHit, int maxActive,
+                         String nametagColor, String enchantName) {
+        this.name = name;
+        this.mobType = (mobType == null || mobType.isBlank()) ? "BEE" : mobType.trim().toUpperCase();
+        this.mobTypes = Collections.singletonList(this.mobType);
         this.chance = chance;
-        this.cooldownTicks = cooldownTicks;
-        this.lifetimeTicks = lifetimeTicks;
-        this.minions = minions;
+        this.minionsPerHit = minionsPerHit > 0 ? minionsPerHit : 1;
         this.maxActive = maxActive > 0 ? maxActive : 10;
-        Set<EquipmentSlot> slots = validSlots == null ? Set.of() : validSlots.stream()
-                .map(s -> {
-                    String normalized = s.toUpperCase().replace("MAIN_HAND", "HAND").replace("OFF_HAND", "OFF_HAND");
-                    try { return EquipmentSlot.valueOf(normalized); } catch (Exception e) { return null; }
-                })
-                .filter(s -> s != null)
-                .collect(Collectors.toSet());
-        this.validSlots = slots.isEmpty() ? Set.of(EquipmentSlot.HAND) : slots;
-        this.targetMode = targetMode;
-        this.damageProxy = damageProxy;
-        this.followRange = followRange;
-        this.attackRange = attackRange;
-        this.nametagFormat = nametagFormat != null ? nametagFormat : "{player}'s {mob}";
-        // Actually parse color name
         ChatColor parsedColor = parseChatColor(nametagColor);
         this.nametagColor = parsedColor != null ? parsedColor : ChatColor.YELLOW;
-        this.nametagVisible = nametagVisible;
+        this.enchantName = enchantName == null ? "" : enchantName.trim();
+    }
+
+    /** @deprecated use {@link #SummonProfile(String, String, double, int, int, String, String)}; only the first type is used. */
+    @Deprecated(forRemoval = false)
+    public SummonProfile(String name, List<String> mobTypes, double chance, int minionsPerHit, int maxActive,
+                         String nametagColor, String enchantName) {
+        this(name, (mobTypes == null || mobTypes.isEmpty()) ? "BEE" : mobTypes.get(0),
+                chance, minionsPerHit, maxActive, nametagColor, enchantName);
     }
 
     private static ChatColor parseChatColor(String color) {
@@ -84,10 +68,8 @@ public class SummonProfile {
     }
 
     public EntityType resolveEntityType() {
-        if (mobTypes.isEmpty()) return null;
-        String typeName = mobTypes.get((int)(Math.random() * mobTypes.size()));
         try {
-            return EntityType.valueOf(typeName.toUpperCase());
+            return EntityType.valueOf(mobType);
         } catch (Exception e) {
             return null;
         }
@@ -95,7 +77,7 @@ public class SummonProfile {
 
     public String getNametag(Player player, EntityType type) {
         String mobName = type != null ? type.name().toLowerCase().replace("_", " ") : mobType.toLowerCase().replace("_", " ");
-        String format = nametagFormat.replace("{player}", player.getName())
+        String format = NAMETAG_FORMAT.replace("{player}", player.getName())
                 .replace("{mob}", mobName);
         return nametagColor + format;
     }
