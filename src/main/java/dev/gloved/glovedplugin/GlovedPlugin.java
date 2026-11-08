@@ -18,8 +18,7 @@ import dev.gloved.glovedplugin.editor.EditSessionCache;
 import dev.gloved.glovedplugin.handlers.MenuHandler;
 import dev.gloved.glovedplugin.handlers.TorchHandler;
 
-import de.eisi05.npc.api.NpcApi;
-import de.eisi05.npc.api.objects.NpcConfig;
+
 
 import java.util.logging.Logger;
 
@@ -45,7 +44,6 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonTargetCoordinator summonCoordinator;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
     private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
-    private boolean npcApiEnabled = false;
 
     {
         logger = getLogger();
@@ -169,26 +167,6 @@ public final class GlovedPlugin extends JavaPlugin {
             this.glovedBridge.refreshOnlinePlayers();
         } catch (Exception ignored) {}
         FmmBridge.invalidate();
-
-        // Initialize NpcApi for pathfinding capabilities
-        try {
-            // Guard against missing NpcApi classes / NMS incompatibility which can cause
-            // NoClassDefFoundError in ConnectionListener and disconnect players.
-            Class.forName("de.eisi05.npc.api.manager.TeamManager");
-            Class.forName("de.eisi05.npc.api.NpcApi");
-            // PlayerTeam may be missing in certain MC versions – check early.
-            try {
-                Class.forName("net.minecraft.world.scores.PlayerTeam");
-            } catch (ClassNotFoundException ignored) {
-                throw new IllegalStateException("NpcApi NMS dependency missing");
-            }
-            NpcApi.createInstance(this, new NpcConfig());
-            npcApiEnabled = true;
-            logInfo("NpcApi initialized for capability-aware pathfinding");
-        } catch (Throwable e) {
-            logWarning("Failed to initialize NpcApi: " + e.getMessage() + " – disabling NpcApi integration to prevent player disconnects");
-            npcApiEnabled = false;
-        }
 
         // Modular summon module
         this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
@@ -382,12 +360,6 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
-        if (npcApiEnabled) {
-            try {
-                NpcApi.disable();
-                logInfo("NpcApi disabled");
-            } catch (Throwable ignored) {}
-        }
         try {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}

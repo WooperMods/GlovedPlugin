@@ -5,7 +5,6 @@
 - Jar name is fixed to `GlovedPlugin.jar` (no version). `processResources` expands `version` into `paper-plugin.yml`.
 - Shadow jar bundles implementation deps; `jar` task outputs `GlovedPlugin-plain.jar`. Never deploy the plain jar.
 - Paper API 26.3+, `compileOnly io.papermc.paper:paper-api:26.3.build.+`, Java 25 toolchain, Gradle 8.14.4 wrapper.
-- NpcApi-Paper 3.6.3 is bundled via `implementation`, initialized in `GlovedPlugin.onEnable` with `NpcApi.createInstance`. Disable is guarded with `Throwable` catch to survive PlugMan reloads.
 - Release: `bun scripts/release.ts [major|minor|patch|X.Y.Z]` – bumps version, changelog, tag, GitHub release.
 
 ## Structure
@@ -51,7 +50,7 @@
 - `max-active` is per-profile (counted by the `summon_profile` PDC key, dead minions pruned) and enforced in `SummonManager.canSummon`; `spawn` clamps a batch to the remaining slots. `summon.yml` is reloaded in place on `/gloved reload` so listeners/managers keep working with the new values.
 - On a successful hit, a minion has `chance * 0.25` to trigger the same spawn flow for its own profile (same cooldown and `max-active` rules as player-triggered summons), targeting the entity it hit.
 - On plugin enable and `summon.yml` reload, GlovedPlugin auto-generates missing EliteMobs enchantment marker files (`EliteMobs/enchantments/<profile>.yml` + `.lua`) for each configured profile, auto-detecting `plugins/EliteMobs`. Existing files are never overwritten. EliteMobs may need `/em reload` to register newly created enchantments.
-- `MinionAI` uses Paper `Pathfinder` with capability-aware reachability via `ReachabilityService`. NpcApi `PathfindingUtils.findPath` is tried first, falls back to `Pathfinder.findPath().canReachFinalPoint()`.
+- `MinionAI` uses Paper `Pathfinder` for movement and `ReachabilityService` for reachability checks via `Pathfinder.findPath().canReachFinalPoint()` (vanilla Paper-only).
 - Unreachable enemies are cached per minion with 10 s TTL and location invalidation: cache is cleared if target moves. Heuristic pre-filters drop candidates with vertical delta >8 blocks, distance >64², or unreachable via probe.
 - Target stuck detection drops target after 60 ticks of no progress; unreachable probe also caches target immediately.
 - Follow uses stable anchor with idle radius ~4 blocks. Stuck follow detection only runs outside idle radius; within idle radius stuck timer is reset to avoid teleport spam.

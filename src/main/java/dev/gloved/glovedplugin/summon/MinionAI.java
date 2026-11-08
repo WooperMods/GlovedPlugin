@@ -434,9 +434,8 @@ public class MinionAI {
                         boolean ownerReachable = true;
                         boolean shouldCheckReach = curFollowDist > idleRadius + 2.0;
                         if (shouldCheckReach) {
-                            // NpcApi pathfinding is synchronous, so only run it when the minion has
-                            // actually stopped making progress toward the owner. Normal following
-                            // never touches it.
+                            // Reachability checks are only run when the minion has actually stopped
+                            // making progress toward the owner. Normal following never touches it.
                             boolean noProgress = followStuckSince != 0L && now - followStuckSince >= 10;
                             if (noProgress && now - lastOwnerReachCheck >= 20) {
                                 Location mobLoc = minion.getLocation();
