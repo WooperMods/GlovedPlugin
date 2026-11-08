@@ -1,8 +1,14 @@
 package dev.gloved.glovedplugin.summon.phasing;
 
 import dev.gloved.glovedplugin.summon.ReachabilityService;
+import org.bukkit.entity.Allay;
+import org.bukkit.entity.Bat;
+import org.bukkit.entity.Bee;
+import org.bukkit.entity.Flying;
+import org.bukkit.entity.Ghast;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Parrot;
 import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Vex;
 
@@ -10,13 +16,14 @@ import org.bukkit.entity.Vex;
  * Centralizes vanilla-AI / phasing-minion behavior.
  *
  * <ul>
- *   <li><b>Vanilla AI</b> (e.g. Vex, Phantom): keep vanilla goals/movement and only assign targets
- *       (plus owner-credited damage/extended reach). Phantoms fly with native pathfinding.</li>
+ *   <li><b>Vanilla AI</b> (e.g. Vex, Phantom, Allay, Bee, Bat, Parrot, Ghast/flying mobs): keep vanilla
+ *       goals/movement and only assign targets (plus owner-credited damage/extended reach) so native
+ *       flight/pathfinding works reliably.</li>
  *   <li><b>Phasing through blocks</b> (Vex): can move through solid blocks, so block-collision
  *       pathfinding/reachability is treated leniently and spawn settings (no gravity) differ.</li>
  * </ul>
  *
- * <p>Keep changes targeted to these mob types to avoid affecting other minions.</p>
+ * <p>Keep changes targeted to these mob types to avoid affecting ground minions' custom AI.</p>
  */
 public final class PhasingMob {
     private PhasingMob() {}
@@ -28,7 +35,13 @@ public final class PhasingMob {
 
     /** Whether this minion should use vanilla AI control (goals/movement/attacks) with target assignment only. */
     public static boolean usesVanillaAI(LivingEntity mob) {
-        return mob instanceof Vex || mob instanceof Phantom;
+        if (mob == null) return false;
+        if (mob instanceof Vex || mob instanceof Phantom || mob instanceof Allay
+                || mob instanceof Bee || mob instanceof Bat || mob instanceof Parrot || mob instanceof Ghast) {
+            return true;
+        }
+        // Catch other flying minion types so they keep native flight/pathfinding.
+        return mob instanceof Flying;
     }
 
     /** Back-compat alias while call sites migrate. */
