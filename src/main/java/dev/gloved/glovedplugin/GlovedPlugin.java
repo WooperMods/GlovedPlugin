@@ -42,7 +42,9 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonConfig summonConfig;
     private dev.gloved.glovedplugin.summon.SummonManager summonManager;
     private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
+    private dev.gloved.glovedplugin.summon.SummonTargetCoordinator summonCoordinator;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
+    private boolean npcApiEnabled = false;
 
     {
         logger = getLogger();
@@ -169,19 +171,33 @@ public final class GlovedPlugin extends JavaPlugin {
 
         // Initialize NpcApi for pathfinding capabilities
         try {
+            // Guard against missing NpcApi classes / NMS incompatibility which can cause
+            // NoClassDefFoundError in ConnectionListener and disconnect players.
+            Class.forName("de.eisi05.npc.api.manager.TeamManager");
+            Class.forName("de.eisi05.npc.api.NpcApi");
+            // PlayerTeam may be missing in certain MC versions – check early.
+            try {
+                Class.forName("net.minecraft.world.scores.PlayerTeam");
+            } catch (ClassNotFoundException ignored) {
+                throw new IllegalStateException("NpcApi NMS dependency missing");
+            }
             NpcApi.createInstance(this, new NpcConfig());
+            npcApiEnabled = true;
             logInfo("NpcApi initialized for capability-aware pathfinding");
         } catch (Throwable e) {
-            logWarning("Failed to initialize NpcApi: " + e.getMessage());
+            logWarning("Failed to initialize NpcApi: " + e.getMessage() + " – disabling NpcApi integration to prevent player disconnects");
+            npcApiEnabled = false;
         }
 
         // Modular summon module
         this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
         this.summonTracker = new dev.gloved.glovedplugin.summon.SummonInstanceTracker(this);
-        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker);
+        this.summonCoordinator = new dev.gloved.glovedplugin.summon.SummonTargetCoordinator(this.summonTracker);
+        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker, this.summonCoordinator);
         this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
+        this.minionAI.setSummon(this.summonConfig, this.summonManager);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager), this);
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonConfig, this.summonTracker), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker), this);
         logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled"));
 
         // Register menu command using Paper's registerCommand API
@@ -215,7 +231,8 @@ public final class GlovedPlugin extends JavaPlugin {
         this.weaponRegistry.load(this);
         FmmBridge.invalidate();
         if (this.summonConfig != null) {
-            this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
+            // Reload in place so listeners/managers that hold this reference see the new values.
+            this.summonConfig.reload();
         }
         if (this.combatListener != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -241,6 +258,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.lootr.manager.LootrManager getLootrManager() {
         return lootrManager;
+    }
+
+    public dev.gloved.glovedplugin.summon.SummonConfig getSummonConfig() {
+        return summonConfig;
     }
 
     public boolean isPvpDisabled(org.bukkit.entity.Player player) {
@@ -345,10 +366,12 @@ public final class GlovedPlugin extends JavaPlugin {
      */
     @Override
     public void onDisable() {
-        try {
-            NpcApi.disable();
-            logInfo("NpcApi disabled");
-        } catch (Throwable ignored) {}
+        if (npcApiEnabled) {
+            try {
+                NpcApi.disable();
+                logInfo("NpcApi disabled");
+            } catch (Throwable ignored) {}
+        }
         try {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
