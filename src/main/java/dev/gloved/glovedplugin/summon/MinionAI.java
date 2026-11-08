@@ -250,24 +250,36 @@ public class MinionAI {
                 }
                 double maxTargetSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
                 candidates.removeIf(le -> le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
-                if (mob != null && !candidates.isEmpty()) {
-                    // Target range and distance from owner are the same radius (FOLLOW_RANGE).
-                    double maxChaseSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
-                    candidates.removeIf(le -> {
-                        if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) return true;
-                        if (!isFlyingMob) {
-                            double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
-                            if (dy > 16) return true;
-                        }
-                        return minion.getLocation().distanceSquared(le.getLocation()) > maxChaseSq;
-                    });
-                }
+
+                // Global candidates: owner-valid threats for shared coordinator state (prune/rebalance/coverage).
+                // Per-minion constraints are passed as a predicate so one minion's pathing limits don't
+                // make others "forget" enemies (including those close to the owner).
+                List<LivingEntity> globalCandidates = new ArrayList<>(candidates);
+                double maxChaseSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
+                java.util.function.Predicate<UUID> unavailableForMinion = (UUID targetId) -> {
+                    if (mob == null) return false;
+                    Entity te = owner.getWorld().getEntity(targetId);
+                    if (!(te instanceof LivingEntity tle)) return true;
+                    if (MinionAI.isCachedUnreachable(minion.getUniqueId(), targetId, tle.getLocation())) return true;
+                    if (!isFlyingMob) {
+                        double dy = Math.abs(minion.getLocation().getY() - tle.getLocation().getY());
+                        if (dy > 16) return true;
+                    }
+                    return minion.getLocation().distanceSquared(tle.getLocation()) > maxChaseSq;
+                };
+
                 long now = Bukkit.getCurrentTick();
-                if (!candidates.isEmpty()) {
-                    target = coordinator.assign(owner, (LivingEntity) minion, candidates, recentDamagerIds, now);
+                if (!globalCandidates.isEmpty()) {
+                    target = coordinator.assign(owner, (LivingEntity) minion, globalCandidates, recentDamagerIds, now, unavailableForMinion);
                 }
-                if (target != null && (target.isDead() || !candidates.contains(target))) {
-                    target = null;
+                if (target != null) {
+                    boolean globallyValid = false;
+                    for (LivingEntity gc : globalCandidates) {
+                        if (gc.getUniqueId().equals(target.getUniqueId())) { globallyValid = true; break; }
+                    }
+                    if (target.isDead() || CombatTargetRules.isProtected(plugin, owner, target) || !globallyValid) {
+                        target = null;
+                    }
                 }
                 if (target != null) {
                     lastTarget = target;

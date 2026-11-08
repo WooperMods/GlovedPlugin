@@ -51,18 +51,33 @@ public class SummonTargetCoordinator {
         return assign(owner, minion, candidates, recentDamagerIds, nowTick, null);
     }
 
-    public LivingEntity assign(Player owner, LivingEntity minion, List<LivingEntity> candidates,
+    /**
+     * @param globalCandidates owner-valid candidates (shared view for pruning/rebalancing/coverage).
+     *                         Must NOT be pre-filtered by per-minion unreachable/dy, or other minions'
+     *                         assignments will be pruned incorrectly.
+     * @param isUnavailableForMinion optional per-minion filter (unreachable/dy for this minion).
+     */
+    public LivingEntity assign(Player owner, LivingEntity minion, List<LivingEntity> globalCandidates,
                                Set<UUID> recentDamagerIds, long nowTick,
-                               Predicate<UUID> isUnreachableForMinion) {
+                               Predicate<UUID> isUnavailableForMinion) {
         if (owner == null || minion == null) return null;
         OwnerState state = states.computeIfAbsent(owner.getUniqueId(), k -> new OwnerState());
 
-        Map<UUID, LivingEntity> candidateById = new LinkedHashMap<>();
-        List<ScoredTarget> scored = new ArrayList<>();
-        for (LivingEntity le : candidates) {
+        // Global view: used for shared state (prune/rebalance/coverage) so one minion's pathing
+        // constraints don't make others "forget" valid enemies (e.g. close to owner).
+        Map<UUID, LivingEntity> globalById = new LinkedHashMap<>();
+        for (LivingEntity le : globalCandidates) {
             if (le == null || le.isDead()) continue;
-            if (isUnreachableForMinion != null && isUnreachableForMinion.test(le.getUniqueId())) continue;
-            candidateById.put(le.getUniqueId(), le);
+            globalById.put(le.getUniqueId(), le);
+        }
+
+        // Per-minion reachable view: only targets this minion can take now.
+        Map<UUID, LivingEntity> reachableById = new LinkedHashMap<>();
+        List<ScoredTarget> scored = new ArrayList<>();
+        for (LivingEntity le : globalById.values()) {
+            UUID id = le.getUniqueId();
+            if (isUnavailableForMinion != null && isUnavailableForMinion.test(id)) continue;
+            reachableById.put(id, le);
             scored.add(new ScoredTarget(le, scoreTarget(owner, minion, le, recentDamagerIds)));
         }
         scored.sort((a, b) -> {
@@ -70,40 +85,68 @@ public class SummonTargetCoordinator {
             if (c != 0) return c;
             return a.id.compareTo(b.id);
         });
-        List<UUID> targetOrder = new ArrayList<>();
-        for (ScoredTarget st : scored) targetOrder.add(st.id);
+        List<UUID> reachableOrder = new ArrayList<>();
+        for (ScoredTarget st : scored) reachableOrder.add(st.id);
 
         synchronized (state) {
-            prune(state, owner.getUniqueId(), candidateById);
+            prune(state, owner.getUniqueId(), globalById);
 
             UUID minionId = minion.getUniqueId();
             UUID current = state.assignment.get(minionId);
             if (current != null) {
-                if (candidateById.containsKey(current)
-                        && (isUnreachableForMinion == null || !isUnreachableForMinion.test(current))) {
-                    return candidateById.get(current); // stable commitment
+                // Keep stable assignment if target still exists globally and is reachable by this minion.
+                if (globalById.containsKey(current)
+                        && (isUnavailableForMinion == null || !isUnavailableForMinion.test(current))) {
+                    return globalById.get(current);
                 }
                 state.assignment.remove(minionId);
             }
 
             boolean dueReview = nowTick - state.lastReviewTick >= REVIEW_INTERVAL_TICKS;
-            if (!dueReview && hasUncoveredThreatNearOwner(state, owner, candidateById)) {
+            if (!dueReview && hasUncoveredThreatNearOwner(state, owner, globalById)) {
                 dueReview = nowTick - state.lastReviewTick >= URGENT_REVIEW_INTERVAL_TICKS;
             }
             if (dueReview || state.assignment.isEmpty()) {
-                rebalance(state, owner, targetOrder, candidateById);
+                // Rebalance using global priorities so uncovered threats near owner get coverage.
+                List<ScoredTarget> globalScored = new ArrayList<>();
+                for (LivingEntity le : globalById.values()) {
+                    globalScored.add(new ScoredTarget(le, scoreTarget(owner, minion, le, recentDamagerIds)));
+                }
+                globalScored.sort((a, b) -> {
+                    int c = Double.compare(b.score, a.score);
+                    if (c != 0) return c;
+                    return a.id.compareTo(b.id);
+                });
+                List<UUID> globalOrder = new ArrayList<>();
+                for (ScoredTarget st : globalScored) globalOrder.add(st.id);
+                rebalance(state, owner, globalOrder, globalById);
                 state.lastReviewTick = nowTick;
             }
 
             current = state.assignment.get(minionId);
-            if (current != null && candidateById.containsKey(current)) {
-                return candidateById.get(current);
+            if (current != null && reachableById.containsKey(current)) {
+                return reachableById.get(current);
             }
-            LivingEntity picked = pickBestAvailable(state, owner, minionId, minion, targetOrder, candidateById, recentDamagerIds);
+            // If rebalance assigned a globally-valid target this minion can't reach, pick best reachable.
+            if (current != null && globalById.containsKey(current)) {
+                state.assignment.remove(minionId);
+            }
+            LivingEntity picked = pickBestAvailable(state, owner, minionId, minion, reachableOrder, reachableById, recentDamagerIds);
             if (picked != null) {
                 state.assignment.put(minionId, picked.getUniqueId());
                 return picked;
             }
+            // Last resort: if something is globally valid (e.g. close to owner) but not in reachable
+            // view due to transient per-minion filtering, allow targeting it so minions don't ignore it.
+            if (current != null) {
+                LivingEntity global = globalById.get(current);
+                if (global != null) return global;
+            }
+            for (UUID tid : reachableOrder) {
+                LivingEntity le = reachableById.get(tid);
+                if (le != null) return le;
+            }
+            for (LivingEntity le : globalById.values()) return le;
             return null;
         }
     }
