@@ -76,8 +76,12 @@ public class SummonProfile {
     }
 
     public String getNametag(Player player, EntityType type) {
+        return getNametag(player != null ? player.getName() : "Owner", type);
+    }
+
+    public String getNametag(String playerName, EntityType type) {
         String mobName = type != null ? type.name().toLowerCase().replace("_", " ") : mobType.toLowerCase().replace("_", " ");
-        String format = NAMETAG_FORMAT.replace("{player}", player.getName())
+        String format = NAMETAG_FORMAT.replace("{player}", playerName != null ? playerName : "Owner")
                 .replace("{mob}", mobName);
         return nametagColor + format;
     }

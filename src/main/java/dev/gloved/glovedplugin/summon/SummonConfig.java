@@ -14,6 +14,11 @@ public class SummonConfig {
     private final JavaPlugin plugin;
     private final Map<String, SummonProfile> profiles = new LinkedHashMap<>();
     private boolean enabled;
+    private boolean clumpedNametagsEnabled = true;
+    private int clumpedNametagsMinCount = 4;
+    private double clumpedNametagsRadius = 3.0;
+    private int clumpedNametagsUpdateTicks = 10;
+    private String clumpedNametagsFormat = "&e{player}'s Minions x{count}";
 
     private SummonConfig(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -39,6 +44,11 @@ public class SummonConfig {
         backfill(yaml);
         try { yaml.save(file); } catch (Exception ignored) {}
         enabled = yaml.getBoolean("enabled", true);
+        clumpedNametagsEnabled = yaml.getBoolean("clumped-nametags.enabled", true);
+        clumpedNametagsMinCount = Math.max(2, yaml.getInt("clumped-nametags.min-count", 4));
+        clumpedNametagsRadius = Math.max(0.5, yaml.getDouble("clumped-nametags.radius", 3.0));
+        clumpedNametagsUpdateTicks = Math.max(1, yaml.getInt("clumped-nametags.update-ticks", 10));
+        clumpedNametagsFormat = yaml.getString("clumped-nametags.format", "&e{player}'s Minions x{count}");
         if (yaml.isConfigurationSection("profiles")) {
             for (String key : yaml.getConfigurationSection("profiles").getKeys(false)) {
                 var section = yaml.getConfigurationSection("profiles." + key);
@@ -75,6 +85,11 @@ public class SummonConfig {
 
     private static void backfill(FileConfiguration cfg) {
         if (!cfg.isSet("enabled")) cfg.set("enabled", true);
+        if (!cfg.isSet("clumped-nametags.enabled")) cfg.set("clumped-nametags.enabled", true);
+        if (!cfg.isSet("clumped-nametags.min-count")) cfg.set("clumped-nametags.min-count", 4);
+        if (!cfg.isSet("clumped-nametags.radius")) cfg.set("clumped-nametags.radius", 3.0);
+        if (!cfg.isSet("clumped-nametags.update-ticks")) cfg.set("clumped-nametags.update-ticks", 10);
+        if (!cfg.isSet("clumped-nametags.format")) cfg.set("clumped-nametags.format", "&e{player}'s Minions x{count}");
         // Remove top-level settings that are now hardcoded/unused.
         for (String deprecated : List.of("default-profile")) {
             if (cfg.isSet(deprecated)) cfg.set(deprecated, null);
@@ -132,4 +147,10 @@ public class SummonConfig {
     public boolean isEnabled() { return enabled; }
     public SummonProfile getProfile(String name) { return profiles.get(name); }
     public Map<String, SummonProfile> getProfiles() { return profiles; }
+
+    public boolean isClumpedNametagsEnabled() { return clumpedNametagsEnabled; }
+    public int getClumpedNametagsMinCount() { return clumpedNametagsMinCount; }
+    public double getClumpedNametagsRadius() { return clumpedNametagsRadius; }
+    public int getClumpedNametagsUpdateTicks() { return clumpedNametagsUpdateTicks; }
+    public String getClumpedNametagsFormat() { return clumpedNametagsFormat; }
 }

@@ -1,4 +1,11 @@
 enabled: true
+# Clumped nametags: when too many minions cluster, hide individual tags and show one shared proxy label.
+clumped-nametags:
+  enabled: true
+  min-count: 4
+  radius: 3.0
+  update-ticks: 10
+  format: "&e{player}'s Minions x{count}"
 profiles:
   bee_swarm:
     mob-type: BEE

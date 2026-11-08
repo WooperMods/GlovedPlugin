@@ -44,6 +44,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
     private dev.gloved.glovedplugin.summon.SummonTargetCoordinator summonCoordinator;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
+    private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
     private boolean npcApiEnabled = false;
 
     {
@@ -198,9 +199,18 @@ public final class GlovedPlugin extends JavaPlugin {
         this.minionAI.setSummon(this.summonConfig, this.summonManager);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker, this.summonCoordinator), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker), this);
-        // Clean up orphaned summon entities (e.g. leftover after restart/crash or owner logout edge cases)
-        getServer().getScheduler().runTaskLater(this, () -> this.summonTracker.cleanupOrphans(), 40L);
-        getServer().getScheduler().runTaskTimer(this, () -> this.summonTracker.cleanupOrphans(), 20L * 60L, 20L * 60L);
+        this.clumpNametagManager = new dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager(this, this.summonTracker);
+        getServer().getPluginManager().registerEvents(this.clumpNametagManager, this);
+        this.clumpNametagManager.start();
+        // Clean up orphaned summon entities/proxies (e.g. leftover after restart/crash or owner logout edge cases)
+        getServer().getScheduler().runTaskLater(this, () -> {
+            this.summonTracker.cleanupOrphans();
+            this.clumpNametagManager.cleanupOrphanProxies();
+        }, 40L);
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            this.summonTracker.cleanupOrphans();
+            this.clumpNametagManager.cleanupOrphanProxies();
+        }, 20L * 60L, 20L * 60L);
         logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled"));
 
         // Register menu command using Paper's registerCommand API
@@ -236,6 +246,9 @@ public final class GlovedPlugin extends JavaPlugin {
         if (this.summonConfig != null) {
             // Reload in place so listeners/managers that hold this reference see the new values.
             this.summonConfig.reload();
+        }
+        if (this.clumpNametagManager != null) {
+            this.clumpNametagManager.restart();
         }
         if (this.combatListener != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -379,6 +392,9 @@ public final class GlovedPlugin extends JavaPlugin {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
         EditSessionCache.storeAll(this);
+        if (clumpNametagManager != null) {
+            clumpNametagManager.stop();
+        }
         // Cleanup summoned minions
         if (summonTracker != null) {
             summonTracker.removeAll();
