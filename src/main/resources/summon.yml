@@ -41,3 +41,10 @@ profiles:
     minions-per-hit: 2
     max-active: 8
     nametag-color: DARK_BLUE
+  wither_legion:
+    mob-type: WITHER_SKELETON
+    enchant-name: "Wither Legion"
+    chance: 0.45
+    minions-per-hit: 2
+    max-active: 6
+    nametag-color: DARK_GRAY
