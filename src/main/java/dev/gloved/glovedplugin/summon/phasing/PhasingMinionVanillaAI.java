@@ -84,7 +84,14 @@ public final class PhasingMinionVanillaAI {
         } catch (Exception ignored) {}
 
         LivingEntity attackTarget = mob.getTarget();
-        if (attackTarget == null || !isValidTarget(owner, attackTarget, tracker, plugin)) return;
+        if (attackTarget == null || !isValidTarget(owner, attackTarget, tracker, plugin)) {
+            // No valid target: pathfind back toward owner instead of wandering off.
+            pathfindTowards(mob, owner.getLocation());
+            return;
+        }
+        // Explicitly pathfind to the target's block/location so vanilla-AI/flying minions
+        // (e.g. Allay, Bee, Bat) actually engage instead of wandering.
+        pathfindTowards(mob, attackTarget);
         tryExtendedRangeAttack(mob, owner, attackTarget, tracker, plugin);
     }
 
@@ -109,6 +116,36 @@ public final class PhasingMinionVanillaAI {
         double vanillaReach = Math.sqrt((width * 2.0) * (width * 2.0) + targetWidth);
         double reach = vanillaReach + EXTENDED_ATTACK_RANGE_BONUS_BLOCKS;
         return reach * reach;
+    }
+
+    private static void pathfindTowards(Mob mob, LivingEntity target) {
+        if (mob == null || target == null) return;
+        try {
+            if (mob.getWorld() != target.getWorld()) return;
+            var pf = mob.getPathfinder();
+            if (pf != null) pf.moveTo(target, mobSpeed(mob));
+        } catch (Exception ignored) {}
+    }
+
+    private static void pathfindTowards(Mob mob, org.bukkit.Location goal) {
+        if (mob == null || goal == null) return;
+        try {
+            if (mob.getWorld() != goal.getWorld()) return;
+            var pf = mob.getPathfinder();
+            if (pf != null) pf.moveTo(goal, mobSpeed(mob));
+        } catch (Exception ignored) {}
+    }
+
+    private static double mobSpeed(Mob mob) {
+        try {
+            var fly = mob.getAttribute(org.bukkit.attribute.Attribute.FLYING_SPEED);
+            if (fly != null) return Math.max(0.6, fly.getValue() * 10.0);
+        } catch (Exception ignored) {}
+        try {
+            var move = mob.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+            if (move != null) return Math.max(0.2, move.getValue());
+        } catch (Exception ignored) {}
+        return 1.0;
     }
 
     private static boolean isValidTarget(Player owner, LivingEntity le, SummonInstanceTracker tracker, GlovedPlugin plugin) {
