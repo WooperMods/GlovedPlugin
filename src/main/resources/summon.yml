@@ -69,3 +69,10 @@ profiles:
     minions-per-hit: 2
     max-active: 6
     nametag-color: GOLD
+  slime_squad:
+    mob-type: SLIME
+    enchant-name: "Slime Squad"
+    chance: 0.6
+    minions-per-hit: 3
+    max-active: 10
+    nametag-color: GREEN
