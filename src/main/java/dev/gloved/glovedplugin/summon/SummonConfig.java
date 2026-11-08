@@ -16,7 +16,7 @@ public class SummonConfig {
     private boolean enabled;
     private boolean clumpedNametagsEnabled = true;
     private int clumpedNametagsMinCount = 4;
-    private double clumpedNametagsRadius = 3.0;
+    private double clumpedNametagsRadius = 1.5;
     private int clumpedNametagsUpdateTicks = 10;
     private String clumpedNametagsFormat = "{nametag} x{count}";
 
@@ -46,7 +46,7 @@ public class SummonConfig {
         enabled = yaml.getBoolean("enabled", true);
         clumpedNametagsEnabled = yaml.getBoolean("clumped-nametags.enabled", true);
         clumpedNametagsMinCount = Math.max(2, yaml.getInt("clumped-nametags.min-count", 4));
-        clumpedNametagsRadius = Math.max(0.5, yaml.getDouble("clumped-nametags.radius", 3.0));
+        clumpedNametagsRadius = Math.max(0.5, yaml.getDouble("clumped-nametags.radius", 1.5));
         clumpedNametagsUpdateTicks = Math.max(1, yaml.getInt("clumped-nametags.update-ticks", 10));
         clumpedNametagsFormat = yaml.getString("clumped-nametags.format", "{nametag} x{count}");
         // Migrate old generic default to profile-matching format.
@@ -91,7 +91,7 @@ public class SummonConfig {
         if (!cfg.isSet("enabled")) cfg.set("enabled", true);
         if (!cfg.isSet("clumped-nametags.enabled")) cfg.set("clumped-nametags.enabled", true);
         if (!cfg.isSet("clumped-nametags.min-count")) cfg.set("clumped-nametags.min-count", 4);
-        if (!cfg.isSet("clumped-nametags.radius")) cfg.set("clumped-nametags.radius", 3.0);
+        if (!cfg.isSet("clumped-nametags.radius")) cfg.set("clumped-nametags.radius", 1.5);
         if (!cfg.isSet("clumped-nametags.update-ticks")) cfg.set("clumped-nametags.update-ticks", 10);
         if (!cfg.isSet("clumped-nametags.format")) cfg.set("clumped-nametags.format", "{nametag} x{count}");
         // Migrate old generic default to profile-matching format.

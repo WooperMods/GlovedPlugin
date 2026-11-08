@@ -3,7 +3,7 @@ enabled: true
 clumped-nametags:
   enabled: true
   min-count: 4
-  radius: 3.0
+  radius: 1.5
   update-ticks: 10
   format: "{nametag} x{count}"
 profiles:
