@@ -81,9 +81,9 @@ public class SummonManager {
                             plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
                         } catch (Exception ignored) {}
                     }
-                    if (PhasingMob.isPhasing(m)) {
-                        // Phasing mobs (e.g. Vex): keep vanilla goals so native AI/pathing can run.
-                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " (phasing) keeping all vanilla goals");
+                    if (PhasingMob.usesVanillaAI(m)) {
+                        // Vanilla-AI mobs (e.g. Vex, Phantom): keep vanilla goals so native AI/pathing can run.
+                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " (vanilla AI) keeping all vanilla goals");
                     } else {
                         // Remove all vanilla goals except jump-related ones; keep vanilla jumping/gravity
                         var toRemove = new java.util.ArrayList<Goal>();
