@@ -63,7 +63,7 @@ profiles:
     max-active: 15
     nametag-color: DARK_GRAY
   sulfur_cubes:
-    mob-type: MAGMA_CUBE
+    mob-type: SULFUR_CUBE
     enchant-name: "Sulfur Cubes"
     chance: 0.5
     minions-per-hit: 2
