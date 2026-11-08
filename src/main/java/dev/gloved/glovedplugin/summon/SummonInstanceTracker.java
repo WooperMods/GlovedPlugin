@@ -184,4 +184,47 @@ public class SummonInstanceTracker {
         activeEntities.clear();
         entityToPlayer.clear();
     }
+
+    /**
+     * Removes orphaned summon entities: entities with summon PDC markers that are not actively
+     * tracked for a valid/online context, or whose owner is offline/missing. Safe to call
+     * periodically and on enable (covers restarts/crashes leaving entities behind).
+     */
+    public void cleanupOrphans() {
+        NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
+        NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
+        int removed = 0;
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            for (org.bukkit.entity.Entity e : world.getEntities()) {
+                if (!(e instanceof LivingEntity le)) continue;
+                var pdc = le.getPersistentDataContainer();
+                if (!pdc.has(mobTypeKey, org.bukkit.persistence.PersistentDataType.STRING)) continue;
+                UUID entityId = le.getUniqueId();
+                if (isSummoned(entityId)) {
+                    UUID ownerId = entityToPlayer.get(entityId);
+                    if (ownerId != null && Bukkit.getPlayer(ownerId) != null) continue; // valid
+                    // tracked but owner offline/missing
+                    despawn(entityId);
+                    removed++;
+                    continue;
+                }
+                // Not tracked: check owner PDC
+                String ownerStr = pdc.get(ownerKey, org.bukkit.persistence.PersistentDataType.STRING);
+                UUID ownerId = null;
+                if (ownerStr != null) {
+                    try { ownerId = UUID.fromString(ownerStr); } catch (Exception ignored) {}
+                }
+                if (ownerId != null && Bukkit.getPlayer(ownerId) != null) {
+                    // Owner is online but entity isn't tracked (tracker lost state) - treat as orphan
+                    // to avoid uncontrolled minions; they can be re-summoned.
+                }
+                // Orphan (no tracker, owner offline/missing, or post-restart leftover)
+                le.remove();
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            GlovedPlugin.logInfo("[Summon] Cleaned up " + removed + " orphaned minion(s)");
+        }
+    }
 }

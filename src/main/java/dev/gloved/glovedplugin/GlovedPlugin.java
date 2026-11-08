@@ -196,8 +196,11 @@ public final class GlovedPlugin extends JavaPlugin {
         this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker, this.summonCoordinator);
         this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
         this.minionAI.setSummon(this.summonConfig, this.summonManager);
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker, this.summonCoordinator), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker), this);
+        // Clean up orphaned summon entities (e.g. leftover after restart/crash or owner logout edge cases)
+        getServer().getScheduler().runTaskLater(this, () -> this.summonTracker.cleanupOrphans(), 40L);
+        getServer().getScheduler().runTaskTimer(this, () -> this.summonTracker.cleanupOrphans(), 20L * 60L, 20L * 60L);
         logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled"));
 
         // Register menu command using Paper's registerCommand API

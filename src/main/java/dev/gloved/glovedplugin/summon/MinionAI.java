@@ -192,6 +192,11 @@ public class MinionAI {
                     cancel();
                     return;
                 }
+                if (owner == null || !owner.isOnline()) {
+                    tracker.despawn(minion.getUniqueId());
+                    cancel();
+                    return;
+                }
                 org.bukkit.entity.Mob mob = minion instanceof org.bukkit.entity.Mob m ? m : null;
                 if (mob == null) {
                     // Non-mob entities just follow owner

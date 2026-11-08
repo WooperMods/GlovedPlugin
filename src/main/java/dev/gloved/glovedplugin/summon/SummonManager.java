@@ -126,12 +126,14 @@ public class SummonManager {
             String displayName = profile.getNametag(player, type);
             mob.setCustomName(displayName);
             mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE);
-            // Store mob type in PDC for DamageProxy
+            // Store mob type/profile/owner in PDC (owner enables orphan cleanup after restarts)
             var pdc = mob.getPersistentDataContainer();
             NamespacedKey mobTypeKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_mobtype");
             pdc.set(mobTypeKey, PersistentDataType.STRING, type.name());
             NamespacedKey profileKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_profile");
             pdc.set(profileKey, PersistentDataType.STRING, profile.name);
+            NamespacedKey ownerKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_owner");
+            pdc.set(ownerKey, PersistentDataType.STRING, player.getUniqueId().toString());
             // Summoned minions are always invulnerable
             if (SummonProfile.INVULNERABLE) {
                 mob.setInvulnerable(true);

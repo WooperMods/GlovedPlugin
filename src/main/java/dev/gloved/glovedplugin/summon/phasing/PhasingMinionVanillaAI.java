@@ -30,8 +30,13 @@ public final class PhasingMinionVanillaAI {
 
     public static void runTick(Mob mob, Player owner, SummonInstanceTracker tracker,
                                GlovedPlugin plugin, SummonTargetCoordinator coordinator) {
-        if (owner == null || !owner.isOnline() || mob == null || mob.isDead()) {
+        if (mob == null || mob.isDead()) {
             if (mob != null) LAST_EXTENDED_ATTACK_TICK.remove(mob.getUniqueId());
+            return;
+        }
+        if (owner == null || !owner.isOnline()) {
+            LAST_EXTENDED_ATTACK_TICK.remove(mob.getUniqueId());
+            try { if (tracker != null) tracker.despawn(mob.getUniqueId()); else if (!mob.isDead()) mob.remove(); } catch (Throwable ignored) {}
             return;
         }
         double distSqToOwner = mob.getLocation().distanceSquared(owner.getLocation());

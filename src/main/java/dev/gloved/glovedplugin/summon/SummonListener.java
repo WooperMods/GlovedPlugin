@@ -8,6 +8,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -20,12 +21,33 @@ public class SummonListener implements Listener {
     private final GlovedPlugin plugin;
     private final SummonConfig config;
     private final SummonManager manager;
+    private final SummonInstanceTracker tracker;
+    private final SummonTargetCoordinator coordinator;
     private final Random rand = new Random();
 
-    public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager) {
+    public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager,
+                          SummonInstanceTracker tracker, SummonTargetCoordinator coordinator) {
         this.plugin = plugin;
         this.config = config;
         this.manager = manager;
+        this.tracker = tracker;
+        this.coordinator = coordinator;
+    }
+
+    public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager) {
+        this(plugin, config, manager, null, null);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        try {
+            if (tracker == null || event.getPlayer() == null) return;
+            if (coordinator != null) coordinator.invalidateOwner(event.getPlayer().getUniqueId());
+            tracker.removeAllForPlayer(event.getPlayer().getUniqueId());
+            GlovedPlugin.logDebug("[Summon] Removed minions for quitting player " + event.getPlayer().getName());
+        } catch (Throwable t) {
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error cleaning up minions on quit", t);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
