@@ -5,7 +5,7 @@ clumped-nametags:
   min-count: 4
   radius: 3.0
   update-ticks: 10
-  format: "&e{player}'s Minions x{count}"
+  format: "{nametag} x{count}"
 profiles:
   bee_swarm:
     mob-type: BEE

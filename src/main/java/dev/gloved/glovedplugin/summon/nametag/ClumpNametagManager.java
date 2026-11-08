@@ -6,6 +6,7 @@ import dev.gloved.glovedplugin.summon.SummonInstanceTracker;
 import dev.gloved.glovedplugin.summon.SummonProfile;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -24,11 +25,12 @@ import org.bukkit.scheduler.BukkitTask;
 import java.util.*;
 
 /**
- * When enough of an owner's minions cluster together (any profile), hides their individual nametags
- * and shows a single proxy {@link TextDisplay} at the clump center (e.g. "Player's Minions x5").
+ * When enough of an owner's minions of the same type/profile cluster together, hides their individual
+ * nametags and shows a single proxy {@link TextDisplay} at the clump center matching that minion's
+ * nametag (e.g. "Player's Bees x5").
  */
 public class ClumpNametagManager implements Listener {
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacyAmpersand();
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
     private final GlovedPlugin plugin;
     private final SummonInstanceTracker tracker;
@@ -136,34 +138,46 @@ public class ClumpNametagManager implements Listener {
             removeProxiesForOwner(ownerId);
             return;
         }
-        // Filter valid, same-world grouping handled by distance checks
         minions.removeIf(le -> le == null || le.isDead());
 
-        List<List<LivingEntity>> clumps = findClumps(minions, radiusSq, minCount);
+        SummonConfig cfg = plugin.getSummonConfig();
+        NamespacedKey profileKeyPdc = new NamespacedKey(plugin, "summon_profile");
+        // Only clump minions of the same type/profile, with a nametag matching that profile.
+        Map<String, List<LivingEntity>> byProfile = new HashMap<>();
+        for (LivingEntity le : minions) {
+            String pName = le.getPersistentDataContainer().get(profileKeyPdc, PersistentDataType.STRING);
+            String groupKey = (pName != null && !pName.isBlank()) ? pName : ("type:" + le.getType().name());
+            byProfile.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(le);
+        }
+
         Map<String, UUID> ownerProxies = proxiesByOwner.computeIfAbsent(ownerId, k -> new HashMap<>());
         Set<String> activeKeys = new HashSet<>();
 
-        String playerName = owner != null ? owner.getName() : resolveOwnerName(minions);
-        for (List<LivingEntity> clump : clumps) {
-            String key = clumpKey(clump);
-            activeKeys.add(key);
-            Location center = clumpCenter(clump);
-            if (center == null) continue;
-            String text = formatNametag(format, playerName, clump.size());
-            UUID proxyId = ownerProxies.get(key);
-            TextDisplay display = resolveDisplay(proxyId);
-            if (display == null || display.isDead()) {
-                display = spawnProxy(center, text, ownerId);
-                if (display != null) ownerProxies.put(key, display.getUniqueId());
-            } else {
-                updateProxy(display, center, text);
-            }
-            for (LivingEntity member : clump) {
-                if (member == null || member.isDead()) continue;
-                try {
-                    if (member.isCustomNameVisible()) member.setCustomNameVisible(false);
-                    nowHidden.add(member.getUniqueId());
-                } catch (Throwable ignored) {}
+        String playerName = owner != null ? owner.getName() : "Owner";
+        for (Map.Entry<String, List<LivingEntity>> entry : byProfile.entrySet()) {
+            String profileGroup = entry.getKey();
+            List<List<LivingEntity>> clumps = findClumps(entry.getValue(), radiusSq, minCount);
+            for (List<LivingEntity> clump : clumps) {
+                String key = profileGroup + "|" + clumpKey(clump);
+                activeKeys.add(key);
+                Location center = clumpCenter(clump);
+                if (center == null) continue;
+                String text = formatNametag(format, playerName, profileGroup, clump, owner, cfg);
+                UUID proxyId = ownerProxies.get(key);
+                TextDisplay display = resolveDisplay(proxyId);
+                if (display == null || display.isDead()) {
+                    display = spawnProxy(center, text, ownerId);
+                    if (display != null) ownerProxies.put(key, display.getUniqueId());
+                } else {
+                    updateProxy(display, center, text);
+                }
+                for (LivingEntity member : clump) {
+                    if (member == null || member.isDead()) continue;
+                    try {
+                        if (member.isCustomNameVisible()) member.setCustomNameVisible(false);
+                        nowHidden.add(member.getUniqueId());
+                    } catch (Throwable ignored) {}
+                }
             }
         }
 
@@ -256,22 +270,36 @@ public class ClumpNametagManager implements Listener {
         return new Location(w, ax / c, maxTop + 0.4, az / c);
     }
 
-    private String formatNametag(String format, String playerName, int count) {
-        String s = format == null ? "&e{player}'s Minions x{count}" : format;
-        s = s.replace("{player}", playerName == null ? "Owner" : playerName)
-             .replace("{count}", String.valueOf(count));
+    private String formatNametag(String format, String playerName, String profileGroup,
+                                  List<LivingEntity> clump, Player owner, SummonConfig cfg) {
+        int count = clump.size();
+        LivingEntity sample = clump.isEmpty() ? null : clump.get(0);
+        String baseNametag = resolveBaseNametag(profileGroup, sample, owner, playerName, cfg);
+        String s = (format == null || format.isBlank()) ? "{nametag} x{count}" : format;
+        s = s.replace("{nametag}", baseNametag)
+             .replace("{player}", playerName == null ? "Owner" : playerName)
+             .replace("{count}", String.valueOf(count))
+             .replace("{mob}", sample != null ? sample.getType().name().toLowerCase().replace("_", " ") : "minion");
         return s;
     }
 
-    private String resolveOwnerName(List<LivingEntity> minions) {
-        // Best-effort fallback
-        return "Owner";
+    private String resolveBaseNametag(String profileGroup, LivingEntity sample, Player owner,
+                                      String playerName, SummonConfig cfg) {
+        if (cfg != null && profileGroup != null && !profileGroup.startsWith("type:")) {
+            SummonProfile profile = cfg.getProfile(profileGroup);
+            if (profile != null && sample != null) {
+                if (owner != null) return profile.getNametag(owner, sample.getType());
+                return profile.getNametag(playerName, sample.getType());
+            }
+        }
+        if (sample != null && sample.getCustomName() != null) return sample.getCustomName();
+        return (sample != null ? sample.getType().name().toLowerCase().replace("_", " ") : "Minions");
     }
 
     private TextDisplay spawnProxy(Location center, String legacyText, UUID ownerId) {
         try {
             return center.getWorld().spawn(center, TextDisplay.class, td -> {
-                td.text(LEGACY.deserialize(legacyText));
+                td.text(LEGACY.deserialize(ChatColor.translateAlternateColorCodes('&', legacyText)));
                 td.setBillboard(Display.Billboard.CENTER);
                 try { td.setPersistent(false); } catch (Throwable ignored) {}
                 try { td.setShadowed(true); } catch (Throwable ignored) {}
@@ -292,7 +320,7 @@ public class ClumpNametagManager implements Listener {
                     || display.getLocation().distanceSquared(center) > 0.01) {
                 display.teleport(center);
             }
-            display.text(LEGACY.deserialize(legacyText));
+            display.text(LEGACY.deserialize(ChatColor.translateAlternateColorCodes('&', legacyText)));
         } catch (Throwable ignored) {}
     }
 
