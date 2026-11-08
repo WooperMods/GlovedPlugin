@@ -36,6 +36,9 @@ public final class PhasingMinionDamage {
                     .build();
             target.damage(damage, src);
             try {
+                dev.gloved.glovedplugin.summon.MinionAI.applyKnockback(minion, owner, target);
+            } catch (Throwable ignored) {}
+            try {
                 if (tracker != null) {
                     NamespacedKey mobTypeKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_mobtype");
                     String mobType = minion.getPersistentDataContainer().get(mobTypeKey, PersistentDataType.STRING);

@@ -700,7 +700,7 @@ public class MinionAI {
         return reach * reach;
     }
 
-    private static void applyKnockback(LivingEntity minion, LivingEntity owner, LivingEntity target) {
+    public static void applyKnockback(LivingEntity minion, LivingEntity owner, LivingEntity target) {
         // LivingEntity#knockback subtracts the supplied vector from the victim's velocity,
         // so it must point from the victim toward the source (target -> owner) to push the
         // target away from the owner.
