@@ -34,3 +34,10 @@ profiles:
     minions-per-hit: 10
     max-active: 50
     nametag-color: AQUA
+  phantom_haunt:
+    mob-type: PHANTOM
+    enchant-name: "Phantom Haunt"
+    chance: 0.5
+    minions-per-hit: 2
+    max-active: 8
+    nametag-color: DARK_BLUE
