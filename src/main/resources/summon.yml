@@ -48,3 +48,24 @@ profiles:
     minions-per-hit: 2
     max-active: 6
     nametag-color: DARK_GRAY
+  chicken_flock:
+    mob-type: CHICKEN
+    enchant-name: "Chicken Flock"
+    chance: 0.7
+    minions-per-hit: 4
+    max-active: 12
+    nametag-color: WHITE
+  bat_swarm:
+    mob-type: BAT
+    enchant-name: "Bat Swarm"
+    chance: 0.6
+    minions-per-hit: 5
+    max-active: 15
+    nametag-color: DARK_GRAY
+  sulfur_cubes:
+    mob-type: MAGMA_CUBE
+    enchant-name: "Sulfur Cubes"
+    chance: 0.5
+    minions-per-hit: 2
+    max-active: 6
+    nametag-color: GOLD
