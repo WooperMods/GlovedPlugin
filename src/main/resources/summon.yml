@@ -1,38 +1,36 @@
 enabled: true
-default-profile: bee_swarm
 profiles:
   bee_swarm:
     mob-type: BEE
-    ai: tame_follow
-    tamed: true
-    friendly: true
-    invulnerable: true
+    enchant-name: "Bee Swarm"
     chance: 0.6
-    cooldown_ticks: 5
-    lifetime_ticks: 600
-    minions: 2
+    minions-per-hit: 2
     max-active: 10
-    valid-slots: [MAIN_HAND]
-    target-mode: CURRENT_TARGET
-    damage-proxy: false
-    follow-range: 16
-    attack-range: 4
   pillager_raiders:
-    mob-types: [VINDICATOR]
-    ai: hostile
-    tamed: false
-    friendly: false
-    invulnerable: false
+    mob-type: VINDICATOR
+    enchant-name: "Pillager Raiders"
     chance: 0.5
-    cooldown_ticks: 100
-    lifetime_ticks: 600
-    minions: 1
+    minions-per-hit: 1
     max-active: 5
-    valid-slots: [MAIN_HAND]
-    target-mode: CURRENT_TARGET
-    damage-proxy: false
-    follow-range: 24
-    attack-range: 5
-    nametag-format: "{player}'s Vindicators"
     nametag-color: YELLOW
-    nametag-visible: true
+  allay_aid:
+    mob-type: ALLAY
+    enchant-name: "Allay Aid"
+    chance: 0.6
+    minions-per-hit: 2
+    max-active: 10
+    nametag-color: LIGHT_PURPLE
+  vex_vengeance:
+    mob-type: VEX
+    enchant-name: "Vex Vengeance"
+    chance: 0.6
+    minions-per-hit: 2
+    max-active: 10
+    nametag-color: GRAY
+  fish_school:
+    mob-type: SALMON
+    enchant-name: "Fish School"
+    chance: 0.75
+    minions-per-hit: 10
+    max-active: 50
+    nametag-color: AQUA
