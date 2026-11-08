@@ -229,7 +229,9 @@ public class MinionAI {
                     if (!(e instanceof LivingEntity le)) continue;
                     if (le == owner || le.isDead() || tracker.isSummoned(le.getUniqueId())) continue;
                     if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
-                    boolean isHostile = le instanceof org.bukkit.entity.Monster;
+                    boolean isHostile = le instanceof org.bukkit.entity.Monster
+                            || le instanceof org.bukkit.entity.Slime
+                            || le instanceof org.bukkit.entity.Ghast;
                     boolean targetsOwner = false;
                     if (e instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
                         targetsOwner = mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId());
@@ -255,7 +257,7 @@ public class MinionAI {
                         if (MinionAI.isCachedUnreachable(minion.getUniqueId(), le.getUniqueId(), le.getLocation())) return true;
                         if (!isFlyingMob) {
                             double dy = Math.abs(minion.getLocation().getY() - le.getLocation().getY());
-                            if (dy > 8) return true;
+                            if (dy > 16) return true;
                         }
                         return minion.getLocation().distanceSquared(le.getLocation()) > maxChaseSq;
                     });

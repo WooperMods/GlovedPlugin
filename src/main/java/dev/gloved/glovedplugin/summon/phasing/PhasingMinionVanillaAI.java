@@ -47,7 +47,9 @@ public final class PhasingMinionVanillaAI {
             if (!(e instanceof LivingEntity le) || !isValidTarget(owner, le, tracker, plugin)) continue;
             boolean targetsOwner = e instanceof Mob mobEnt
                     && mobEnt.getTarget() != null && mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId());
-            boolean isHostile = le instanceof org.bukkit.entity.Monster;
+            boolean isHostile = le instanceof org.bukkit.entity.Monster
+                    || le instanceof org.bukkit.entity.Slime
+                    || le instanceof org.bukkit.entity.Ghast;
             if ((isHostile || targetsOwner) && !candidates.contains(le)) {
                 candidates.add(le);
             }

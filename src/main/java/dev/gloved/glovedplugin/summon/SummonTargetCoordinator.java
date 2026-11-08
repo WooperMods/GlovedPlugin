@@ -10,13 +10,17 @@ import java.util.function.Predicate;
 
 /**
  * Strategic, capacity-based summon targeting (count-aware, no per-minion speed weighting).
- * - Priorities: last damaged/recent damagers highest, then distance-based (distance to minion).
+ * - Priorities: last damaged/recent damagers highest, then threat/distance-based (owner proximity +
+ *   minion travel distance). Enemies close to the owner that lack coverage are prioritized dynamically.
  * - Minion-count aware: min coverage + focus-fire cap scale with squad size.
- * - No owner look targeting, no "very close enemies" bucket, no protection emergency.
+ * - No owner look targeting; dynamic coverage/lending responds to uncovered threats near the owner.
  */
 public class SummonTargetCoordinator {
-    private static final long REVIEW_INTERVAL_TICKS = 60L; // ~3s
+    private static final long REVIEW_INTERVAL_TICKS = 60L; // ~3s steady-state
+    private static final long URGENT_REVIEW_INTERVAL_TICKS = 10L; // ~0.5s when uncovered threats near owner
     private static final double FOCUS_FIRE_SHARE = 0.40;   // top target up to 40% (hard-capped)
+    private static final double OWNER_THREAT_RADIUS_SQ = 10.0 * 10.0; // "close to owner" for dynamic coverage
+    private static final double OWNER_THREAT_WEIGHT = 8000.0; // significant but below last-damaged (1,000,000)
 
     private final SummonInstanceTracker tracker;
     private final Map<UUID, OwnerState> states = new ConcurrentHashMap<>();
@@ -59,7 +63,7 @@ public class SummonTargetCoordinator {
             if (le == null || le.isDead()) continue;
             if (isUnreachableForMinion != null && isUnreachableForMinion.test(le.getUniqueId())) continue;
             candidateById.put(le.getUniqueId(), le);
-            scored.add(new ScoredTarget(le, scoreTarget(minion, le, recentDamagerIds)));
+            scored.add(new ScoredTarget(le, scoreTarget(owner, minion, le, recentDamagerIds)));
         }
         scored.sort((a, b) -> {
             int c = Double.compare(b.score, a.score);
@@ -83,8 +87,11 @@ public class SummonTargetCoordinator {
             }
 
             boolean dueReview = nowTick - state.lastReviewTick >= REVIEW_INTERVAL_TICKS;
+            if (!dueReview && hasUncoveredThreatNearOwner(state, owner, candidateById)) {
+                dueReview = nowTick - state.lastReviewTick >= URGENT_REVIEW_INTERVAL_TICKS;
+            }
             if (dueReview || state.assignment.isEmpty()) {
-                rebalance(state, owner.getUniqueId(), targetOrder, candidateById);
+                rebalance(state, owner, targetOrder, candidateById);
                 state.lastReviewTick = nowTick;
             }
 
@@ -92,7 +99,7 @@ public class SummonTargetCoordinator {
             if (current != null && candidateById.containsKey(current)) {
                 return candidateById.get(current);
             }
-            LivingEntity picked = pickBestAvailable(state, owner.getUniqueId(), minionId, minion, targetOrder, candidateById, recentDamagerIds);
+            LivingEntity picked = pickBestAvailable(state, owner, minionId, minion, targetOrder, candidateById, recentDamagerIds);
             if (picked != null) {
                 state.assignment.put(minionId, picked.getUniqueId());
                 return picked;
@@ -101,21 +108,48 @@ public class SummonTargetCoordinator {
         }
     }
 
-    private double scoreTarget(LivingEntity minion, LivingEntity target, Set<UUID> recentDamagerIds) {
+    private double scoreTarget(Player owner, LivingEntity minion, LivingEntity target, Set<UUID> recentDamagerIds) {
         double score = 0.0;
         if (recentDamagerIds != null && recentDamagerIds.contains(target.getUniqueId())) {
             score += 1_000_000.0; // last damaged dominates
         }
-        // Secondary distance-based term (distance stays meaningful but below last-damaged)
         try {
-            Location ml = minion.getLocation();
             Location tl = target.getLocation();
+            // Threat to owner: enemies close to the owner are urgent (dynamic coverage/lending).
+            if (owner != null && tl.getWorld() != null && tl.getWorld().equals(owner.getWorld())) {
+                double od2 = owner.getLocation().distanceSquared(tl);
+                double ownerCloseness = Math.max(0.0, (OWNER_THREAT_RADIUS_SQ * 4.0) - Math.min(od2, OWNER_THREAT_RADIUS_SQ * 4.0));
+                score += (ownerCloseness / (OWNER_THREAT_RADIUS_SQ * 4.0)) * OWNER_THREAT_WEIGHT;
+            }
+            // Travel/range factor: prefer targets this minion can actually reach efficiently.
+            Location ml = minion.getLocation();
             if (ml.getWorld() != null && ml.getWorld().equals(tl.getWorld())) {
                 double d2 = ml.distanceSquared(tl);
                 if (d2 >= 0) score += Math.max(0.0, 10000.0 - Math.min(d2, 10000.0)) * 0.001;
             }
         } catch (Exception ignored) {}
         return score;
+    }
+
+    /**
+     * True if any candidate is close to the owner and currently has no minion assigned.
+     * Used to trigger faster, dynamic rebalancing so uncovered threats near the owner get coverage.
+     */
+    private boolean hasUncoveredThreatNearOwner(OwnerState state, Player owner, Map<UUID, LivingEntity> candidateById) {
+        if (owner == null || candidateById.isEmpty()) return false;
+        Set<UUID> covered = new HashSet<>(state.assignment.values());
+        Location ol = owner.getLocation();
+        for (Map.Entry<UUID, LivingEntity> e : candidateById.entrySet()) {
+            if (covered.contains(e.getKey())) continue;
+            try {
+                LivingEntity le = e.getValue();
+                if (le.getWorld() != null && le.getWorld().equals(ol.getWorld())
+                        && le.getLocation().distanceSquared(ol) <= OWNER_THREAT_RADIUS_SQ) {
+                    return true;
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
     }
 
     private void prune(OwnerState state, UUID ownerId, Map<UUID, LivingEntity> candidateById) {
@@ -126,12 +160,13 @@ public class SummonTargetCoordinator {
         state.assignment.entrySet().removeIf(e -> !candidateById.containsKey(e.getValue()));
     }
 
-    private void rebalance(OwnerState state, UUID ownerId, List<UUID> targetOrder,
+    private void rebalance(OwnerState state, Player owner, List<UUID> targetOrder,
                            Map<UUID, LivingEntity> candidateById) {
         if (targetOrder.isEmpty()) {
             state.assignment.clear();
             return;
         }
+        UUID ownerId = owner.getUniqueId();
         List<LivingEntity> minions = tracker.getActiveMinions(ownerId);
         minions.sort(Comparator.comparing(le -> le.getUniqueId().toString()));
         int n = minions.size();
@@ -186,6 +221,93 @@ public class SummonTargetCoordinator {
             state.assignment.put(minion.getUniqueId(), best);
             load.put(best, load.getOrDefault(best, 0) + 1);
         }
+
+        // Dynamic lending: ensure enemies close to the owner get coverage when possible.
+        // If an uncovered threat is near the owner, lend the nearest suitable minion (taking range
+        // into account) even if that means moving it from a lower-priority, non-urgent target.
+        lendCoverageToUncoveredThreats(state, owner, minions, targetOrder, candidateById, capacity, load);
+    }
+
+    private void lendCoverageToUncoveredThreats(OwnerState state, Player owner, List<LivingEntity> minions,
+                                                List<UUID> targetOrder, Map<UUID, LivingEntity> candidateById,
+                                                Map<UUID, Integer> capacity, Map<UUID, Integer> load) {
+        if (owner == null || targetOrder.isEmpty() || minions.isEmpty()) return;
+        Location ol = owner.getLocation();
+        Set<UUID> covered = new HashSet<>();
+        for (UUID tid : state.assignment.values()) if (load.getOrDefault(tid, 0) > 0) covered.add(tid);
+
+        // Prioritize uncovered targets that are close to the owner (threats), in targetOrder priority.
+        List<UUID> uncoveredThreats = new ArrayList<>();
+        for (UUID tid : targetOrder) {
+            if (covered.contains(tid)) continue;
+            LivingEntity le = candidateById.get(tid);
+            if (le == null) continue;
+            try {
+                if (le.getWorld() != null && le.getWorld().equals(ol.getWorld())
+                        && le.getLocation().distanceSquared(ol) <= OWNER_THREAT_RADIUS_SQ) {
+                    uncoveredThreats.add(tid);
+                }
+            } catch (Exception ignored) {}
+        }
+        if (uncoveredThreats.isEmpty()) return;
+
+        Map<UUID, LivingEntity> minionById = new HashMap<>();
+        for (LivingEntity m : minions) minionById.put(m.getUniqueId(), m);
+
+        for (UUID threatId : uncoveredThreats) {
+            if (load.getOrDefault(threatId, 0) > 0) continue;
+            LivingEntity threat = candidateById.get(threatId);
+            if (threat == null) continue;
+
+            // Find best lender: minion closest (range-aware) whose current target is lower priority
+            // and not itself an uncovered owner-close threat, and not the sole minion on a recent-damager
+            // in a way that leaves it empty? (we allow lending; capacity/focus still guides).
+            UUID bestMinionId = null;
+            double bestDistSq = Double.MAX_VALUE;
+            UUID bestFromTarget = null;
+            for (Map.Entry<UUID, UUID> a : state.assignment.entrySet()) {
+                UUID mid = a.getKey();
+                UUID fromTid = a.getValue();
+                if (fromTid == null || threatId.equals(fromTid)) continue;
+                LivingEntity lender = minionById.get(mid);
+                if (lender == null) continue;
+
+                // Don't steal if it would leave a higher-priority target completely uncovered
+                // unless that target is not an owner-close threat and is lower priority than this threat.
+                int fromLoad = load.getOrDefault(fromTid, 0);
+                int fromPriority = targetOrder.indexOf(fromTid);
+                int threatPriority = targetOrder.indexOf(threatId);
+                boolean fromIsOwnerThreat = isNearOwner(owner, candidateById.get(fromTid));
+                boolean fromIsSoleOnHighPriority = fromLoad <= 1 && (fromPriority >= 0 && fromPriority < threatPriority);
+                if (fromIsOwnerThreat && fromLoad <= 1) continue;
+                if (fromIsSoleOnHighPriority && threatPriority > 0) continue;
+
+                double distSq = distanceSq(lender, threat);
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestMinionId = mid;
+                    bestFromTarget = fromTid;
+                }
+            }
+
+            if (bestMinionId != null && bestFromTarget != null) {
+                state.assignment.put(bestMinionId, threatId);
+                load.put(bestFromTarget, Math.max(0, load.getOrDefault(bestFromTarget, 0) - 1));
+                load.put(threatId, load.getOrDefault(threatId, 0) + 1);
+                covered.add(threatId);
+            }
+        }
+    }
+
+    private static boolean isNearOwner(Player owner, LivingEntity target) {
+        if (owner == null || target == null) return false;
+        try {
+            Location ol = owner.getLocation();
+            return target.getWorld() != null && target.getWorld().equals(ol.getWorld())
+                    && target.getLocation().distanceSquared(ol) <= OWNER_THREAT_RADIUS_SQ;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private Map<UUID, Integer> computeCapacities(int n, int m, List<UUID> targetOrder) {
@@ -216,9 +338,10 @@ public class SummonTargetCoordinator {
         return cap;
     }
 
-    private LivingEntity pickBestAvailable(OwnerState state, UUID ownerId, UUID minionId, LivingEntity minion,
+    private LivingEntity pickBestAvailable(OwnerState state, Player owner, UUID minionId, LivingEntity minion,
                                            List<UUID> targetOrder, Map<UUID, LivingEntity> candidateById,
                                            Set<UUID> recentDamagerIds) {
+        UUID ownerId = owner.getUniqueId();
         Map<UUID, Integer> capacity = computeCapacities(
                 Math.max(1, tracker.getActiveMinions(ownerId).size()), targetOrder.size(), targetOrder);
         Map<UUID, Integer> load = new HashMap<>();
@@ -228,6 +351,19 @@ public class SummonTargetCoordinator {
                 load.put(e.getValue(), load.get(e.getValue()) + 1);
             }
         }
+
+        // Dynamic: prefer uncovered enemies close to the owner (range-aware lending).
+        LivingEntity uncoveredThreat = null;
+        double uncoveredDistSq = Double.MAX_VALUE;
+        for (UUID tid : targetOrder) {
+            if (load.getOrDefault(tid, 0) > 0) continue;
+            LivingEntity target = candidateById.get(tid);
+            if (target == null || !isNearOwner(owner, target)) continue;
+            double distSq = distanceSq(minion, target);
+            if (distSq < uncoveredDistSq) { uncoveredDistSq = distSq; uncoveredThreat = target; }
+        }
+        if (uncoveredThreat != null) return uncoveredThreat;
+
         double bestDistSq = Double.MAX_VALUE;
         LivingEntity best = null;
         for (UUID tid : targetOrder) {
