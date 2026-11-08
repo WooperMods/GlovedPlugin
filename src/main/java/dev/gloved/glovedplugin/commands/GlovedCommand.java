@@ -105,6 +105,22 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
+        if (args[0].equalsIgnoreCase("enchant")) {
+            if (!(source.getSender() instanceof Player player)) {
+                source.getSender().sendMessage("Only players can enchant their held item.");
+                return;
+            }
+            if (args.length < 2) {
+                source.getSender().sendMessage(Component.text("Usage: /gloved enchant <enchant> [level|remove]"));
+                return;
+            }
+            String enchant = args[1];
+            String level = args.length >= 3 ? args[2] : null;
+            var result = dev.gloved.glovedplugin.enchant.EnchantBridge.apply(player, enchant, level);
+            source.getSender().sendMessage(Component.text(result.message));
+            return;
+        }
+
         if (args[0].equalsIgnoreCase("reset")) {
             if (!source.getSender().hasPermission("gloved.reset")) {
                 source.getSender().sendMessage(Component.text("You don't have permission to do that."));
@@ -120,13 +136,27 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
-        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit|debug|pvp>"));
+        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit|debug|pvp|enchant>"));
     }
 
     @Override
     public Collection<String> suggest(@NotNull CommandSourceStack source, @NotNull String[] args) {
         if (args.length <= 1) {
-            return List.of("menu", "reload", "reset", "edit", "pvp", "debug");
+            return List.of("menu", "reload", "reset", "edit", "pvp", "debug", "enchant");
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
+            return List.of("on", "off");
+        }
+        if (args[0].equalsIgnoreCase("enchant")) {
+            if (args.length == 2) {
+                return dev.gloved.glovedplugin.enchant.EnchantBridge.suggest(args[1]);
+            }
+            if (args.length == 3) {
+                String q = args[2] == null ? "" : args[2].toLowerCase();
+                java.util.List<String> levels = new java.util.ArrayList<>(List.of("1", "2", "3", "4", "5", "10", "remove"));
+                levels.removeIf(s -> !q.isEmpty() && !s.startsWith(q));
+                return levels;
+            }
         }
         return List.of();
     }
