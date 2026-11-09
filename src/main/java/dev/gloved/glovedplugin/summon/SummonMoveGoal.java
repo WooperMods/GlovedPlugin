@@ -38,7 +38,9 @@ public class SummonMoveGoal implements Goal<Mob> {
 
     @Override
     public boolean shouldActivate() {
-        return mob != null && !mob.isDead() && tracker.isSummoned(mob.getUniqueId());
+        if (mob == null || mob.isDead() || !tracker.isSummoned(mob.getUniqueId())) return false;
+        LivingEntity target = mob.getTarget();
+        return target == null || target.isDead() || !target.getWorld().equals(mob.getWorld());
     }
 
     @Override
@@ -66,16 +68,9 @@ public class SummonMoveGoal implements Goal<Mob> {
         Player owner = Bukkit.getPlayer(ownerId);
         if (owner == null || !owner.isOnline() || !owner.getWorld().equals(mob.getWorld())) return;
 
-        LivingEntity target = mob.getTarget();
         try {
             var pf = mob.getPathfinder();
             if (pf == null) return;
-            // When a target exists, let vanilla movement/attack goals handle navigation using getTarget().
-            // This goal only provides follow-owner navigation intent (no direct steering).
-            if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())) {
-                return;
-            }
-
             double distSqToOwner = mob.getLocation().distanceSquared(owner.getLocation());
             if (distSqToOwner <= IDLE_RADIUS_SQ) {
                 pf.stopPathfinding();
