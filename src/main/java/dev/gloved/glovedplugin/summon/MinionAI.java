@@ -428,7 +428,7 @@ public class MinionAI {
         minion.teleport(base);
     }
 
-    private static void moveMobTowards(org.bukkit.entity.Mob mob, Location target, double speedFactor) {
+    static void moveMobTowards(org.bukkit.entity.Mob mob, Location target, double speedFactor) {
         if (mob == null || target == null) return;
         boolean isFlying = false;
         try {
@@ -496,7 +496,7 @@ public class MinionAI {
         }
     }
 
-    private static void faceTowards(org.bukkit.entity.Mob mob, Location target) {
+    static void faceTowards(org.bukkit.entity.Mob mob, Location target) {
         if (mob == null || target == null) return;
         Location from = mob.getLocation();
         double dx = target.getX() - from.getX();
