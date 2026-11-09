@@ -66,16 +66,26 @@ public class SummonManager {
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
             LivingEntity mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
             if (mob == null) continue;
-            // Enable AI but strip vanilla behaviours and quirks (e.g. bee pollination); movement is
-            // driven by SummonMoveGoal using Paper's native pathfinder for obstacle-aware navigation.
+            // Enable AI but selectively strip quirk/target-selector vanilla goals. Keep core
+            // movement/navigation goals so vanilla pathfinding can run; use pathfinder.moveTo
+            // (navigation intent) for follow, never direct velocity steering.
             try {
                 mob.setAI(true);
                 mob.setCanPickupItems(false);
                 if (mob instanceof Mob m) {
                     MobGoals goals = plugin.getServer().getMobGoals();
-                    goals.removeAllGoals(m);
+                    var toRemove = new java.util.ArrayList<com.destroystokyo.paper.entity.ai.Goal<?>>();
+                    for (var g : goals.getAllGoals(m)) {
+                        if (shouldRemoveVanillaGoal(g)) toRemove.add(g);
+                    }
+                    for (var g : toRemove) {
+                        try {
+                            goals.removeGoal(m, (com.destroystokyo.paper.entity.ai.Goal) g);
+                        } catch (Exception ignored) {}
+                    }
                     goals.addGoal(m, 0, new SummonMoveGoal(plugin, tracker, m));
                     m.setTarget(null);
+                    GlovedPlugin.logDebug("[Summon] Minion " + mob.getUniqueId() + " goals kept=" + goals.getAllGoals(m).size() + " removed=" + toRemove.size());
                 }
             } catch (Exception ignored) {}
             // Any tameable minion is always tamed and owned by the summoner
@@ -117,6 +127,38 @@ public class SummonManager {
         if (!spawned.isEmpty()) {
             GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName());
         }
+    }
+
+    private static boolean shouldRemoveVanillaGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {
+        if (goal == null) return false;
+        try {
+            var types = goal.getTypes();
+            if (types != null && types.contains(com.destroystokyo.paper.entity.ai.GoalType.TARGET)) {
+                return true; // plugin owns targeting
+            }
+        } catch (Exception ignored) {}
+        try {
+            var key = goal.getKey();
+            if (key != null && key.getNamespacedKey() != null) {
+                String k = key.getNamespacedKey().getKey().toLowerCase(java.util.Locale.ROOT);
+                // Quirks/behaviors we never want on minions
+                if (k.contains("pollinate") || k.contains("flower") || k.contains("hive")
+                        || k.contains("breed") || k.contains("mate") || k.contains("love")
+                        || k.contains("tempt") || k.contains("panic") || k.contains("flee_sun")
+                        || k.contains("random_stroll") || k.contains("water_avoiding_random_stroll")
+                        || k.contains("random_fly") || k.contains("wander")
+                        || k.contains("eat_block") || k.contains("eat_grass") || k.contains("eat_tile")
+                        || k.contains("sleep") || k.contains("raid") || k.contains("celebrate")
+                        || k.contains("beg") || k.contains("offer") || k.contains("trade")
+                        || k.contains("pickup") || k.contains("take_flower") || k.contains("find_pollination")
+                        || k.contains("go_to_known") || k.contains("locate_hive") || k.contains("go_to_hive")
+                        || k.contains("enter_hive") || k.contains("pathfind_to_pollination")
+                        || k.contains("vex_random_move")) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private Location resolveSpawnLocation(Player player, LivingEntity target) {
