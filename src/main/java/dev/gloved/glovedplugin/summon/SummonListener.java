@@ -2,12 +2,16 @@ package dev.gloved.glovedplugin.summon;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -50,63 +54,49 @@ public class SummonListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onPlayerDealsDamage(EntityDamageByEntityEvent event) {
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = false)
+    public void onPlayerInteract(PlayerInteractEvent event) {
         try {
-            if (!config.isEnabled()) {
-                GlovedPlugin.logDebug("[Summon] Config disabled");
-                return;
+            if (!config.isEnabled()) return;
+            if (event.getHand() != EquipmentSlot.HAND) return;
+            Action action = event.getAction();
+            if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
+            if (action == Action.RIGHT_CLICK_BLOCK) {
+                var block = event.getClickedBlock();
+                if (block != null && block.getType().isInteractable()) {
+                    return;
+                }
             }
-            if (!(event.getDamager() instanceof Player player)) {
-                GlovedPlugin.logDebug("[Summon] Damager not player");
-                return;
-            }
-            if (player.isSneaking()) {
-                GlovedPlugin.logDebug("[Summon] Player sneaking, abort");
-                return;
-            }
+            Player player = event.getPlayer();
+            if (player.isSneaking()) return;
 
-            var item = player.getInventory().getItemInMainHand();
+            ItemStack item = event.getItem();
             if (item == null || item.getType().isAir()) {
-                GlovedPlugin.logDebug("[Summon] No item in main hand");
-                return;
+                item = player.getInventory().getItemInMainHand();
             }
-            String itemName = item.hasItemMeta() && item.getItemMeta().hasDisplayName() ? item.getItemMeta().getDisplayName() : "unnamed";
-            GlovedPlugin.logDebug("[Summon] Player " + player.getName() + " dealt damage with " + item.getType() + " '" + itemName + "'");
+            if (item == null || item.getType().isAir()) return;
 
             String profileName = SummonEnchant.getProfile(item);
-            GlovedPlugin.logDebug("[Summon] getProfile result: " + profileName + " for item " + item.getType());
-            if (profileName == null) {
-                GlovedPlugin.logDebug("[Summon] No profile detected");
-                return;
-            }
+            if (profileName == null) return;
             SummonProfile profile = config.getProfile(profileName);
-            GlovedPlugin.logDebug("[Summon] Config lookup for profile '" + profileName + "' -> " + (profile != null ? "found" : "missing"));
             if (profile == null) {
-                GlovedPlugin.logDebug("[Summon] Profile not found in config: " + profileName + " – clearing cache");
                 SummonEnchant.clearProfile(item);
                 return;
             }
 
-            if (!manager.canSummon(player, profile)) {
-                GlovedPlugin.logDebug("[Summon] CanSummon false for " + player.getName());
-                return;
-            }
+            if (!manager.canSummon(player, profile, SummonTrigger.ABILITY)) return;
+            manager.setCooldown(player, profile, SummonTrigger.ABILITY);
+            manager.spawn(player, profile, null);
 
-            double roll = rand.nextDouble();
-            GlovedPlugin.logDebug("[Summon] Chance roll " + roll + " vs " + profile.chance);
-            if (roll > profile.chance) {
-                GlovedPlugin.logDebug("[Summon] Chance failed");
-                return;
-            }
+            // Activation feedback (subtle, non-spammy)
+            try {
+                player.playSound(player.getLocation(), Sound.ENTITY_EVOKER_PREPARE_SUMMON, 0.35f, 1.7f);
+                player.getWorld().spawnParticle(Particle.ENCHANT, player.getLocation().add(0, 1.0, 0), 10, 0.35, 0.45, 0.35, 0.02);
+            } catch (Throwable ignored) {}
 
-            LivingEntity target = event.getEntity() instanceof LivingEntity le ? le : null;
-            GlovedPlugin.logDebug("[Summon] Damage target: " + (target != null ? target.getType() : "null"));
-            manager.setCooldown(player, profile);
-            manager.spawn(player, profile, target);
-            GlovedPlugin.logDebug("[Summon] Summon triggered for " + player.getName() + " profile " + profileName);
+            GlovedPlugin.logDebug("[Summon] Right-click ability triggered for " + player.getName() + " profile " + profileName);
         } catch (Throwable t) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerDealsDamage (suppressed to avoid kick)", t);
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerInteract (suppressed)", t);
         }
     }
 
@@ -159,7 +149,7 @@ public class SummonListener implements Listener {
                 SummonEnchant.clearProfile(item);
                 continue;
             }
-            if (!manager.canSummon(player, profile)) {
+            if (!manager.canSummon(player, profile, SummonTrigger.ARMOR)) {
                 GlovedPlugin.logDebug("[Summon Armor] CanSummon false for " + player.getName() + " profile " + profileName);
                 continue;
             }
@@ -169,7 +159,7 @@ public class SummonListener implements Listener {
                 GlovedPlugin.logDebug("[Summon Armor] Chance failed for profile " + profileName);
                 continue;
             }
-            manager.setCooldown(player, profile);
+            manager.setCooldown(player, profile, SummonTrigger.ARMOR);
             manager.spawn(player, profile, damager);
             GlovedPlugin.logDebug("[Summon Armor] Summon triggered for " + player.getName() + " profile " + profileName + " from armor slot " + slots[i]);
         }

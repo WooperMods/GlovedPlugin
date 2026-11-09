@@ -26,15 +26,20 @@ import org.bukkit.entity.Vex;
  * <p>Keep changes targeted to these mob types to avoid affecting ground minions' custom AI.</p>
  */
 public final class PhasingMob {
+    /** Hardcoded toggle: when false, phasing/vanilla-AI special handling is disabled and minions use normal paths. */
+    public static final boolean ENABLED = false;
+
     private PhasingMob() {}
 
     /** Whether the mob phases through solid blocks (Vex). Not all vanilla-AI mobs phase through blocks. */
     public static boolean isPhasing(LivingEntity mob) {
+        if (!ENABLED) return false;
         return mob instanceof Vex;
     }
 
     /** Whether this minion should use vanilla AI control (goals/movement/attacks) with target assignment only. */
     public static boolean usesVanillaAI(LivingEntity mob) {
+        if (!ENABLED) return false;
         if (mob == null) return false;
         if (mob instanceof Vex || mob instanceof Phantom || mob instanceof Allay
                 || mob instanceof Bee || mob instanceof Bat || mob instanceof Parrot || mob instanceof Ghast) {
@@ -51,6 +56,7 @@ public final class PhasingMob {
 
     /** Apply spawn-time settings specific to true phasing minions (e.g. Vex no gravity to prevent sinking). */
     public static void applySpawnSettings(LivingEntity mob) {
+        if (!ENABLED) return;
         if (!isPhasing(mob) || mob == null) return;
         try { mob.setGravity(false); } catch (Throwable ignored) {}
     }

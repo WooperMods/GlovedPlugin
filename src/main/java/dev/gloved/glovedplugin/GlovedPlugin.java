@@ -44,6 +44,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonTargetCoordinator summonCoordinator;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
     private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
+    private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge summonProgression;
 
     {
         logger = getLogger();
@@ -175,8 +176,13 @@ public final class GlovedPlugin extends JavaPlugin {
         this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker, this.summonCoordinator);
         this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
         this.minionAI.setSummon(this.summonConfig, this.summonManager);
+        this.summonProgression = createSummonProgressionBridge();
+        this.minionAI.setProgression(this.summonProgression);
+        this.summonProgression.onEnable();
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker, this.summonCoordinator), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.progression.SummonKillAttributionListener(() -> this.summonProgression, () -> this.summonConfig), this);
         this.clumpNametagManager = new dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager(this, this.summonTracker);
         getServer().getPluginManager().registerEvents(this.clumpNametagManager, this);
         this.clumpNametagManager.start();
@@ -225,6 +231,11 @@ public final class GlovedPlugin extends JavaPlugin {
             // Reload in place so listeners/managers that hold this reference see the new values.
             this.summonConfig.reload();
         }
+        if (this.summonProgression != null) {
+            this.summonProgression = refreshSummonProgressionBridge(this.summonProgression);
+            if (this.minionAI != null) this.minionAI.setProgression(this.summonProgression);
+            this.summonProgression.onReload(this.summonConfig);
+        }
         if (this.clumpNametagManager != null) {
             this.clumpNametagManager.restart();
         }
@@ -256,6 +267,49 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.summon.SummonConfig getSummonConfig() {
         return summonConfig;
+    }
+
+    public dev.gloved.glovedplugin.summon.SummonInstanceTracker getSummonTracker() {
+        return summonTracker;
+    }
+
+    private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge createSummonProgressionBridge() {
+        dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge noop = new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
+        if (summonConfig == null || !summonConfig.isProgressionEnabled() || !summonConfig.isProgressionAuraSkillsEnabled()) {
+            return noop;
+        }
+        if (getServer().getPluginManager().getPlugin("AuraSkills") == null) {
+            logDebug("[SummonXP] AuraSkills not present; summon progression XP disabled");
+            return noop;
+        }
+        try {
+            Class<?> cls = Class.forName("dev.gloved.glovedplugin.summon.progression.AuraSkillsSummonProgressionBridge");
+            Object bridge = cls.getConstructor(GlovedPlugin.class, dev.gloved.glovedplugin.summon.SummonConfig.class)
+                    .newInstance(this, summonConfig);
+            if (bridge instanceof dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge spb) {
+                logInfo("Summon progression: AuraSkills bridge enabled");
+                return spb;
+            }
+        } catch (Throwable t) {
+            logDebug("[SummonXP] AuraSkills bridge unavailable: " + t);
+        }
+        return noop;
+    }
+
+    private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge refreshSummonProgressionBridge(
+            dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge current) {
+        boolean wantAura = summonConfig != null && summonConfig.isProgressionEnabled() && summonConfig.isProgressionAuraSkillsEnabled()
+                && getServer().getPluginManager().getPlugin("AuraSkills") != null;
+        if (!wantAura) {
+            if (!(current instanceof dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge)) {
+                try { current.onDisable(); } catch (Exception ignored) {}
+                return new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
+            }
+            return current;
+        }
+        if (current instanceof dev.gloved.glovedplugin.summon.progression.AuraSkillsSummonProgressionBridge) return current;
+        try { current.onDisable(); } catch (Exception ignored) {}
+        return createSummonProgressionBridge();
     }
 
     public boolean isPvpDisabled(org.bukkit.entity.Player player) {
@@ -364,6 +418,9 @@ public final class GlovedPlugin extends JavaPlugin {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
         EditSessionCache.storeAll(this);
+        if (summonProgression != null) {
+            try { summonProgression.onDisable(); } catch (Exception ignored) {}
+        }
         if (clumpNametagManager != null) {
             clumpNametagManager.stop();
         }

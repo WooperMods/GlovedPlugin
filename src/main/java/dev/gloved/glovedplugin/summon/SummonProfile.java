@@ -1,11 +1,14 @@
 package dev.gloved.glovedplugin.summon;
 
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 public class SummonProfile {
     public static final boolean INVULNERABLE = true;
@@ -76,13 +79,53 @@ public class SummonProfile {
     }
 
     public String getNametag(Player player, EntityType type) {
-        return getNametag(player != null ? player.getName() : "Owner", type);
+        return getNametag(resolvePlayerName(player), type);
+    }
+
+    private static String resolvePlayerName(Player player) {
+        if (player == null) return "Owner";
+        try {
+            if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                Class<?> papi = Class.forName("me.clip.placeholderapi.PlaceholderAPI");
+                Method setPlaceholders = papi.getMethod("setPlaceholders", Player.class, String.class);
+                String resolved = String.valueOf(setPlaceholders.invoke(null, player, "%player_displayname%"));
+                resolved = stripLegacy(resolved).trim();
+                if (!resolved.isEmpty() && !resolved.equalsIgnoreCase("%player_displayname%")) {
+                    return resolved;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return player.getName();
+    }
+
+    private static String stripLegacy(String s) {
+        if (s == null) return "";
+        return s.replaceAll("(?i)[&§][0-9A-FK-ORX]", "")
+                .replaceAll("(?i)[&§]#[0-9A-F]{6}", "")
+                .replaceAll("(?i)<#[0-9A-F]{6}>", "");
     }
 
     public String getNametag(String playerName, EntityType type) {
-        String mobName = type != null ? type.name().toLowerCase().replace("_", " ") : mobType.toLowerCase().replace("_", " ");
-        String format = NAMETAG_FORMAT.replace("{player}", playerName != null ? playerName : "Owner")
+        String raw = type != null ? type.name() : mobType;
+        String mobName = titleCaseMob(raw);
+        String owner = (playerName != null && !playerName.isEmpty()) ? playerName : "Owner";
+        String possessive = owner + (owner.toLowerCase(Locale.ROOT).endsWith("s") ? "'" : "'s");
+        String format = NAMETAG_FORMAT.replace("{player}'s", possessive).replace("{player}", owner)
                 .replace("{mob}", mobName);
         return nametagColor + format;
+    }
+
+    private static String titleCaseMob(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        String s = raw.toLowerCase(Locale.ROOT).replace('_', ' ').trim();
+        String[] parts = s.split("\\s+");
+        StringBuilder b = new StringBuilder();
+        for (String p : parts) {
+            if (p.isEmpty()) continue;
+            if (b.length() > 0) b.append(' ');
+            b.append(Character.toUpperCase(p.charAt(0)));
+            if (p.length() > 1) b.append(p.substring(1));
+        }
+        return b.toString();
     }
 }

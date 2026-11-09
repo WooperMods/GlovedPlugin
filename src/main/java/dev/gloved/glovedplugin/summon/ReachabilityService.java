@@ -34,6 +34,7 @@ public class ReachabilityService {
     public boolean canReach(Mob mob, Location target) {
         if (mob == null || target == null) return false;
         try {
+            if (mob.getWorld() != target.getWorld()) return false;
             if (mob.getLocation().distanceSquared(target) > MAX_SEARCH_DISTANCE_SQ) {
                 return true;
             }
@@ -48,6 +49,7 @@ public class ReachabilityService {
     }
 
     private boolean paperCanReach(Mob mob, Location target) {
+        if (mob.getWorld() != target.getWorld()) return false;
         if (mob.getLocation().distanceSquared(target) > PAPER_SEARCH_DISTANCE_SQ) {
             // One navigation search cannot cover this distance; let movement and stuck detection decide.
             return true;

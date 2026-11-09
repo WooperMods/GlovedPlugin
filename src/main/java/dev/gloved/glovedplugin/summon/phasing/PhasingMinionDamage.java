@@ -38,15 +38,6 @@ public final class PhasingMinionDamage {
             try {
                 dev.gloved.glovedplugin.summon.MinionAI.applyKnockback(minion, owner, target);
             } catch (Throwable ignored) {}
-            try {
-                if (tracker != null) {
-                    NamespacedKey mobTypeKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_mobtype");
-                    String mobType = minion.getPersistentDataContainer().get(mobTypeKey, PersistentDataType.STRING);
-                    if (mobType != null) {
-                        tracker.resetTimersForPlayerAndType(owner.getUniqueId(), mobType, SummonProfile.LIFETIME_TICKS);
-                    }
-                }
-            } catch (Throwable ignored) {}
             GlovedPlugin.logDebug("[Summon] Phasing/vanilla-mode minion hit credited to " + owner.getName()
                     + " damage=" + damage + " elite=" + isElite + " level=" + ownerLevel);
         } catch (Throwable t) {

@@ -3,17 +3,20 @@ package dev.gloved.glovedplugin.summon;
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.block.Block;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Tameable;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,21 +35,24 @@ public class SummonManager {
         this.minionAI = minionAI;
     }
 
-    public boolean canSummon(Player player, SummonProfile profile) {
+    public boolean canSummon(Player player, SummonProfile profile, SummonTrigger trigger) {
         if (!config.isEnabled()) return false;
         long now = System.currentTimeMillis();
         Map<String, Long> playerCooldowns = cooldowns.getOrDefault(player.getUniqueId(), Collections.emptyMap());
-        Long last = playerCooldowns.get(profile.mobType);
+        String key = trigger.name() + ":" + profile.name;
+        Long last = playerCooldowns.get(key);
         long required = SummonProfile.COOLDOWN_TICKS * 50L;
         if (last != null && now - last < required) return false;
+        // max-active is a shared pool across triggers (counted per profile)
         int count = tracker.getActiveCount(player.getUniqueId(), profile.name);
         if (count >= profile.maxActive) return false;
         return true;
     }
 
-    public void setCooldown(Player player, SummonProfile profile) {
+    public void setCooldown(Player player, SummonProfile profile, SummonTrigger trigger) {
+        String key = trigger.name() + ":" + profile.name;
         cooldowns.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
-                .put(profile.mobType, System.currentTimeMillis());
+                .put(key, System.currentTimeMillis());
     }
 
     public void spawn(Player player, SummonProfile profile, LivingEntity target) {
@@ -128,6 +134,7 @@ public class SummonManager {
             minionAI.monitorMinion(mob, player, profile);
         }
         if (!spawned.isEmpty()) {
+            playSummonEffects(player, spawnLoc, spawned.size());
             GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName());
         }
     }
@@ -184,7 +191,82 @@ public class SummonManager {
         if (target != null && !target.isDead()) {
             return target.getLocation().add(0, 1, 0);
         }
-        return player.getLocation().add(0, 1, 0);
+        return findFrontSpawn(player);
+    }
+
+    private Location findFrontSpawn(Player player) {
+        Location base = player.getLocation();
+        Vector dir = base.getDirection().clone().setY(0);
+        if (dir.lengthSquared() < 1.0E-4) {
+            dir = base.clone().getDirection().setY(0);
+        }
+        if (dir.lengthSquared() < 1.0E-4) {
+            dir = new Vector(0, 0, 1);
+        }
+        dir.normalize();
+        // Try visible/open spots in front of the player first
+        double[] distances = {2.6, 2.0, 3.2, 1.6, 3.8};
+        for (double d : distances) {
+            Location cand = base.clone().add(dir.clone().multiply(d));
+            cand.setY(base.getY());
+            Location safe = findSafeSpawn(cand);
+            if (safe != null) return safe;
+        }
+        // Fallback: just in front of player, slightly raised
+        Location fallback = base.clone().add(dir.multiply(1.8));
+        fallback.setY(base.getY());
+        return fallback.add(0, 0.1, 0);
+    }
+
+    private Location findSafeSpawn(Location loc) {
+        if (loc == null || loc.getWorld() == null) return null;
+        World world = loc.getWorld();
+        int baseY = loc.getBlockY();
+        // Try same level, then one up/down to handle slabs/slight uneven ground
+        int[] yOffsets = {0, 1, -1};
+        for (int yo : yOffsets) {
+            Location feetLoc = loc.clone();
+            feetLoc.setY(baseY + yo);
+            Block feet = world.getBlockAt(feetLoc);
+            Block head = feet.getRelative(0, 1, 0);
+            Block below = feet.getRelative(0, -1, 0);
+            if (isOpenForSpawn(feet) && isOpenForSpawn(head) && below.getType().isSolid()) {
+                Location out = feet.getLocation().add(0.5, 0.0, 0.5);
+                out.setYaw(loc.getYaw());
+                out.setPitch(0f);
+                return out;
+            }
+        }
+        return null;
+    }
+
+    private boolean isOpenForSpawn(Block block) {
+        try {
+            return block != null && block.isPassable();
+        } catch (Throwable t) {
+            return block != null && !block.getType().isSolid();
+        }
+    }
+
+    private void playSummonEffects(Player player, Location at, int count) {
+        if (at == null || at.getWorld() == null) return;
+        try {
+            World world = at.getWorld();
+            Location fx = at.clone().add(0, 0.8, 0);
+            // Main burst - visible and "epic"
+            world.spawnParticle(Particle.SOUL_FIRE_FLAME, fx, 28 + Math.min(count * 4, 40), 0.9, 0.7, 0.9, 0.02);
+            world.spawnParticle(Particle.REVERSE_PORTAL, fx, 24 + Math.min(count * 3, 30), 0.8, 0.6, 0.8, 0.03);
+            world.spawnParticle(Particle.WITCH, fx, 16 + Math.min(count * 2, 24), 0.7, 0.5, 0.7, 0.01);
+            world.spawnParticle(Particle.END_ROD, fx.clone().add(0, 0.6, 0), 10 + Math.min(count * 2, 18), 0.5, 0.8, 0.5, 0.01);
+            world.spawnParticle(Particle.CLOUD, fx, 8, 0.5, 0.2, 0.5, 0.02);
+            world.playSound(fx, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 0.8f, 1.15f);
+            world.playSound(fx, Sound.BLOCK_BEACON_ACTIVATE, 0.35f, 1.6f);
+            if (player != null) {
+                player.playSound(player.getLocation(), Sound.ITEM_TRIDENT_RETURN, 0.25f, 1.4f);
+            }
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Failed to play summon effects: " + t);
+        }
     }
 
     public void reload(SummonConfig newConfig) {

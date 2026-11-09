@@ -1,4 +1,6 @@
 enabled: true
+# Allow minions to proc-summon more minions of their profile on hit (chance * 0.25). Default off.
+minion-proc-summon: false
 # Clumped nametags: when too many minions cluster, hide individual tags and show one shared proxy label.
 clumped-nametags:
   enabled: true
@@ -6,6 +8,24 @@ clumped-nametags:
   radius: 2.0
   update-ticks: 10
   format: "{nametag} x{count}"
+progression:
+  enabled: true
+  auraskills:
+    enabled: true
+    skill-id: summoning
+    apply-multipliers: true
+  xp:
+    minion-hit:
+      enabled: true
+      amount: 0.5
+      owner-cooldown-ticks: 10
+      per-target-cooldown-ticks: 40
+      max-per-minute: 120.0
+    minion-kill:
+      enabled: true
+      amount: 8.0
+      attribution-window-ticks: 200
+      max-per-minute: 80.0
 profiles:
   bee_swarm:
     mob-type: BEE

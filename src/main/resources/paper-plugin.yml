@@ -3,3 +3,53 @@ version: '0.1.0'
 main: dev.gloved.glovedplugin.GlovedPlugin
 api-version: '26.3'
 load: STARTUP
+dependencies:
+  server:
+    LuckPerms:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    ResourcePackManager:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    TAB:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    CMI:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    AuraSkills:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    FreeMinecraftModels:
+      load: BEFORE
+      required: false
+    PacketEvents:
+      load: BEFORE
+      required: false
+    NpcPlugin-Paper:
+      load: BEFORE
+      required: false
+permissions:
+  gloved.emreset:
+    description: Reset a held EliteMobs custom item to its config default
+    default: op
+  gloved.reset:
+    description: Reset GlovedPlugin config to defaults
+    default: op
+  gloved.reload:
+    description: Reload GlovedPlugin config
+    default: op
+  gloved.edit:
+    description: Edit the Gloved menu
+    default: op
+  gloved.debug:
+    description: Toggle Gloved debug logging
+    default: op
+  gloved.rankglyphs:
+    description: Generate/apply LuckPerms rank glyph prefixes via ResourcePackManager
+    default: op

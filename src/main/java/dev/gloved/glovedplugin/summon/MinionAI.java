@@ -31,6 +31,8 @@ public class MinionAI {
     private final Map<UUID, UUID> minionTasks = new HashMap<>();
     private SummonManager summonManager;
     private SummonConfig summonConfig;
+    private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge progression =
+            new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> recentDamagers = new java.util.concurrent.ConcurrentHashMap<>();
     private static final long DAMAGER_TTL_MS = 10_000L;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> unreachableCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -50,6 +52,10 @@ public class MinionAI {
     public void setSummon(SummonConfig summonConfig, SummonManager summonManager) {
         this.summonConfig = summonConfig;
         this.summonManager = summonManager;
+    }
+
+    public void setProgression(dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge progression) {
+        this.progression = progression != null ? progression : new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
     }
 
     public static void recordRecentDamager(Player player, LivingEntity damager) {
@@ -96,8 +102,8 @@ public class MinionAI {
         if (locMap != null) {
             org.bukkit.Location cachedLoc = locMap.get(targetId);
             if (cachedLoc != null && currentLoc != null) {
-                if (cachedLoc.distanceSquared(currentLoc) > 0.01) {
-                    // Target moved, invalidate cache
+                if (cachedLoc.getWorld() != currentLoc.getWorld() || cachedLoc.distanceSquared(currentLoc) > 0.01) {
+                    // Target moved/world changed, invalidate cache
                     map.remove(targetId);
                     locMap.remove(targetId);
                     if (map.isEmpty()) unreachableCache.remove(minionId);
@@ -200,10 +206,14 @@ public class MinionAI {
                 org.bukkit.entity.Mob mob = minion instanceof org.bukkit.entity.Mob m ? m : null;
                 if (mob == null) {
                     // Non-mob entities just follow owner
-                    if (minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE) {
-                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " non-mob too far from owner " + owner.getName() + ", teleporting");
+                    if (minion.getWorld() != owner.getWorld() || minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE) {
+                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " non-mob out of range/world from owner " + owner.getName() + ", teleporting");
                         minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
                     }
+                    return;
+                }
+                if (minion.getWorld() != owner.getWorld()) {
+                    teleportNearPlayer(owner, minion);
                     return;
                 }
                 boolean flying;
@@ -245,7 +255,7 @@ public class MinionAI {
                     }
                 }
                 double maxTargetSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
-                candidates.removeIf(le -> le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
+                candidates.removeIf(le -> le.getWorld() != owner.getWorld() || le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
 
                 // Global candidates: owner-valid threats for shared coordinator state (prune/rebalance/coverage).
                 // Per-minion constraints are passed as a predicate so one minion's pathing limits don't
@@ -256,6 +266,7 @@ public class MinionAI {
                     if (mob == null) return false;
                     Entity te = owner.getWorld().getEntity(targetId);
                     if (!(te instanceof LivingEntity tle)) return true;
+                    if (minion.getWorld() != tle.getWorld()) return true;
                     if (MinionAI.isCachedUnreachable(minion.getUniqueId(), targetId, tle.getLocation())) return true;
                     if (!isFlyingMob) {
                         double dy = Math.abs(minion.getLocation().getY() - tle.getLocation().getY());
@@ -292,32 +303,41 @@ public class MinionAI {
 
                 // Unreachable target detection: drop target if distance hasn't improved for ~5s
                 if (target != null) {
-                    double curDist = minion.getLocation().distance(target.getLocation());
-                    if (lastTarget != null && lastTarget.getUniqueId().equals(target.getUniqueId())) {
-                        if (curDist < lastTargetDist - 0.1) {
-                            // Progress made
+                    if (minion.getWorld() != target.getWorld()) {
+                        coordinator.invalidateMinion(minion.getUniqueId());
+                        target = null;
+                        lastTarget = null;
+                        lastTargetDist = Double.MAX_VALUE;
+                        stuckSince = 0L;
+                        try { mob.setTarget(null); } catch (Exception ignored) {}
+                    } else {
+                        double curDist = minion.getLocation().distance(target.getLocation());
+                        if (lastTarget != null && lastTarget.getUniqueId().equals(target.getUniqueId())) {
+                            if (curDist < lastTargetDist - 0.1) {
+                                // Progress made
+                                lastTargetDist = curDist;
+                                lastTargetDistTick = now;
+                                stuckSince = 0L;
+                            } else {
+                                if (stuckSince == 0L) stuckSince = now;
+                                if (now - stuckSince >= 100) {
+                                    // Consider unreachable, drop target
+                                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck on target " + target.getName() + ", dropping");
+                                    MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
+                                    coordinator.invalidateMinion(minion.getUniqueId());
+                                    target = null;
+                                    lastTarget = null;
+                                    lastTargetDist = Double.MAX_VALUE;
+                                    stuckSince = 0L;
+                                    try { mob.setTarget(null); } catch (Exception ignored) {}
+                                }
+                            }
+                        } else {
+                            // New target
                             lastTargetDist = curDist;
                             lastTargetDistTick = now;
                             stuckSince = 0L;
-                        } else {
-                            if (stuckSince == 0L) stuckSince = now;
-                            if (now - stuckSince >= 100) {
-                                // Consider unreachable, drop target
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck on target " + target.getName() + ", dropping");
-                                MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
-                                coordinator.invalidateMinion(minion.getUniqueId());
-                                target = null;
-                                lastTarget = null;
-                                lastTargetDist = Double.MAX_VALUE;
-                                stuckSince = 0L;
-                                try { mob.setTarget(null); } catch (Exception ignored) {}
-                            }
                         }
-                    } else {
-                        // New target
-                        lastTargetDist = curDist;
-                        lastTargetDistTick = now;
-                        stuckSince = 0L;
                     }
                 } else {
                     // Reset stuck tracking when no target
@@ -329,50 +349,50 @@ public class MinionAI {
                     mob.setTarget(target);
                 } catch (Exception ignored) {}
 
-                if (target != null) {
-                    {
-                        // Movement is handled by SummonMoveGoal using Paper's pathfinder.
-                        double distSq = minion.getLocation().distanceSquared(target.getLocation());
-                        double attackRangeSq = defaultAttackReachSq(minion, target);
-                        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " distSq=" + distSq + " attackRangeSq=" + attackRangeSq + " lastAttackTickDiff=" + (now - lastAttackTick) + " requiredArcTicks=" + requiredArcTicks(owner));
-                        if (distSq <= attackRangeSq && now - lastAttackTick >= requiredArcTicks(owner)) {
-                            if (CombatTargetRules.isProtected(plugin, owner, target)) {
-                                lastAttackTick = now;
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " skipped protected target " + target.getName());
-                            } else {
-                                forceFullAttackStrength(owner);
-                                // Trigger attack animation
+                if (target != null && minion.getWorld() == target.getWorld()) {
+                    // Movement is handled by SummonMoveGoal using Paper's pathfinder.
+                    double distSq = minion.getLocation().distanceSquared(target.getLocation());
+                    double attackRangeSq = defaultAttackReachSq(minion, target);
+                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " distSq=" + distSq + " attackRangeSq=" + attackRangeSq + " lastAttackTickDiff=" + (now - lastAttackTick) + " requiredArcTicks=" + requiredArcTicks(owner));
+                    if (distSq <= attackRangeSq && now - lastAttackTick >= requiredArcTicks(owner)) {
+                        if (CombatTargetRules.isProtected(plugin, owner, target)) {
+                            lastAttackTick = now;
+                            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " skipped protected target " + target.getName());
+                        } else {
+                            forceFullAttackStrength(owner);
+                            // Trigger attack animation
+                            try {
+                                ((org.bukkit.entity.LivingEntity) mob).attack(target);
+                            } catch (Exception ignored) {}
+                            // Level-scaled damage with player credit, no weapon scaling, no base mob damage
+                            int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
+                            boolean isElite = isEliteMob(target);
+                            double damage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
+                            try {
+                                DamageSource src = DamageSource.builder(DamageType.GENERIC)
+                                        .withDirectEntity(minion)
+                                        .withCausingEntity(owner)
+                                        .build();
+                                target.damage(damage, src);
+                                applyKnockback(minion, owner, target);
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + damage + " to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
                                 try {
-                                    ((org.bukkit.entity.LivingEntity) mob).attack(target);
-                                } catch (Exception ignored) {}
-                                // Level-scaled damage with player credit, no weapon scaling, no base mob damage
-                                int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
-                                boolean isElite = isEliteMob(target);
-                                double damage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
-                                try {
-                                    DamageSource src = DamageSource.builder(DamageType.GENERIC)
-                                            .withDirectEntity(minion)
-                                            .withCausingEntity(owner)
-                                            .build();
-                                    target.damage(damage, src);
-                                    applyKnockback(minion, owner, target);
-                                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + damage + " to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
-                                } catch (Exception e) {
-                                    GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
+                                    progression.onMinionHit(owner, minion, target, profile != null ? profile.name : null, damage);
+                                } catch (Throwable t) {
+                                    GlovedPlugin.logDebug("[SummonXP] Hit hook dispatch error: " + t);
                                 }
-                                // Reset despawn timers per minion type
-                                NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
-                                String mobType = minion.getPersistentDataContainer().get(mobTypeKey, PersistentDataType.STRING);
-                                if (mobType != null) {
-                                    tracker.resetTimersForPlayerAndType(owner.getUniqueId(), mobType, SummonProfile.LIFETIME_TICKS);
-                                }
-                                trySummonFromMinion(minion, owner, target);
-                                lastAttackTick = now;
+                            } catch (Exception e) {
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
                             }
+                            trySummonFromMinion(minion, owner, target);
+                            lastAttackTick = now;
                         }
                     }
-                } else {
+                } else if (target == null) {
                     // No target -> SummonMoveGoal pathfinds to owner; handle stuck recovery only.
+                    if (minion.getWorld() != owner.getWorld()) {
+                        teleportNearPlayer(owner, minion);
+                    } else {
                     double distSqToOwner = minion.getLocation().distanceSquared(owner.getLocation());
                     double idleRadius = 4.0;
                     double curFollowDist = Math.sqrt(distSqToOwner);
@@ -395,9 +415,10 @@ public class MinionAI {
                             }
                         }
                     }
+                    }
                 }
                 // Teleport if too far away
-                if (target == null && minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE) {
+                if (target == null && (minion.getWorld() != owner.getWorld() || minion.getLocation().distanceSquared(owner.getLocation()) > SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE)) {
                     GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " too far from owner " + owner.getName() + " with no target, teleporting");
                     minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
                 }
@@ -435,6 +456,7 @@ public class MinionAI {
             isFlying = mob.getAttribute(Attribute.FLYING_SPEED) != null;
         } catch (Exception ignored) {}
         Location current = mob.getLocation();
+        if (current.getWorld() != target.getWorld()) return;
         double distance = current.distance(target);
         if (distance < 0.5) {
             if (isFlying) {
@@ -595,6 +617,7 @@ public class MinionAI {
      */
     private void trySummonFromMinion(LivingEntity minion, Player owner, LivingEntity target) {
         if (summonManager == null || summonConfig == null) return;
+        if (!summonConfig.isMinionProcSummon()) return;
         Player liveOwner = Bukkit.getPlayer(owner.getUniqueId());
         if (liveOwner == null || !liveOwner.isOnline()) return;
         NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
@@ -602,10 +625,10 @@ public class MinionAI {
         if (profileName == null) return;
         SummonProfile profile = summonConfig.getProfile(profileName);
         if (profile == null) return;
-        if (!summonManager.canSummon(liveOwner, profile)) return;
+        if (!summonManager.canSummon(liveOwner, profile, SummonTrigger.MINION)) return;
         double minionChance = profile.chance * 0.25;
         if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > minionChance) return;
-        summonManager.setCooldown(liveOwner, profile);
+        summonManager.setCooldown(liveOwner, profile, SummonTrigger.MINION);
         summonManager.spawn(liveOwner, profile, target);
         GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " triggered spawn for " + liveOwner.getName()
                 + " profile " + profileName + " (minion-chance=" + minionChance + ")");
