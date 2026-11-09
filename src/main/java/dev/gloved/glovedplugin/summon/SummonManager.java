@@ -74,9 +74,12 @@ public class SummonManager {
                 mob.setCanPickupItems(false);
                 if (mob instanceof Mob m) {
                     MobGoals goals = plugin.getServer().getMobGoals();
+                    var all = goals.getAllGoals(m);
                     var toRemove = new java.util.ArrayList<com.destroystokyo.paper.entity.ai.Goal<?>>();
-                    for (var g : goals.getAllGoals(m)) {
-                        if (shouldRemoveVanillaGoal(g)) toRemove.add(g);
+                    for (var g : all) {
+                        boolean remove = shouldRemoveVanillaGoal(g);
+                        GlovedPlugin.logDebug("[Summon] Goal " + mob.getType() + " " + describeGoal(g) + " -> " + (remove ? "remove" : "keep"));
+                        if (remove) toRemove.add(g);
                     }
                     for (var g : toRemove) {
                         try {
@@ -146,9 +149,10 @@ public class SummonManager {
                         || k.contains("breed") || k.contains("mate") || k.contains("love")
                         || k.contains("tempt") || k.contains("panic") || k.contains("flee_sun")
                         || k.contains("random_stroll") || k.contains("water_avoiding_random_stroll")
-                        || k.contains("random_fly") || k.contains("wander")
+                        || k.contains("random_fly") || k.contains("wander") || k.contains("stroll")
                         || k.contains("eat_block") || k.contains("eat_grass") || k.contains("eat_tile")
-                        || k.contains("sleep") || k.contains("raid") || k.contains("celebrate")
+                        || k.contains("sleep") || k.contains("rest") || k.contains("roost") || k.contains("hang")
+                        || k.contains("raid") || k.contains("celebrate")
                         || k.contains("beg") || k.contains("offer") || k.contains("trade")
                         || k.contains("pickup") || k.contains("take_flower") || k.contains("find_pollination")
                         || k.contains("go_to_known") || k.contains("locate_hive") || k.contains("go_to_hive")
@@ -159,6 +163,21 @@ public class SummonManager {
             }
         } catch (Exception ignored) {}
         return false;
+    }
+
+    private static String describeGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {
+        if (goal == null) return "null";
+        String key = "?";
+        String types = "?";
+        try {
+            if (goal.getKey() != null && goal.getKey().getNamespacedKey() != null) {
+                key = goal.getKey().getNamespacedKey().toString();
+            }
+        } catch (Exception ignored) {}
+        try {
+            types = String.valueOf(goal.getTypes());
+        } catch (Exception ignored) {}
+        return "key=" + key + " types=" + types;
     }
 
     private Location resolveSpawnLocation(Player player, LivingEntity target) {
