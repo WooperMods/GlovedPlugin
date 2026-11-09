@@ -136,16 +136,57 @@ public class GlovedCommand implements BasicCommand {
             return;
         }
 
-        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit|debug|pvp|enchant>"));
+        if (args[0].equalsIgnoreCase("emreset")) {
+            if (!(source.getSender() instanceof Player player)) {
+                source.getSender().sendMessage("Only players can reset an EliteMobs custom item.");
+                return;
+            }
+            if (!source.getSender().hasPermission("gloved.emreset")) {
+                source.getSender().sendMessage(Component.text("You don't have permission to do that."));
+                return;
+            }
+            var result = dev.gloved.glovedplugin.enchant.EliteMobsItemReset.resetHeldItem(player);
+            source.getSender().sendMessage(Component.text(result.message));
+            return;
+        }
+
+        if (args[0].equalsIgnoreCase("rankglyphs") || args[0].equalsIgnoreCase("ranks")) {
+            if (!source.getSender().hasPermission("gloved.rankglyphs")) {
+                source.getSender().sendMessage(Component.text("You don't have permission to do that."));
+                return;
+            }
+            try {
+                var svc = new dev.gloved.glovedplugin.rankglyph.RankGlyphService(plugin);
+                String sub = args.length > 1 ? args[1].toLowerCase() : "all";
+                switch (sub) {
+                    case "generate", "gen", "pack" -> svc.runGenerate(source.getSender());
+                    case "apply", "prefixes", "lp" -> svc.runApply(source.getSender());
+                    case "status", "info" -> svc.runStatus(source.getSender());
+                    case "all", "sync", "run" -> svc.runAll(source.getSender());
+                    default -> source.getSender().sendMessage(Component.text("Usage: /gloved rankglyphs <all|generate|apply|status>"));
+                }
+            } catch (NoClassDefFoundError | NoSuchMethodError e) {
+                source.getSender().sendMessage(Component.text("RankGlyphs unavailable: missing dependency (" + e.getMessage() + "). Ensure LuckPerms is installed and GlovedPlugin declares it (restart server after updating the jar).", net.kyori.adventure.text.format.NamedTextColor.RED));
+            } catch (Exception e) {
+                source.getSender().sendMessage(Component.text("RankGlyphs error: " + e.getMessage(), net.kyori.adventure.text.format.NamedTextColor.RED));
+                plugin.getLogger().warning("rankglyphs command failed: " + e);
+            }
+            return;
+        }
+
+        source.getSender().sendMessage(Component.text("Usage: /gloved <menu|reload|reset|edit|debug|pvp|enchant|emreset|rankglyphs>"));
     }
 
     @Override
     public Collection<String> suggest(@NotNull CommandSourceStack source, @NotNull String[] args) {
         if (args.length <= 1) {
-            return List.of("menu", "reload", "reset", "edit", "pvp", "debug", "enchant");
+            return List.of("menu", "reload", "reset", "edit", "pvp", "debug", "enchant", "emreset", "rankglyphs");
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
             return List.of("on", "off");
+        }
+        if (args.length == 2 && (args[0].equalsIgnoreCase("rankglyphs") || args[0].equalsIgnoreCase("ranks"))) {
+            return List.of("all", "generate", "apply", "status");
         }
         if (args[0].equalsIgnoreCase("enchant")) {
             if (args.length == 2) {

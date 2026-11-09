@@ -32,12 +32,12 @@ public final class EnchantBridge {
         public static Result fail(String m) { return new Result(false, m); }
     }
 
-    private static boolean eliteMobsPresent() {
+    public static boolean eliteMobsPresent() {
         Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
         return p != null && p.isEnabled();
     }
 
-    private static ClassLoader emCl() {
+    public static ClassLoader emCl() {
         Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
         return p != null ? p.getClass().getClassLoader() : null;
     }
@@ -829,25 +829,50 @@ public final class EnchantBridge {
         return b.toString();
     }
 
-    private static String emCustomItemId(ItemMeta meta) {
+    public static String emCustomItemId(ItemStack item) {
+        if (!eliteMobsPresent() || item == null) return null;
+        // Try direct ItemStack-based APIs first (matches current EliteMobs API)
+        try {
+            ClassLoader cl = emCl();
+            Class<?> tagger = Class.forName("com.magmaguy.elitemobs.items.ItemTagger", true, cl);
+            for (String name : List.of("getCustomItemId", "getCustomItemFilename", "getCustomFilename")) {
+                try {
+                    Method m = tagger.getMethod(name, ItemStack.class);
+                    Object r = m.invoke(null, item);
+                    if (r != null && !String.valueOf(r).isBlank()) return String.valueOf(r);
+                } catch (NoSuchMethodException ignored) {}
+            }
+            Class<?> mgr = Class.forName("com.magmaguy.elitemobs.api.utils.EliteItemManager", true, cl);
+            for (String name : List.of("getCustomItemFilename", "getCustomItemId", "getCustomItem")) {
+                try {
+                    Method m = mgr.getMethod(name, ItemStack.class);
+                    Object r = m.invoke(null, item);
+                    if (r != null && !String.valueOf(r).isBlank()) return String.valueOf(r);
+                } catch (NoSuchMethodException ignored) {}
+            }
+        } catch (Throwable ignored) {}
+        ItemMeta meta = item.getItemMeta();
+        return meta != null ? emCustomItemId(meta) : null;
+    }
+
+    public static String emCustomItemId(ItemMeta meta) {
         if (!eliteMobsPresent() || meta == null) return null;
         try {
             ClassLoader cl = emCl();
+            Class<?> tagger = Class.forName("com.magmaguy.elitemobs.items.ItemTagger", true, cl);
+            for (String name : List.of("getCustomItemId", "getCustomItemFilename", "getCustomFilename", "getEnchantmentFilename")) {
+                try {
+                    Method m = tagger.getMethod(name, ItemMeta.class);
+                    Object r = m.invoke(null, meta);
+                    if (r != null && !String.valueOf(r).isBlank()) return String.valueOf(r);
+                } catch (NoSuchMethodException ignored) {}
+            }
             Class<?> mgr = Class.forName("com.magmaguy.elitemobs.api.utils.EliteItemManager", true, cl);
             for (String name : List.of("getCustomItemFilename", "getCustomItemId", "getCustomItem")) {
                 try {
                     Method m = mgr.getMethod(name, ItemMeta.class);
                     Object r = m.invoke(null, meta);
-                    if (r != null) return String.valueOf(r);
-                } catch (NoSuchMethodException ignored) {}
-            }
-            // try ItemTagger
-            Class<?> tagger = Class.forName("com.magmaguy.elitemobs.items.ItemTagger", true, cl);
-            for (String name : List.of("getCustomItemFilename", "getCustomFilename", "getEnchantmentFilename")) {
-                try {
-                    Method m = tagger.getMethod(name, ItemMeta.class);
-                    Object r = m.invoke(null, meta);
-                    if (r != null) return String.valueOf(r);
+                    if (r != null && !String.valueOf(r).isBlank()) return String.valueOf(r);
                 } catch (NoSuchMethodException ignored) {}
             }
         } catch (Throwable ignored) {}
