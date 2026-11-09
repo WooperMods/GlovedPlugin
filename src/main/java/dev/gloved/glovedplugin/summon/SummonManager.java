@@ -1,7 +1,5 @@
 package dev.gloved.glovedplugin.summon;
 
-import com.destroystokyo.paper.entity.ai.Goal;
-import com.destroystokyo.paper.entity.ai.GoalType;
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
@@ -68,51 +66,16 @@ public class SummonManager {
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
             LivingEntity mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
             if (mob == null) continue;
-            // Enable AI but strip vanilla behaviours
+            // Enable AI but strip vanilla behaviours and quirks (e.g. bee pollination); movement is
+            // driven by SummonMoveGoal using Paper's native pathfinder for obstacle-aware navigation.
             try {
                 mob.setAI(true);
                 mob.setCanPickupItems(false);
                 if (mob instanceof Mob m) {
                     MobGoals goals = plugin.getServer().getMobGoals();
-                    var before = goals.getAllGoals(m);
-                    plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals before: " + before.size() + " goals");
-                    for (var g : before) {
-                        try {
-                            plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
-                        } catch (Exception ignored) {}
-                    }
-                    if (PhasingMob.usesVanillaAI(m)) {
-                        // Vanilla-AI mobs (e.g. Vex, Phantom): keep vanilla goals so native AI/pathing can run.
-                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " (vanilla AI) keeping all vanilla goals");
-                    } else {
-                        // Remove all vanilla goals except jump-related ones; keep vanilla jumping/gravity
-                        var toRemove = new java.util.ArrayList<Goal>();
-                        for (var g : goals.getAllGoals(m)) {
-                            var types = g.getTypes();
-                            boolean keep = false;
-                            for (var t : types) {
-                                if (t == GoalType.JUMP) {
-                                    keep = true;
-                                    break;
-                                }
-                            }
-                            if (!keep) {
-                                toRemove.add(g);
-                            }
-                        }
-                        for (var g : toRemove) {
-                            try { goals.removeGoal(m, g); } catch (Exception ignored) {}
-                        }
-                        // Clear any existing target to avoid vanilla targeting
-                        m.setTarget(null);
-                        var after = goals.getAllGoals(m);
-                        plugin.getLogger().info("[Summon] Minion " + mob.getUniqueId() + " goals after removal: " + after.size() + " goals");
-                        for (var g : after) {
-                            try {
-                                plugin.getLogger().info("[Summon]   Goal key=" + g.getKey() + " types=" + g.getTypes());
-                            } catch (Exception ignored) {}
-                        }
-                    }
+                    goals.removeAllGoals(m);
+                    goals.addGoal(m, 0, new SummonMoveGoal(plugin, tracker, m));
+                    m.setTarget(null);
                 }
             } catch (Exception ignored) {}
             // Any tameable minion is always tamed and owned by the summoner

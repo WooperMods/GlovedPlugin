@@ -5,7 +5,7 @@ import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.CombatTargetRules;
 import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
 import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
-import dev.gloved.glovedplugin.summon.phasing.PhasingMinionVanillaAI;
+
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -213,16 +213,7 @@ public class MinionAI {
                     flying = false;
                 }
                 final boolean isFlyingMob = flying;
-                // Phasing/vex minions run in vanilla AI mode: keep their goals/targeting and let vanilla
-                // AI handle movement/attacks. DamageProxy converts their hits to owner-credited scaled damage.
-                if (PhasingMob.usesVanillaAI(mob)) {
-                    PhasingMinionVanillaAI.runTick(mob, owner, tracker, plugin, coordinator);
-                    return;
-                }
-                // Clear any vanilla target to avoid AI conflicts
-                try {
-                    mob.setTarget(null);
-                } catch (Exception ignored) {}
+                // Targeting is plugin-owned; SummonMoveGoal handles obstacle-aware pathfinding.
 
                 // Capacity-based stable targeting (no owner-look, no protection emergency, no "close enemy" priority).
                 // Scoring: last damaged/recent damagers highest, then distance-based.
@@ -319,6 +310,7 @@ public class MinionAI {
                                 lastTarget = null;
                                 lastTargetDist = Double.MAX_VALUE;
                                 stuckSince = 0L;
+                                try { mob.setTarget(null); } catch (Exception ignored) {}
                             }
                         }
                     } else {
@@ -333,19 +325,13 @@ public class MinionAI {
                     stuckSince = 0L;
                 }
 
+                try {
+                    mob.setTarget(target);
+                } catch (Exception ignored) {}
+
                 if (target != null) {
                     {
-                        double speed = getMobSpeed(mob);
-                        // Phasing mobs (can fly through solid blocks) keep block-collision reachability checks
-                        // disabled (see ReachabilityService) but still use the mob's navigator for movement so
-                        // their pathfinding/flight style remains natural. Manual velocity steering overrides
-                        // their AI movement, so avoid it unless navigation fails.
-                        boolean navigating = driveTowards(mob, target.getLocation(), speed, now);
-                        if (!navigating) {
-                            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " no path to target " + target.getName() + ", direct fallback");
-                            moveMobTowards(mob, target.getLocation(), speed * 0.8);
-                        }
-                        faceTowards(mob, target.getLocation());
+                        // Movement is handled by SummonMoveGoal using Paper's pathfinder.
                         double distSq = minion.getLocation().distanceSquared(target.getLocation());
                         double attackRangeSq = defaultAttackReachSq(minion, target);
                         GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " distSq=" + distSq + " attackRangeSq=" + attackRangeSq + " lastAttackTickDiff=" + (now - lastAttackTick) + " requiredArcTicks=" + requiredArcTicks(owner));
@@ -386,106 +372,27 @@ public class MinionAI {
                         }
                     }
                 } else {
-                    // No target -> follow owner with a stable anchor to avoid jitter
+                    // No target -> SummonMoveGoal pathfinds to owner; handle stuck recovery only.
                     double distSqToOwner = minion.getLocation().distanceSquared(owner.getLocation());
                     double idleRadius = 4.0;
                     double curFollowDist = Math.sqrt(distSqToOwner);
-                    // Stuck follow detection: only when outside idle radius
-                    if (curFollowDist > idleRadius) {
+                    if (curFollowDist <= idleRadius) {
+                        lastFollowDist = curFollowDist;
+                        followStuckSince = 0L;
+                        followUnreachableSince = 0L;
+                    } else {
                         if (curFollowDist < lastFollowDist - 0.1) {
                             lastFollowDist = curFollowDist;
                             followStuckSince = 0L;
                         } else {
                             if (followStuckSince == 0L) followStuckSince = now;
-                            boolean hasActivePath = false;
-                            try {
-                                hasActivePath = mob.getPathfinder().hasPath();
-                            } catch (Exception ignored) {}
-                            if (now - followStuckSince >= 100 && !hasActivePath) {
-                                // Stuck with no path at all, teleport near owner
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + " with no path, teleporting");
+                            if (now - followStuckSince >= 100) {
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck following " + owner.getName() + ", teleporting");
                                 teleportNearPlayer(owner, minion);
                                 lastFollowDist = Double.MAX_VALUE;
                                 followStuckSince = 0L;
-                            }
-                        }
-                    } else {
-                        // Within idle radius, reset stuck tracking
-                        lastFollowDist = curFollowDist;
-                        followStuckSince = 0L;
-                    }
-                    if (distSqToOwner <= idleRadius * idleRadius) {
-                        // Close enough, stop movement and stand still
-                        try {
-                            mob.getPathfinder().stopPathfinding();
-                        } catch (Exception ignored) {}
-                        navGoal = null;
-                        if (isFlyingMob) {
-                            mob.setVelocity(new Vector(0,0,0));
-                        } else {
-                            Vector v = mob.getVelocity();
-                            mob.setVelocity(new Vector(0, v.getY(), 0));
-                        }
-                        lastFollowDist = curFollowDist;
-                        followUnreachableSince = 0L;
-                        ownerReachCached = true;
-                        lastOwnerReachCheck = -1000L;
-                    } else {
-                        boolean ownerReachable = true;
-                        boolean shouldCheckReach = curFollowDist > idleRadius + 2.0;
-                        if (shouldCheckReach) {
-                            // Reachability checks are only run when the minion has actually stopped
-                            // making progress toward the owner. Normal following never touches it.
-                            boolean noProgress = followStuckSince != 0L && now - followStuckSince >= 10;
-                            if (noProgress && now - lastOwnerReachCheck >= 20) {
-                                Location mobLoc = minion.getLocation();
-                                Location ownerLoc = owner.getLocation();
-                                boolean sameSpot = lastReachMobLoc != null && lastReachOwnerLoc != null
-                                        && lastReachMobLoc.getWorld() == mobLoc.getWorld()
-                                        && lastReachMobLoc.distanceSquared(mobLoc) < 1.0
-                                        && lastReachOwnerLoc.distanceSquared(ownerLoc) < 1.0;
-                                if (!sameSpot) {
-                                    lastOwnerReachCheck = now;
-                                    lastReachMobLoc = mobLoc.clone();
-                                    lastReachOwnerLoc = ownerLoc.clone();
-                                    try {
-                                        ownerReachCached = reachabilityService.canReach(mob, ownerLoc);
-                                    } catch (Exception ignored) {
-                                        ownerReachCached = true;
-                                    }
-                                }
-                            }
-                            ownerReachable = ownerReachCached;
-                        } else {
-                            ownerReachCached = true;
-                        }
-                        if (!ownerReachable) {
-                            if (followUnreachableSince == 0L) {
-                                followUnreachableSince = now;
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " owner " + owner.getName() + " unreachable while following (dist=" + String.format("%.2f", curFollowDist) + "), waiting 1s");
-                            }
-                            if (now - followUnreachableSince >= 20 && curFollowDist >= 3.0) {
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " owner " + owner.getName() + " still unreachable after 1s, teleporting");
-                                minion.teleport(owner.getLocation().add((Math.random()-0.5)*2,0,(Math.random()-0.5)*2));
-                                lastFollowDist = Double.MAX_VALUE;
-                                followStuckSince = 0L;
                                 followUnreachableSince = 0L;
-                            } else {
-                                // Keep moving toward owner while waiting
-                                double speed = getMobSpeed(mob) * 0.85;
-                                moveMobTowards(mob, owner.getLocation(), speed);
-                                faceTowards(mob, owner.getLocation());
-                                lastFollowDist = curFollowDist;
                             }
-                        } else {
-                            followUnreachableSince = 0L;
-                            double speed = getMobSpeed(mob) * 0.9;
-                            // Same navigator for ground and flying mobs (phasing mobs keep lenient reachability).
-                            if (!driveTowards(mob, owner.getLocation(), speed, now)) {
-                                moveMobTowards(mob, owner.getLocation(), speed * 0.8);
-                            }
-                            faceTowards(mob, owner.getLocation());
-                            lastFollowDist = curFollowDist;
                         }
                     }
                 }
