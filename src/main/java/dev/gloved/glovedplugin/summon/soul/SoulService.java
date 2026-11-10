@@ -382,13 +382,13 @@ public class SoulService {
                         double lead = Math.min(1.0, progress * 1.15);
                         double trailLen = 0.35;
                         double tail = Math.max(0.0, lead - trailLen);
-                        int steps = 10;
+                        int steps = 20;
                         for (int i = 0; i <= steps; i++) {
                             double t = tail + (lead - tail) * (i / (double) steps);
                             Location p = trailStart.clone().add(target.clone().subtract(trailStart).multiply(t));
-                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.SOUL, p, 1, 0.02, 0.02, 0.02, 0.0);
+                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.SOUL, p, 2, 0.02, 0.02, 0.02, 0.0);
                             if (i % 2 == 0) {
-                                trailStart.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, p, 1, 0.01, 0.01, 0.01, 0.0);
+                                trailStart.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, p, 2, 0.01, 0.01, 0.01, 0.0);
                             }
                         }
                         if (progress >= 0.95) {
