@@ -4,6 +4,10 @@ import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.persistence.PersistentDataType;
@@ -15,10 +19,8 @@ import java.util.*;
  * Each trap item carries a PDC tag {@code gloved:summon_trap} with the tier ID
  * so listeners can identify which trap was used.
  */
-public class SoulTrapRecipeManager {
+public class SoulTrapRecipeManager implements Listener {
     private final GlovedPlugin plugin;
-    private final net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer serializer =
-            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand();
 
     public SoulTrapRecipeManager(GlovedPlugin plugin) {
         this.plugin = plugin;
@@ -26,8 +28,7 @@ public class SoulTrapRecipeManager {
 
     public void registerRecipes() {
         // Remove any existing trap recipes first (reload-safe)
-        for (SoulTrapTier tier : SoulTrapTier.all()) {
-            NamespacedKey key = new NamespacedKey(plugin, "soul_trap_" + tier.id);
+        for (NamespacedKey key : getRecipeKeys()) {
             Bukkit.removeRecipe(key);
         }
 
@@ -35,6 +36,31 @@ public class SoulTrapRecipeManager {
             registerTierRecipe(tier);
         }
         plugin.getLogger().info("[Summon] Registered " + SoulTrapTier.all().size() + " soul trap recipes");
+
+        // Make recipes visible in the recipe book for players already online.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            discoverAll(player);
+        }
+    }
+
+    /** Namespaced keys for all soul trap recipes. */
+    public List<NamespacedKey> getRecipeKeys() {
+        List<NamespacedKey> keys = new ArrayList<>();
+        for (SoulTrapTier tier : SoulTrapTier.all()) {
+            keys.add(new NamespacedKey(plugin, "soul_trap_" + tier.id));
+        }
+        return keys;
+    }
+
+    /** Unlock all soul trap recipes in the player's recipe book. */
+    public void discoverAll(Player player) {
+        if (player == null) return;
+        player.discoverRecipes(getRecipeKeys());
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        discoverAll(event.getPlayer());
     }
 
     private void registerTierRecipe(SoulTrapTier tier) {

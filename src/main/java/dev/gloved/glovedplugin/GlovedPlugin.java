@@ -193,6 +193,7 @@ public final class GlovedPlugin extends JavaPlugin {
         // Initialize soul trap system (recipes + listener)
         this.trapRecipeManager = new dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager(this);
         this.trapRecipeManager.registerRecipes();
+        getServer().getPluginManager().registerEvents(this.trapRecipeManager, this);
         this.trapListener = new dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener(this, this.summonConfig, this.soulService);
         getServer().getPluginManager().registerEvents(this.trapListener, this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulCaptureListener(this, this.soulService), this);
