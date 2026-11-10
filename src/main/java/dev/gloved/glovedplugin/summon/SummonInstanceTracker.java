@@ -3,6 +3,9 @@ package dev.gloved.glovedplugin.summon;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -50,8 +53,22 @@ public class SummonInstanceTracker {
             }
         }
         if (le != null && !le.isDead()) {
+            playDespawnVFX(le);
             le.remove();
         }
+    }
+
+    /** Cool soul-fire/portal despawn VFX + SFX when a minion fades out. */
+    private void playDespawnVFX(LivingEntity le) {
+        if (le == null || le.getWorld() == null) return;
+        World world = le.getWorld();
+        org.bukkit.Location at = le.getLocation().add(0, 0.6, 0);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 24, 0.5, 0.7, 0.5, 0.04);
+        world.spawnParticle(Particle.REVERSE_PORTAL, at, 20, 0.6, 0.6, 0.6, 0.06);
+        world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 14, 0.35, 0.5, 0.35, 0.03);
+        world.spawnParticle(Particle.SOUL, at, 30, 0.4, 0.5, 0.4, 0.02);
+        world.playSound(at, Sound.ENTITY_ENDERMAN_TELEPORT, 0.7f, 1.3f);
+        world.playSound(at, Sound.BLOCK_BEACON_DEACTIVATE, 0.6f, 1.6f);
     }
 
     public void resetTimer(UUID entityId, int lifetimeTicks) {
@@ -162,17 +179,7 @@ public class SummonInstanceTracker {
         Set<UUID> set = activeByPlayer.remove(playerId);
         if (set != null) {
             for (UUID eid : set) {
-                entityToPlayer.remove(eid);
-                LivingEntity le = activeEntities.remove(eid);
-                if (le == null) {
-                    var e = Bukkit.getEntity(eid);
-                    if (e instanceof LivingEntity living) {
-                        le = living;
-                    }
-                }
-                if (le != null && !le.isDead()) {
-                    le.remove();
-                }
+                despawn(eid);
             }
         }
     }
