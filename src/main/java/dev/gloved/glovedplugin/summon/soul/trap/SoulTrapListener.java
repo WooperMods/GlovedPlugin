@@ -19,6 +19,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.NamespacedKey;
@@ -131,6 +132,14 @@ public class SoulTrapListener implements Listener {
 
         var pdc = entity.getPersistentDataContainer();
         if (pdc.has(SOULLESS_KEY, PersistentDataType.BOOLEAN)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onConsumeTrap(PlayerItemConsumeEvent event) {
+        ItemStack item = event.getItem();
+        if (SoulTrapTier.fromItem(item) != null) {
             event.setCancelled(true);
         }
     }
