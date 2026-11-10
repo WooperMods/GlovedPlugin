@@ -60,15 +60,7 @@ public final class SoulItem {
             SoulInstance soul = gp.getSoulService().getSelectedSoul(player.getUniqueId());
             if (soul == null) return "§7None";
             String q = SoulQuality.format(soul);
-            String rarityColor = switch (soul.getRarity()) {
-                case COMMON -> "§f";
-                case UNCOMMON -> "§a";
-                case RARE -> "§9";
-                case EPIC -> "§5";
-                case LEGENDARY -> "§6";
-                case MYTHIC -> "§x§F§F§6§9§B§4";
-            };
-            return rarityColor + soul.getRarity().name() + " " + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
+            return soul.getRarity().coloredNameLegacy() + " " + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
         } catch (Throwable ignored) {
             return "§7None";
         }

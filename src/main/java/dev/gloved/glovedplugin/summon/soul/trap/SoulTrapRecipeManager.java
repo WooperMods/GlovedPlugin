@@ -163,8 +163,14 @@ public class SoulTrapRecipeManager implements Listener {
                         .build();
 
         // Custom display name with color codes, no italics
-        net.kyori.adventure.text.Component displayName = serializer.deserialize(tier.displayName)
-                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+        net.kyori.adventure.text.Component displayName;
+        if ("prism".equals(tier.id)) {
+            displayName = gradientText("Soul Prism", 0xAA00AA, 0xFF69B4)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+        } else {
+            displayName = serializer.deserialize(tier.displayName)
+                    .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
+        }
         meta.displayName(displayName);
 
         // Lore describing the trap
@@ -214,6 +220,23 @@ public class SoulTrapRecipeManager implements Listener {
             case "prism" -> Color.fromRGB(255, 105, 180);   // Mythic (hot pink)
             default -> Color.WHITE;
         };
+    }
+
+    private static net.kyori.adventure.text.Component gradientText(String text, int fromRgb, int toRgb) {
+        if (text == null || text.isEmpty()) return net.kyori.adventure.text.Component.empty();
+        int len = text.length();
+        int fr = (fromRgb >> 16) & 0xFF, fg = (fromRgb >> 8) & 0xFF, fb = fromRgb & 0xFF;
+        int tr = (toRgb >> 16) & 0xFF, tg = (toRgb >> 8) & 0xFF, tb = toRgb & 0xFF;
+        net.kyori.adventure.text.Component out = net.kyori.adventure.text.Component.empty();
+        for (int i = 0; i < len; i++) {
+            float t = len == 1 ? 0f : (float) i / (float) (len - 1);
+            int r = Math.round(fr + (tr - fr) * t);
+            int g = Math.round(fg + (tg - fg) * t);
+            int b = Math.round(fb + (tb - fb) * t);
+            out = out.append(net.kyori.adventure.text.Component.text(String.valueOf(text.charAt(i)),
+                    net.kyori.adventure.text.format.TextColor.color(r, g, b)));
+        }
+        return out;
     }
 
     private static String soulQualityLine(SoulTrapTier tier) {

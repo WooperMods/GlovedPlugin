@@ -176,8 +176,14 @@ public class SoulVaultInv implements InventoryHolder {
         if (meta != null) {
             String q = SoulQuality.format(soul);
             String mobName = prettyMobName(soul.getFamilyKey());
-            String name = rarityColor(soul.getRarity()) + soul.getRarity().name() + " " + mobName + " Soul §7(" + q + ")";
-            meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name).decoration(TextDecoration.ITALIC, false));
+            net.kyori.adventure.text.format.TextColor baseColor = soul.getRarity() == SoulRarity.MYTHIC
+                    ? net.kyori.adventure.text.format.TextColor.color(0xFF69B4)
+                    : soul.getRarity().getColor();
+            Component name = soul.getRarity().coloredNameComponent()
+                    .append(Component.text(" " + mobName + " Soul ", baseColor))
+                    .append(Component.text("(" + q + ")", net.kyori.adventure.text.format.NamedTextColor.GRAY))
+                    .decoration(TextDecoration.ITALIC, false);
+            meta.displayName(name);
             List<Component> lore = new ArrayList<>();
             if (soul.getTrait() != null || !soul.getTraits().isEmpty()) {
                 lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----§r§7<§5§lTraits§r§7>§7§l§m-----").decoration(TextDecoration.ITALIC, false));
@@ -241,7 +247,7 @@ public class SoulVaultInv implements InventoryHolder {
             case RARE -> "§9";
             case EPIC -> "§5";
             case LEGENDARY -> "§6";
-            case MYTHIC -> "§x§F§F§6§9§B§4";
+            case MYTHIC -> "§x§F§F§6§9§B§4"; // kept for compatibility; prefer coloredNameComponent()
         };
     }
 
