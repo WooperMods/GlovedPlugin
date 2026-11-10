@@ -5,11 +5,12 @@ import dev.gloved.glovedplugin.summon.MinionAI;
 import dev.gloved.glovedplugin.summon.SummonConfig;
 import dev.gloved.glovedplugin.summon.soul.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.SoulConfig;
-import dev.gloved.glovedplugin.summon.soul.SoulService;
 import dev.gloved.glovedplugin.summon.soul.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.SoulService;
 import dev.gloved.glovedplugin.summon.soul.SoulGenerator;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -17,23 +18,21 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.NamespacedKey;
 
 import java.util.*;
+import java.util.UUID;
 
-/**
- * Listens for right-clicking a living mob with a soul trap item.
- * On success: extracts the mob's soul into a SoulInstance (vault or dropped item),
- * applies the tier's debuff, sets mob HP to 1, and marks the mob as exhausted.
- * On failure: consumes the trap and applies Resistance to the mob.
- */
 public class SoulTrapListener implements Listener {
     private final GlovedPlugin plugin;
     private final SummonConfig config;
     private final SoulService soulService;
-    private final Map<UUID, Long> exhaustedMobs = new HashMap<>(); // mob UUID -> exhaustion expiry tick
+    private static final NamespacedKey SOULLESS_KEY = new NamespacedKey("gloved", "summon_soulless");
+    private final Map<UUID, Long> exhaustedMobs = new HashMap<>(); // mob UUID -> exhaustion expiry (ms)
 
     public SoulTrapListener(GlovedPlugin plugin, SummonConfig config, SoulService soulService) {
         this.plugin = plugin;
@@ -52,7 +51,6 @@ public class SoulTrapListener implements Listener {
         SoulTrapTier tier = SoulTrapTier.fromItem(item);
         if (tier == null) return;
 
-        // Only right-click on a living entity
         if (!(event.getRightClicked() instanceof LivingEntity target)) return;
 
         event.setCancelled(true);
@@ -62,7 +60,6 @@ public class SoulTrapListener implements Listener {
             return;
         }
 
-        // Check mob exhaustion (recently trapped)
         UUID mobId = target.getUniqueId();
         long now = System.currentTimeMillis();
         Long exhaustUntil = exhaustedMobs.get(mobId);
@@ -71,7 +68,6 @@ public class SoulTrapListener implements Listener {
             return;
         }
 
-        // Check min HP
         double hp = target.getHealth();
         double maxHp = target.getAttribute(Attribute.MAX_HEALTH) != null
                 ? target.getAttribute(Attribute.MAX_HEALTH).getValue()
@@ -81,13 +77,11 @@ public class SoulTrapListener implements Listener {
             return;
         }
 
-        // Check elite/boss resistance
         boolean isElite = MinionAI.isEliteMob(target);
         double effectiveChance = tier.successChance;
         if (isElite) {
             effectiveChance *= (1.0 - config.getSoulTrapsEliteResistance());
         }
-        // Boss detection: check if it's a boss-type entity
         boolean isBoss = target instanceof org.bukkit.entity.Boss
                 || target.getType() == EntityType.WITHER
                 || target.getType() == EntityType.ENDER_DRAGON;
@@ -95,17 +89,13 @@ public class SoulTrapListener implements Listener {
             effectiveChance *= (1.0 - config.getSoulTrapsBossResistance());
         }
 
-        // Roll success
         boolean success = java.util.concurrent.ThreadLocalRandom.current().nextDouble() < effectiveChance;
 
-        // Consume the trap
         item.setAmount(item.getAmount() - 1);
 
         if (success) {
-            // Extract the soul
             extractSoul(player, target, tier);
         } else {
-            // Failure: mob gets Resistance and targets player
             target.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.RESISTANCE, 200, 0, false, false));
             if (target instanceof Mob mob) {
                 mob.setTarget(player);
@@ -115,23 +105,18 @@ public class SoulTrapListener implements Listener {
     }
 
     private void extractSoul(Player player, LivingEntity target, SoulTrapTier tier) {
-        // Apply debuff to mob
         target.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 tier.mobEffectType, tier.mobEffectDurationTicks, tier.mobEffectAmplifier, false, false));
 
-        // Set mob HP to 1 (survive but wounded)
         target.setHealth(1.0);
 
-        // Mark mob as exhausted
         long exhaustionEnd = System.currentTimeMillis() + config.getSoulTrapsTrapExhaustionTicks();
         exhaustedMobs.put(target.getUniqueId(), exhaustionEnd);
 
-        // Generate the soul
         UUID ownerId = player.getUniqueId();
         SoulConfig cfg = config.getSoulConfig();
         int level = soulService.getSummoningLevel(ownerId);
 
-        // Determine rarity based on tier bias
         SoulRarity rolled = SoulGenerator.rollRarity(cfg);
         int rolledIdx = rolled.ordinal();
         int floorIdx = tier.rarityFloor.ordinal();
@@ -141,7 +126,6 @@ public class SoulTrapListener implements Listener {
 
         SoulInstance soul = SoulGenerator.generate(ownerId, target.getType(), cfg, finalRarity, level, 0, 0);
 
-        // Persist to vault or drop as item
         SoulService.CollectResult res = soulService.persistSoulToVaultPublic(player, soul, cfg, false, true);
         if (res.stored()) {
             player.sendMessage(net.kyori.adventure.text.Component.text(
@@ -151,8 +135,20 @@ public class SoulTrapListener implements Listener {
                     "§aCaptured §f" + SoulService.describe(soul) + " §7(vault full → §b+" + res.essence() + " Essence§7)"));
         } else {
             player.sendMessage(net.kyori.adventure.text.Component.text("§cFailed to store soul: " + res.reason()));
-            // Drop the physical item anyway
             soulService.dropSoulItemPublic(target.getLocation(), soul);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityTargetLivingEntity(EntityTargetLivingEntityEvent event) {
+        if (!config.isSoulTrapsEnabled()) return;
+
+        Entity entity = event.getEntity();
+        if (entity == null) return;
+
+        var pdc = entity.getPersistentDataContainer();
+        if (pdc.has(SOULLESS_KEY, PersistentDataType.BOOLEAN)) {
+            event.setCancelled(true);
         }
     }
 }
