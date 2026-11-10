@@ -23,11 +23,14 @@ import java.util.UUID;
 public class SummonMoveGoal implements Goal<Mob> {
     private static final double IDLE_RADIUS = 4.0;
     private static final double IDLE_RADIUS_SQ = IDLE_RADIUS * IDLE_RADIUS;
+    private static final double MIN_CHASE_DIST_SQ = 2.25; // 1.5 blocks; stop pathfinding once in melee
 
     private final GlovedPlugin plugin;
     private final SummonInstanceTracker tracker;
     private final Mob mob;
     private final GoalKey<Mob> key;
+    private Location lastPathGoal = null;
+    private long lastPathTick = -1L;
 
     public SummonMoveGoal(GlovedPlugin plugin, SummonInstanceTracker tracker, Mob mob) {
         this.plugin = plugin;
@@ -40,7 +43,15 @@ public class SummonMoveGoal implements Goal<Mob> {
     public boolean shouldActivate() {
         if (mob == null || mob.isDead() || !tracker.isSummoned(mob.getUniqueId())) return false;
         LivingEntity target = mob.getTarget();
-        return target == null || target.isDead() || !target.getWorld().equals(mob.getWorld());
+        if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())) {
+            // Chase our attack target so minions can close distance and hit back.
+            return true;
+        }
+        // No valid target: follow the owner.
+        UUID ownerId = tracker.getOwner(mob.getUniqueId());
+        if (ownerId == null) return false;
+        Player owner = Bukkit.getPlayer(ownerId);
+        return owner != null && owner.isOnline() && owner.getWorld().equals(mob.getWorld());
     }
 
     @Override
@@ -66,20 +77,45 @@ public class SummonMoveGoal implements Goal<Mob> {
         UUID ownerId = tracker.getOwner(mob.getUniqueId());
         if (ownerId == null) return;
         Player owner = Bukkit.getPlayer(ownerId);
-        if (owner == null || !owner.isOnline() || !owner.getWorld().equals(mob.getWorld())) return;
+        if (owner == null || !owner.isOnline()) return;
 
         try {
             var pf = mob.getPathfinder();
             if (pf == null) return;
+            LivingEntity target = mob.getTarget();
+            if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())
+                    && owner.getWorld().equals(mob.getWorld())) {
+                // Move toward our attack target. Throttle path rebuilds so mobs don't cut corners.
+                Location targetLoc = target.getLocation();
+                long now = Bukkit.getCurrentTick();
+                boolean needPath = true;
+                if (lastPathGoal != null && now - lastPathTick < 20
+                        && lastPathGoal.distanceSquared(targetLoc) <= 4.0) {
+                    needPath = false;
+                }
+                double distSq = mob.getLocation().distanceSquared(targetLoc);
+                if (distSq <= MIN_CHASE_DIST_SQ) {
+                    // In melee range: stop pathfinding, let MinionAI handle the attack.
+                    pf.stopPathfinding();
+                } else if (needPath) {
+                    // Target moved enough to warrant a new path; rebuild it.
+                    pf.moveTo(targetLoc, mobSpeed(mob) * 0.9);
+                    lastPathGoal = targetLoc.clone();
+                    lastPathTick = now;
+                    try { mob.lookAt(target); } catch (Throwable ignored) {}
+                }
+                // !needPath && far: keep the existing path running; do not stop it.
+                return;
+            }
+            // No target: follow owner
+            if (!owner.getWorld().equals(mob.getWorld())) return;
             double distSqToOwner = mob.getLocation().distanceSquared(owner.getLocation());
             if (distSqToOwner <= IDLE_RADIUS_SQ) {
                 pf.stopPathfinding();
                 return;
             }
             pf.moveTo(owner.getLocation(), mobSpeed(mob) * 0.9);
-            try {
-                mob.lookAt(owner);
-            } catch (Throwable ignored) {}
+            try { mob.lookAt(owner); } catch (Throwable ignored) {}
         } catch (Exception ignored) {}
     }
 

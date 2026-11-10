@@ -88,6 +88,33 @@ public class MinionAI {
         return result;
     }
 
+    /** Tracks who last damaged a given minion so its squad can prioritize hitting back. */
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> minionRecentDamagers = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long MINION_DAMAGER_TTL_MS = 10_000L;
+
+    public static void recordRecentDamager(LivingEntity minion, LivingEntity damager) {
+        if (minion == null || damager == null) return;
+        minionRecentDamagers.computeIfAbsent(minion.getUniqueId(), k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(damager.getUniqueId(), System.currentTimeMillis());
+    }
+
+    public static java.util.List<UUID> getRecentDamagers(LivingEntity minion) {
+        if (minion == null) return java.util.Collections.emptyList();
+        var map = minionRecentDamagers.get(minion.getUniqueId());
+        if (map == null) return java.util.Collections.emptyList();
+        long now = System.currentTimeMillis();
+        java.util.List<UUID> result = new java.util.ArrayList<>();
+        for (var e : map.entrySet()) {
+            if (now - e.getValue() <= MINION_DAMAGER_TTL_MS) {
+                result.add(e.getKey());
+            } else {
+                map.remove(e.getKey());
+            }
+        }
+        if (map.isEmpty()) minionRecentDamagers.remove(minion.getUniqueId());
+        return result;
+    }
+
     public static boolean isCachedUnreachable(UUID minionId, UUID targetId, org.bukkit.Location currentLoc) {
         var map = unreachableCache.get(minionId);
         if (map == null) return false;
@@ -238,18 +265,45 @@ public class MinionAI {
                 List<LivingEntity> candidates = new ArrayList<>();
                 Set<UUID> recentDamagerIds = new HashSet<>();
                 double scanDist = SummonProfile.FOLLOW_RANGE;
+                // Scan around the owner (defend owner) and around the minion (defend self),
+                // so minions engage threats near themselves even when away from the owner.
+                List<LivingEntity> scannedNearOwner = new ArrayList<>();
                 for (Entity e : owner.getNearbyEntities(scanDist, scanDist, scanDist)) {
                     if (!(e instanceof LivingEntity le)) continue;
                     if (le == owner || le.isDead() || tracker.isSummoned(le.getUniqueId())) continue;
                     if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
+                    scannedNearOwner.add(le);
+                }
+                List<LivingEntity> scannedNearMinion = new ArrayList<>();
+                for (Entity e : minion.getNearbyEntities(scanDist, scanDist, scanDist)) {
+                    if (!(e instanceof LivingEntity le)) continue;
+                    if (le == owner || le.isDead() || tracker.isSummoned(le.getUniqueId())) continue;
+                    if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
+                    if (!scannedNearOwner.contains(le)) scannedNearMinion.add(le);
+                }
+                for (LivingEntity le : scannedNearOwner) {
                     boolean isHostile = le instanceof org.bukkit.entity.Monster
                             || le instanceof org.bukkit.entity.Slime
                             || le instanceof org.bukkit.entity.Ghast;
                     boolean targetsOwner = false;
-                    if (e instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+                    boolean targetsMinion = false;
+                    if (le instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
                         targetsOwner = mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId());
+                        targetsMinion = mobEnt.getTarget().getUniqueId().equals(minion.getUniqueId());
                     }
-                    if (isHostile || targetsOwner) {
+                    if (isHostile || targetsOwner || targetsMinion) {
+                        if (!candidates.contains(le)) candidates.add(le);
+                    }
+                }
+                for (LivingEntity le : scannedNearMinion) {
+                    boolean isHostile = le instanceof org.bukkit.entity.Monster
+                            || le instanceof org.bukkit.entity.Slime
+                            || le instanceof org.bukkit.entity.Ghast;
+                    boolean targetsMinion = false;
+                    if (le instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+                        targetsMinion = mobEnt.getTarget().getUniqueId().equals(minion.getUniqueId());
+                    }
+                    if (isHostile || targetsMinion) {
                         if (!candidates.contains(le)) candidates.add(le);
                     }
                 }
@@ -261,8 +315,24 @@ public class MinionAI {
                         if (!candidates.contains(le)) candidates.add(le);
                     }
                 }
+                // Entities that recently damaged this minion get priority targeting so minions hit back.
+                for (UUID damagerId : MinionAI.getRecentDamagers(minion)) {
+                    recentDamagerIds.add(damagerId);
+                    Entity e = minion.getWorld().getEntity(damagerId);
+                    if (e instanceof LivingEntity le && le != owner && !le.isDead() && !tracker.isSummoned(le.getUniqueId())
+                            && !CombatTargetRules.isProtected(plugin, owner, le)) {
+                        if (!candidates.contains(le)) candidates.add(le);
+                    }
+                }
+                // Keep threats near either the owner or the minion; do not drop
+                // minion-centered targets just because they are far from the owner.
                 double maxTargetSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
-                candidates.removeIf(le -> le.getWorld() != owner.getWorld() || le.getLocation().distanceSquared(owner.getLocation()) > maxTargetSq);
+                candidates.removeIf(le -> {
+                    if (le.getWorld() != owner.getWorld()) return true;
+                    double d2Owner = le.getLocation().distanceSquared(owner.getLocation());
+                    double d2Minion = le.getLocation().distanceSquared(minion.getLocation());
+                    return d2Owner > maxTargetSq && d2Minion > maxTargetSq;
+                });
 
                 // Global candidates: owner-valid threats for shared coordinator state (prune/rebalance/coverage).
                 // Per-minion constraints are passed as a predicate so one minion's pathing limits don't
