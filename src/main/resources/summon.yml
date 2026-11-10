@@ -150,23 +150,23 @@ progression:
   xp:
     minion-hit:
       enabled: true
-      amount: 0.5
+      amount: 2.0
       owner-cooldown-ticks: 10
       per-target-cooldown-ticks: 40
-      max-per-minute: 120.0
+      max-per-minute: 300.0
     minion-kill:
       enabled: true
-      amount: 8.0
+      amount: 20.0
       attribution-window-ticks: 200
-      max-per-minute: 80.0
+      max-per-minute: 200.0
     soul-capture:
       enabled: true
-      amount: 2.0
-      max-per-minute: 60.0
+      amount: 5.0
+      max-per-minute: 150.0
     soul-cast:
       enabled: true
-      amount: 1.0
-      max-per-minute: 40.0
+      amount: 3.0
+      max-per-minute: 100.0
   scaling:
     enabled: true
     chance:
@@ -189,6 +189,10 @@ progression:
       enabled: true
       per-attack-damage-trait: 0.20
       max-bonus: 12.0
+    owner-toughness:
+      enabled: true
+      per-point: 0.02
+      max-bonus: 0.50
   abilities:
     enabled: true
     use-auraskills-ability-levels: true

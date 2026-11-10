@@ -69,6 +69,26 @@ public class SummonListener implements Listener {
                 }
             }
 
+            // Toughness-based damage reduction for summoned minions (owner's AuraSkills Toughness stat)
+            if (tracker != null && event.getEntity() instanceof LivingEntity victim
+                    && tracker.isSummoned(victim.getUniqueId())
+                    && config.isToughnessDamageReductionEnabled()) {
+                UUID ownerId = tracker.getOwner(victim.getUniqueId());
+                if (ownerId != null) {
+                    var stats = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
+                    if (stats.available() && stats.toughnessStatLevel() > 0.0) {
+                        double reduction = Math.min(
+                                stats.toughnessStatLevel() * config.getToughnessDamageReductionPerPoint(),
+                                config.getToughnessDamageReductionMaxBonus()
+                        );
+                        if (reduction > 0.0) {
+                            double newDamage = event.getDamage() * (1.0 - reduction);
+                            event.setDamage(newDamage);
+                        }
+                    }
+                }
+            }
+
             // Track who damages minions so they can prioritize hitting back
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
                     && tracker.isSummoned(victim.getUniqueId()) && damager != null) {

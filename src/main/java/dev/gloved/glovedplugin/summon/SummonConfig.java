@@ -76,6 +76,11 @@ public class SummonConfig {
     private double strengthDamagePerAttackDamageTrait = 0.20;
     private double strengthDamageMaxBonus = 12.0;
 
+    // Minion damage reduction from owner toughness
+    private boolean toughnessDamageReductionEnabled = true;
+    private double toughnessDamageReductionPerPoint = 0.02;
+    private double toughnessDamageReductionMaxBonus = 0.50;
+
     // Abilities
     private boolean abilitiesEnabled = true;
     private boolean abilitiesUseAuraAbilityLevels = true;
@@ -168,20 +173,20 @@ public class SummonConfig {
         manaCostPerTrigger = safeNonNegative(yaml.getDouble("progression.mana.cost-per-trigger", 3.0));
         manaAllowWhenAuraSkillsMissing = yaml.getBoolean("progression.mana.allow-when-auraskills-missing", true);
         progressionHitXpEnabled = yaml.getBoolean("progression.xp.minion-hit.enabled", true);
-        progressionHitXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.amount", 0.5));
+        progressionHitXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.amount", 2.0));
         progressionHitOwnerCooldownTicks = Math.max(0, yaml.getInt("progression.xp.minion-hit.owner-cooldown-ticks", 10));
         progressionHitTargetCooldownTicks = Math.max(0, yaml.getInt("progression.xp.minion-hit.per-target-cooldown-ticks", 40));
-        progressionHitMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.max-per-minute", 120.0));
+        progressionHitMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.max-per-minute", 300.0));
         progressionKillXpEnabled = yaml.getBoolean("progression.xp.minion-kill.enabled", true);
-        progressionKillXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.amount", 8.0));
+        progressionKillXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.amount", 20.0));
         progressionKillAttributionWindowTicks = Math.max(1, yaml.getInt("progression.xp.minion-kill.attribution-window-ticks", 200));
-        progressionKillMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.max-per-minute", 80.0));
+        progressionKillMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.max-per-minute", 200.0));
         progressionCaptureXpEnabled = yaml.getBoolean("progression.xp.soul-capture.enabled", true);
-        progressionCaptureXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.amount", 2.0));
-        progressionCaptureXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.max-per-minute", 60.0));
+        progressionCaptureXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.amount", 5.0));
+        progressionCaptureXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.max-per-minute", 150.0));
         progressionCastXpEnabled = yaml.getBoolean("progression.xp.soul-cast.enabled", true);
-        progressionCastXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.amount", 1.0));
-        progressionCastXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.max-per-minute", 40.0));
+        progressionCastXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.amount", 3.0));
+        progressionCastXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.max-per-minute", 100.0));
 
         scalingEnabled = yaml.getBoolean("progression.scaling.enabled", true);
         scalingChancePerLevel = safeNonNegative(yaml.getDouble("progression.scaling.chance.per-level", 0.005));
@@ -212,6 +217,9 @@ public class SummonConfig {
         strengthDamageEnabled = yaml.getBoolean("progression.minion-damage.owner-strength.enabled", true);
         strengthDamagePerAttackDamageTrait = clamp(yaml.getDouble("progression.minion-damage.owner-strength.per-attack-damage-trait", 0.20), 0.0, 10.0);
         strengthDamageMaxBonus = clamp(yaml.getDouble("progression.minion-damage.owner-strength.max-bonus", 12.0), 0.0, 1000.0);
+        toughnessDamageReductionEnabled = yaml.getBoolean("progression.minion-damage.owner-toughness.enabled", true);
+        toughnessDamageReductionPerPoint = clamp(yaml.getDouble("progression.minion-damage.owner-toughness.per-point", 0.02), 0.0, 1.0);
+        toughnessDamageReductionMaxBonus = clamp(yaml.getDouble("progression.minion-damage.owner-toughness.max-bonus", 0.50), 0.0, 1.0);
 
         abilitiesEnabled = yaml.getBoolean("progression.abilities.enabled", true);
         abilitiesUseAuraAbilityLevels = yaml.getBoolean("progression.abilities.use-auraskills-ability-levels", true);
@@ -318,6 +326,9 @@ public class SummonConfig {
         setIfMissing(cfg, "progression.minion-damage.owner-strength.enabled", true);
         setIfMissing(cfg, "progression.minion-damage.owner-strength.per-attack-damage-trait", 0.20);
         setIfMissing(cfg, "progression.minion-damage.owner-strength.max-bonus", 12.0);
+        setIfMissing(cfg, "progression.minion-damage.owner-toughness.enabled", true);
+        setIfMissing(cfg, "progression.minion-damage.owner-toughness.per-point", 0.02);
+        setIfMissing(cfg, "progression.minion-damage.owner-toughness.max-bonus", 0.50);
         // Abilities
         setIfMissing(cfg, "progression.abilities.enabled", true);
         setIfMissing(cfg, "progression.abilities.use-auraskills-ability-levels", true);
@@ -475,6 +486,10 @@ public class SummonConfig {
     public boolean isStrengthDamageEnabled() { return strengthDamageEnabled; }
     public double getStrengthDamagePerAttackDamageTrait() { return strengthDamagePerAttackDamageTrait; }
     public double getStrengthDamageMaxBonus() { return strengthDamageMaxBonus; }
+
+    public boolean isToughnessDamageReductionEnabled() { return toughnessDamageReductionEnabled; }
+    public double getToughnessDamageReductionPerPoint() { return toughnessDamageReductionPerPoint; }
+    public double getToughnessDamageReductionMaxBonus() { return toughnessDamageReductionMaxBonus; }
 
     public boolean isAbilitiesEnabled() { return abilitiesEnabled; }
     public boolean isAbilitiesUseAuraAbilityLevels() { return abilitiesUseAuraAbilityLevels; }
