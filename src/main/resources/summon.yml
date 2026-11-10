@@ -121,8 +121,8 @@ souls:
 
   vault:
     base-capacity: 30
-    max-capacity: 80
-    capacity-per-level: 0.5
+    max-capacity: 0 # <= 0 means unlimited
+    capacity-per-level: 2.0
     overflow: CONVERT_TO_ESSENCE
     loadout:
       base-slots: 1

@@ -44,8 +44,8 @@ public final class SoulConfig {
 
     // vault
     private int vaultBaseCapacity = 30;
-    private int vaultMaxCapacity = 80;
-    private double vaultCapacityPerLevel = 0.5;
+    private int vaultMaxCapacity = 0; // <= 0 means unlimited
+    private double vaultCapacityPerLevel = 2.0;
 
     // loadout/selection
     private int loadoutBaseSlots = 1;
@@ -177,8 +177,9 @@ public final class SoulConfig {
         ConfigurationSection vault = s.getConfigurationSection("vault");
         if (vault != null) {
             cfg.vaultBaseCapacity = Math.max(1, vault.getInt("base-capacity", 30));
-            cfg.vaultMaxCapacity = Math.max(cfg.vaultBaseCapacity, vault.getInt("max-capacity", 80));
-            cfg.vaultCapacityPerLevel = clamp(vault.getDouble("capacity-per-level", 0.5), 0.0, 50.0);
+            cfg.vaultMaxCapacity = vault.getInt("max-capacity", 0); // <= 0 means unlimited
+            if (cfg.vaultMaxCapacity > 0) cfg.vaultMaxCapacity = Math.max(cfg.vaultBaseCapacity, cfg.vaultMaxCapacity);
+            cfg.vaultCapacityPerLevel = clamp(vault.getDouble("capacity-per-level", 2.0), 0.0, 50.0);
             cfg.loadoutBaseSlots = Math.max(1, vault.getInt("loadout.base-slots", vault.getInt("loadout-base-slots", 1)));
             cfg.loadoutLevelsPerSlot = Math.max(1, vault.getInt("loadout.levels-per-slot", vault.getInt("loadout-levels-per-slot", 10)));
             cfg.loadoutMaxSlots = Math.max(cfg.loadoutBaseSlots, vault.getInt("loadout.max-slots", vault.getInt("loadout-max-slots", 5)));
@@ -236,8 +237,8 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.capture.by-category-mult.BOSS", 0.5);
         setIfMissing(cfg, "souls.capture.by-category-mult.SPECIAL", 1.0);
         setIfMissing(cfg, "souls.vault.base-capacity", 30);
-        setIfMissing(cfg, "souls.vault.max-capacity", 80);
-        setIfMissing(cfg, "souls.vault.capacity-per-level", 0.5);
+        setIfMissing(cfg, "souls.vault.max-capacity", 0); // <= 0 means unlimited
+        setIfMissing(cfg, "souls.vault.capacity-per-level", 2.0);
         setIfMissing(cfg, "souls.vault.overflow", "CONVERT_TO_ESSENCE");
         setIfMissing(cfg, "souls.vault.loadout.base-slots", 1);
         setIfMissing(cfg, "souls.vault.loadout.levels-per-slot", 10);
@@ -340,7 +341,9 @@ public final class SoulConfig {
     public double getVaultCapacityPerLevel() { return vaultCapacityPerLevel; }
     public int computeVaultCapacity(int summoningLevel) {
         int v = (int) Math.floor(vaultBaseCapacity + vaultCapacityPerLevel * Math.max(0, summoningLevel));
-        return Math.max(1, Math.min(vaultMaxCapacity, Math.max(vaultBaseCapacity, v)));
+        v = Math.max(vaultBaseCapacity, v);
+        if (vaultMaxCapacity <= 0) return Math.max(1, v); // unlimited
+        return Math.max(1, Math.min(vaultMaxCapacity, v));
     }
     public int getLoadoutBaseSlots() { return loadoutBaseSlots; }
     public int getLoadoutLevelsPerSlot() { return loadoutLevelsPerSlot; }
