@@ -28,4 +28,16 @@ public enum SoulRarity {
             return fallback;
         }
     }
+
+    /** XP multiplier for soul capture progression (Common = 1x base). */
+    public double getCaptureXpMultiplier() {
+        return switch (this) {
+            case COMMON -> 1.0;
+            case UNCOMMON -> 2.0;
+            case RARE -> 3.0;
+            case EPIC -> 5.0;
+            case LEGENDARY -> 8.0;
+            case MYTHIC -> 13.0;
+        };
+    }
 }

@@ -169,7 +169,7 @@ public class SoulService {
         markCaptureDr(killer.getUniqueId(), soul.getFamilyKey());
         try {
             var prog = plugin.getSummonProgression();
-            if (prog != null) prog.onSoulCaptured(killer, victim, soul.getFamilyKey());
+            if (prog != null) prog.onSoulCaptured(killer, victim, soul.getFamilyKey(), soul.getRarity());
         } catch (Throwable ignored) {}
 
         Location from = victim.getLocation().add(0, victim.getHeight() * 0.5, 0);

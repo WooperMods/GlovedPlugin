@@ -2,6 +2,7 @@ package dev.gloved.glovedplugin.summon.progression;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.SummonConfig;
+import dev.gloved.glovedplugin.summon.soul.SoulRarity;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -121,14 +122,22 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
 
     @Override
     public void onSoulCaptured(Player owner, LivingEntity victim, String familyKey) {
+        onSoulCaptured(owner, victim, familyKey, SoulRarity.COMMON);
+    }
+
+    @Override
+    public void onSoulCaptured(Player owner, LivingEntity victim, String familyKey, SoulRarity rarity) {
         try {
             SummonConfig cfg = config;
             if (owner == null || cfg == null || !cfg.isProgressionEnabled() || !cfg.isProgressionCaptureXpEnabled() || !active()) return;
             if (cfg.getProgressionCaptureXpAmount() <= 0) return;
+            SoulRarity r = rarity == null ? SoulRarity.COMMON : rarity;
+            double amount = cfg.getProgressionCaptureXpAmount() * r.getCaptureXpMultiplier();
+            if (amount <= 0) return;
             long nowTick = currentTick();
-            if (!state.tryConsumeCaptureXp(owner.getUniqueId(), cfg, nowTick)) return;
-            GlovedPlugin.logDebug("[SummonXP] Capture XP " + cfg.getProgressionCaptureXpAmount() + " -> " + owner.getName() + " family=" + familyKey);
-            grantXp(owner.getUniqueId(), cfg.getProgressionCaptureXpAmount());
+            if (!state.tryConsumeCaptureXp(owner.getUniqueId(), amount, cfg, nowTick)) return;
+            GlovedPlugin.logDebug("[SummonXP] Capture XP " + amount + " (" + r.name() + ") -> " + owner.getName() + " family=" + familyKey);
+            grantXp(owner.getUniqueId(), amount);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonXP] Capture hook error: " + t);
         }

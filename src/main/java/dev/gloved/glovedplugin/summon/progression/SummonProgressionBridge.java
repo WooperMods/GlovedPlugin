@@ -31,6 +31,9 @@ public interface SummonProgressionBridge {
     default OwnerCombatStats resolveOwnerCombatStats(UUID ownerId) { return OwnerCombatStats.unavailable(); }
 
     default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey) {}
+    default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey, dev.gloved.glovedplugin.summon.soul.SoulRarity rarity) {
+        onSoulCaptured(owner, victim, familyKey);
+    }
     default void onSoulCast(Player owner, String familyKey) {}
 
     default void onPlayerQuit(UUID ownerId) {}

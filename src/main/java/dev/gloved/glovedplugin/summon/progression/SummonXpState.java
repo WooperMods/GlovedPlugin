@@ -82,7 +82,10 @@ final class SummonXpState {
     }
 
     boolean tryConsumeCaptureXp(UUID ownerId, SummonConfig cfg, long nowTick) {
-        double amount = cfg.getProgressionCaptureXpAmount();
+        return tryConsumeCaptureXp(ownerId, cfg.getProgressionCaptureXpAmount(), cfg, nowTick);
+    }
+
+    boolean tryConsumeCaptureXp(UUID ownerId, double amount, SummonConfig cfg, long nowTick) {
         if (amount <= 0) return false;
         return consumeWindow(captureXpWindowByOwner, ownerId, amount, cfg.getProgressionCaptureXpMaxPerMinute(), nowTick);
     }
