@@ -81,6 +81,13 @@ public class SummonConfig {
     private double toughnessDamageReductionPerPoint = 0.02;
     private double toughnessDamageReductionMaxBonus = 0.50;
 
+    // Soul Traps
+    private boolean soulTrapsEnabled = true;
+    private double soulTrapsEliteResistance = 0.25;
+    private double soulTrapsBossResistance = 1.0;
+    private double soulTrapsMinHpToTrap = 5.0;
+    private long soulTrapsTrapExhaustionTicks = 12000L; // 10 minutes
+
     // Abilities
     private boolean abilitiesEnabled = true;
     private boolean abilitiesUseAuraAbilityLevels = true;
@@ -221,6 +228,13 @@ public class SummonConfig {
         toughnessDamageReductionPerPoint = clamp(yaml.getDouble("progression.minion-damage.owner-toughness.per-point", 0.02), 0.0, 1.0);
         toughnessDamageReductionMaxBonus = clamp(yaml.getDouble("progression.minion-damage.owner-toughness.max-bonus", 0.50), 0.0, 1.0);
 
+        // Soul Traps
+        soulTrapsEnabled = yaml.getBoolean("soulTraps.enabled", true);
+        soulTrapsEliteResistance = clamp(yaml.getDouble("soulTraps.eliteResistance", 0.25), 0.0, 1.0);
+        soulTrapsBossResistance = clamp(yaml.getDouble("soulTraps.bossResistance", 1.0), 0.0, 1.0);
+        soulTrapsMinHpToTrap = safeNonNegative(yaml.getDouble("soulTraps.minHpToTrap", 5.0));
+        soulTrapsTrapExhaustionTicks = Math.max(0, yaml.getInt("soulTraps.trapExhaustionTicks", 12000));
+
         abilitiesEnabled = yaml.getBoolean("progression.abilities.enabled", true);
         abilitiesUseAuraAbilityLevels = yaml.getBoolean("progression.abilities.use-auraskills-ability-levels", true);
 
@@ -329,6 +343,13 @@ public class SummonConfig {
         setIfMissing(cfg, "progression.minion-damage.owner-toughness.enabled", true);
         setIfMissing(cfg, "progression.minion-damage.owner-toughness.per-point", 0.02);
         setIfMissing(cfg, "progression.minion-damage.owner-toughness.max-bonus", 0.50);
+
+        // Soul Traps
+        setIfMissing(cfg, "soulTraps.enabled", true);
+        setIfMissing(cfg, "soulTraps.eliteResistance", 0.25);
+        setIfMissing(cfg, "soulTraps.bossResistance", 1.0);
+        setIfMissing(cfg, "soulTraps.minHpToTrap", 5.0);
+        setIfMissing(cfg, "soulTraps.trapExhaustionTicks", 12000);
         // Abilities
         setIfMissing(cfg, "progression.abilities.enabled", true);
         setIfMissing(cfg, "progression.abilities.use-auraskills-ability-levels", true);
@@ -490,6 +511,13 @@ public class SummonConfig {
     public boolean isToughnessDamageReductionEnabled() { return toughnessDamageReductionEnabled; }
     public double getToughnessDamageReductionPerPoint() { return toughnessDamageReductionPerPoint; }
     public double getToughnessDamageReductionMaxBonus() { return toughnessDamageReductionMaxBonus; }
+
+    // Soul Traps
+    public boolean isSoulTrapsEnabled() { return soulTrapsEnabled; }
+    public double getSoulTrapsEliteResistance() { return soulTrapsEliteResistance; }
+    public double getSoulTrapsBossResistance() { return soulTrapsBossResistance; }
+    public double getSoulTrapsMinHpToTrap() { return soulTrapsMinHpToTrap; }
+    public long getSoulTrapsTrapExhaustionTicks() { return soulTrapsTrapExhaustionTicks; }
 
     public boolean isAbilitiesEnabled() { return abilitiesEnabled; }
     public boolean isAbilitiesUseAuraAbilityLevels() { return abilitiesUseAuraAbilityLevels; }

@@ -49,6 +49,8 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.soul.SoulService soulService;
     private dev.gloved.glovedplugin.summon.SummonAbilityIndicator summonAbilityIndicator;
     private dev.gloved.glovedplugin.damagehologram.DamageHologramModule damageHologramModule;
+    private dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager trapRecipeManager;
+    private dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener trapListener;
 
     {
         logger = getLogger();
@@ -188,6 +190,11 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception e) {
             getLogger().warning("[Souls] Failed to backfill missing max_health: " + e);
         }
+        // Initialize soul trap system (recipes + listener)
+        this.trapRecipeManager = new dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager(this);
+        this.trapRecipeManager.registerRecipes();
+        this.trapListener = new dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener(this, this.summonConfig, this.soulService);
+        getServer().getPluginManager().registerEvents(this.trapListener, this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulCaptureListener(this, this.soulService), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulPickupListener(this), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulItemListener(this), this);

@@ -837,4 +837,14 @@ public class SoulService {
         if (pity.rare >= cfg.getPityRareThreshold()) return SoulRarity.RARE;
         return null;
     }
+
+    /** Public wrapper for persistSoulToVault, used by SoulTrapListener. */
+    public CollectResult persistSoulToVaultPublic(Player player, SoulInstance soul, SoulConfig cfg, boolean updateCodex, boolean invalidateCaches) {
+        return persistSoulToVault(player, soul, cfg, updateCodex, invalidateCaches);
+    }
+
+    /** Public wrapper for dropSoulItem, used by SoulTrapListener. */
+    public boolean dropSoulItemPublic(Location loc, SoulInstance soul) {
+        return dropSoulItem(loc, soul);
+    }
 }

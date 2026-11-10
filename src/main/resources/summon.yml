@@ -4,6 +4,14 @@
 
 enabled: true
 
+# Soul Traps: craftable items to capture mob souls without killing them
+soulTraps:
+  enabled: true
+  eliteResistance: 0.25
+  bossResistance: 1.0
+  minHpToTrap: 5.0
+  trapExhaustionTicks: 12000
+
 # Clumped nametags: when too many minions cluster, hide individual tags and show one shared label.
 clumped-nametags:
   enabled: true
