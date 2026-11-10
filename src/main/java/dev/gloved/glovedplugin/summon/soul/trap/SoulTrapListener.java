@@ -84,6 +84,10 @@ public class SoulTrapListener implements Listener {
         target.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 tier.mobEffectType, tier.mobEffectDurationTicks, tier.mobEffectAmplifier, false, false));
 
+        // Soulless mobs are permanently slowed.
+        target.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false));
+
         target.setHealth(1.0);
 
         // Mark the soul as permanently taken: the mob can no longer target or
