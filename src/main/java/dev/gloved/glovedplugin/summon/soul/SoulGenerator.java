@@ -32,7 +32,7 @@ public final class SoulGenerator {
         List<SoulTrait> traits = rollTraits(rarity, rng);
         double quality = SoulQuality.percent(rarity, affixes);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
-                System.currentTimeMillis(), maxHealth, false, false);
+                System.currentTimeMillis(), maxHealth, false);
     }
 
     public static SoulRarity rollRarity(SoulConfig cfg) {

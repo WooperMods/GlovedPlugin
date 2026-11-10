@@ -21,19 +21,18 @@ public final class SoulInstance {
     private final List<SoulTrait> traits;
     private final long createdAt;
     private final double maxHealth; // captured mob max HP at capture time; 0.0 = not saved (use mob-type default)
-    private boolean locked;
     private boolean favorite;
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
                         SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
-                        SoulTrait trait, long createdAt, double maxHealth, boolean locked, boolean favorite) {
+                        SoulTrait trait, long createdAt, double maxHealth, boolean favorite) {
         this(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                trait != null ? List.of(trait) : List.of(), createdAt, maxHealth, locked, favorite);
+                trait != null ? List.of(trait) : List.of(), createdAt, maxHealth, favorite);
     }
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
                         SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
-                        List<SoulTrait> traits, long createdAt, double maxHealth, boolean locked, boolean favorite) {
+                        List<SoulTrait> traits, long createdAt, double maxHealth, boolean favorite) {
         this.soulId = soulId != null ? soulId : UUID.randomUUID();
         this.ownerId = ownerId;
         this.entityType = entityType;
@@ -46,7 +45,6 @@ public final class SoulInstance {
         this.trait = this.traits.isEmpty() ? null : this.traits.get(0);
         this.createdAt = createdAt;
         this.maxHealth = Double.isNaN(maxHealth) || maxHealth < 0 ? 0.0 : maxHealth;
-        this.locked = locked;
         this.favorite = favorite;
     }
 
@@ -65,9 +63,7 @@ public final class SoulInstance {
 
     public long getCreatedAt() { return createdAt; }
     public double getMaxHealth() { return maxHealth; }
-    public boolean isLocked() { return locked; }
     public boolean isFavorite() { return favorite; }
-    public void setLocked(boolean locked) { this.locked = locked; }
     public void setFavorite(boolean favorite) { this.favorite = favorite; }
 
     /** Total rolled value for an affix type (sum). */

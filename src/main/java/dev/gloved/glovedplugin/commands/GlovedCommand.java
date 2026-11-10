@@ -392,8 +392,7 @@ public class GlovedCommand implements BasicCommand {
             case "equip" -> handleSoulEquip(source, args, svc);
             case "unequip" -> handleSoulUnequip(source, args, svc);
             case "loadout" -> handleSoulLoadout(source, args, svc);
-            case "lock" -> handleSoulFlag(source, args, svc, "lock");
-            case "favorite", "fav" -> handleSoulFlag(source, args, svc, "favorite");
+            case "favorite", "fav" -> handleSoulFavorite(source, args, svc);
             case "salvage" -> handleSoulSalvage(source, args, svc);
             case "inspect" -> handleSoulInspect(source, args, svc);
             case "compare" -> handleSoulCompare(source, args, svc);
@@ -704,14 +703,14 @@ public class GlovedCommand implements BasicCommand {
         }
     }
 
-    private void handleSoulFlag(CommandSourceStack source, String[] args, SoulService svc, String mode) {
+    private void handleSoulFavorite(CommandSourceStack source, String[] args, SoulService svc) {
         if (!(source.getSender() instanceof Player player)) { source.getSender().sendMessage(Component.text("Only players can modify souls.")); return; }
-        if (args.length < 3) { source.getSender().sendMessage(Component.text("Usage: /gloved soul " + mode + " <soulIdPrefix>")); return; }
+        if (args.length < 3) { source.getSender().sendMessage(Component.text("Usage: /gloved soul favorite <soulIdPrefix>")); return; }
         SoulInstance soul = svc.findOwnedSoul(player.getUniqueId(), args[2]);
         if (soul == null) { source.getSender().sendMessage(Component.text("Soul not found or ambiguous.")); return; }
-        boolean ok = mode.equals("lock") ? svc.toggleLock(player.getUniqueId(), soul) : svc.toggleFavorite(player.getUniqueId(), soul);
+        boolean ok = svc.toggleFavorite(player.getUniqueId(), soul);
         if (!ok) { source.getSender().sendMessage(Component.text("Failed to update soul.")); return; }
-        String state = mode.equals("lock") ? (soul.isLocked() ? "locked" : "unlocked") : (soul.isFavorite() ? "favorited" : "unfavorited");
+        String state = soul.isFavorite() ? "favorited" : "unfavorited";
         source.getSender().sendMessage(Component.text("Soul " + SoulService.shortId(soul) + " " + state + ".", net.kyori.adventure.text.format.NamedTextColor.GREEN));
     }
 
@@ -792,7 +791,7 @@ public class GlovedCommand implements BasicCommand {
         java.util.function.Predicate<String> match = s -> q.isEmpty() || s.toLowerCase(Locale.ROOT).startsWith(q);
         if (args.length == 2) {
             java.util.List<String> subs = new ArrayList<>();
-            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "lock", "favorite", "salvage", "inspect", "compare")) {
+            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare")) {
                 if (match.test(s)) subs.add(s);
             }
             return subs;
@@ -820,7 +819,7 @@ public class GlovedCommand implements BasicCommand {
             }
             if (sub.equals("simulate") || sub.equals("sim")) return suggestEntityTypes(q);
             if (sub.equals("select") || sub.equals("unequip") || sub.equals("equip")) return suggestSlots(q);
-            if (List.of("lock","favorite","fav","salvage","inspect","compare").contains(sub)) return suggestOwnedSoulPrefixes(source, q);
+            if (List.of("favorite","fav","salvage","inspect","compare").contains(sub)) return suggestOwnedSoulPrefixes(source, q);
         }
         if (args.length == 4 && (sub.equals("list") || sub.equals("menu") || sub.equals("vault") || sub.equals("gui"))) {
             List<String> out = new ArrayList<>(suggestRarities(q));

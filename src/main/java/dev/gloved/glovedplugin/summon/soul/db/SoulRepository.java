@@ -33,7 +33,7 @@ public class SoulRepository {
 
     public synchronized void insertSoul(SoulInstance soul) throws SQLException {
         String sql = "INSERT INTO souls (soul_id, owner_uuid, entity_type, family_key, category, rarity, quality, " +
-                "affixes_json, trait, locked, favorite, state, origin_context, created_at, max_health) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                "affixes_json, trait, favorite, state, origin_context, created_at, max_health) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (PreparedStatement ps = conn().prepareStatement(sql)) {
             ps.setString(1, soul.getSoulId().toString());
             ps.setString(2, soul.getOwnerId().toString());
@@ -44,12 +44,11 @@ public class SoulRepository {
             ps.setDouble(7, soul.getQualityScore());
             ps.setString(8, serializeAffixes(soul.getAffixes()));
             ps.setString(9, serializeTraits(soul.getTraits()));
-            ps.setInt(10, soul.isLocked() ? 1 : 0);
-            ps.setInt(11, soul.isFavorite() ? 1 : 0);
-            ps.setString(12, "VAULT");
-            ps.setString(13, null);
-            ps.setLong(14, soul.getCreatedAt());
-            ps.setDouble(15, soul.getMaxHealth());
+            ps.setInt(10, soul.isFavorite() ? 1 : 0);
+            ps.setString(11, "VAULT");
+            ps.setString(12, null);
+            ps.setLong(13, soul.getCreatedAt());
+            ps.setDouble(14, soul.getMaxHealth());
             ps.executeUpdate();
         }
     }
@@ -274,12 +273,11 @@ public class SoulRepository {
         return out;
     }
 
-    public synchronized void updateSoulFlags(UUID soulId, boolean locked, boolean favorite) throws SQLException {
-        String sql = "UPDATE souls SET locked = ?, favorite = ? WHERE soul_id = ?";
+    public synchronized void updateSoulFavorite(UUID soulId, boolean favorite) throws SQLException {
+        String sql = "UPDATE souls SET favorite = ? WHERE soul_id = ?";
         try (PreparedStatement ps = conn().prepareStatement(sql)) {
-            ps.setInt(1, locked ? 1 : 0);
-            ps.setInt(2, favorite ? 1 : 0);
-            ps.setString(3, soulId.toString());
+            ps.setInt(1, favorite ? 1 : 0);
+            ps.setString(2, soulId.toString());
             ps.executeUpdate();
         }
     }
@@ -408,9 +406,8 @@ public class SoulRepository {
         List<SoulTrait> traits = deserializeTraits(rs.getString("trait"));
         long createdAt = rs.getLong("created_at");
         double maxHealth = rs.getDouble("max_health");
-        boolean locked = rs.getInt("locked") != 0;
         boolean favorite = rs.getInt("favorite") != 0;
-        return new SoulInstance(soulId, owner, et, family, cat, rarity, quality, affixes, traits, createdAt, maxHealth, locked, favorite);
+        return new SoulInstance(soulId, owner, et, family, cat, rarity, quality, affixes, traits, createdAt, maxHealth, favorite);
     }
 
     private static String serializeTraits(List<SoulTrait> traits) {

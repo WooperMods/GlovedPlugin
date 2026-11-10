@@ -38,7 +38,6 @@ public class SoulDatabase {
                 "quality REAL NOT NULL DEFAULT 0," +
                 "affixes_json TEXT NOT NULL DEFAULT '[]'," +
                 "trait TEXT," +
-                "locked INTEGER NOT NULL DEFAULT 0," +
                 "favorite INTEGER NOT NULL DEFAULT 0," +
                 "state TEXT NOT NULL DEFAULT 'VAULT'," +
                 "origin_context TEXT," +

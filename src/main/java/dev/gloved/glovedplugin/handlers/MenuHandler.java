@@ -178,12 +178,7 @@ public class MenuHandler implements Listener {
             new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
             return;
         }
-        if (event.isShiftClick() && event.isRightClick()) {
-            boolean ok = svc.toggleLock(player.getUniqueId(), soul);
-            if (ok) player.sendMessage(Component.text("Soul " + dev.gloved.glovedplugin.summon.soul.SoulService.shortId(soul) + (soul.isLocked() ? " locked." : " unlocked.")));
-            new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
-            return;
-        }
+
         switch (event.getClick()) {
             case CONTROL_DROP -> {
                 var res = svc.salvage(player.getUniqueId(), soul);

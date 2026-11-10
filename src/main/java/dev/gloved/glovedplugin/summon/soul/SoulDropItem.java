@@ -212,7 +212,6 @@ public final class SoulDropItem {
             if (t != null) dto.traits.add(t.name());
         }
         dto.createdAt = soul.getCreatedAt();
-        dto.locked = soul.isLocked();
         dto.favorite = soul.isFavorite();
         dto.maxHealth = soul.getMaxHealth();
         dto.affixes = new ArrayList<>();
@@ -250,13 +249,13 @@ public final class SoulDropItem {
             }
         }
         return new SoulInstance(soulId, ownerId, et, dto.familyKey, cat, rarity, dto.quality, affixes, traits,
-                dto.createdAt, dto.maxHealth, dto.locked, dto.favorite);
+                dto.createdAt, dto.maxHealth, dto.favorite);
     }
 
     private static class SoulDto {
         String soulId, ownerId, entityType, familyKey, category, rarity, trait;
         List<String> traits;
-        double quality; long createdAt; double maxHealth; boolean locked, favorite;
+        double quality; long createdAt; double maxHealth; boolean favorite;
         List<AffixDto> affixes;
     }
     private static class AffixDto {

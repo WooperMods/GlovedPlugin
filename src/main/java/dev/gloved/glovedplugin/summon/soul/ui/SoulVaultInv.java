@@ -201,7 +201,7 @@ public class SoulVaultInv implements InventoryHolder {
                 }
             }
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----------------").decoration(TextDecoration.ITALIC, false));
-            String flags = (soul.isFavorite() ? "§e★ Fav " : "") + (soul.isLocked() ? "§cLocked" : "");
+            String flags = (soul.isFavorite() ? "§e★ Fav " : "");
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§aL-Click§7 Equip/Select  §bR-Click§7 Inspect").decoration(TextDecoration.ITALIC, false));

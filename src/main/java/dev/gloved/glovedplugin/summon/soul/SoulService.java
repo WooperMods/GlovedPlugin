@@ -284,7 +284,6 @@ public class SoulService {
                     new java.util.ArrayList<>(soul.getTraits()),
                     System.currentTimeMillis(),
                     soul.getMaxHealth(),
-                    false,
                     false
             );
         }
@@ -526,22 +525,11 @@ public class SoulService {
         } catch (SQLException e) { return null; }
     }
 
-    public boolean toggleLock(UUID owner, SoulInstance soul) {
-        if (owner == null || soul == null || !owner.equals(soul.getOwnerId())) return false;
-        try {
-            soul.setLocked(!soul.isLocked());
-            repository.updateSoulFlags(soul.getSoulId(), soul.isLocked(), soul.isFavorite());
-            invalidateSelectedCache(owner);
-            invalidateSoulCache(soul.getSoulId());
-            return true;
-        } catch (SQLException e) { return false; }
-    }
-
     public boolean toggleFavorite(UUID owner, SoulInstance soul) {
         if (owner == null || soul == null || !owner.equals(soul.getOwnerId())) return false;
         try {
             soul.setFavorite(!soul.isFavorite());
-            repository.updateSoulFlags(soul.getSoulId(), soul.isLocked(), soul.isFavorite());
+            repository.updateSoulFavorite(soul.getSoulId(), soul.isFavorite());
             invalidateSelectedCache(owner);
             invalidateSoulCache(soul.getSoulId());
             return true;
@@ -560,7 +548,6 @@ public class SoulService {
         } catch (SQLException e) {
             return new SalvageResult(false, 0, "db-error");
         }
-        if (soul.isLocked()) return new SalvageResult(false, 0, "this soul is locked");
         if (soul.isFavorite()) return new SalvageResult(false, 0, "this soul is favorited");
         try {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
@@ -595,7 +582,6 @@ public class SoulService {
         } catch (SQLException e) {
             return new ExtractResult(false, "db-error");
         }
-        if (soul.isLocked()) return new ExtractResult(false, "this soul is locked");
         if (soul.isFavorite()) return new ExtractResult(false, "this soul is favorited");
         try {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
@@ -633,7 +619,7 @@ public class SoulService {
         sb.append("§dSoul ").append(shortId(s)).append(" §7(").append(s.getSoulId()).append(")\n");
         sb.append("§7Family: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
         sb.append("§7Rarity: §f").append(s.getRarity()).append(" §7Quality: §f").append(SoulQuality.format(s)).append("\n");
-        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-").append(" §7Flags: ").append(s.isLocked() ? "§c[Locked] " : "").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
+        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-").append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
         sb.append("§7Affixes: §f").append(affixSummary(s));
         return sb.toString();
     }
