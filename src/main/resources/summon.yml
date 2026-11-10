@@ -14,6 +14,14 @@ progression:
     enabled: true
     skill-id: summoning
     apply-multipliers: true
+    # Best-effort backfill: generate/migrate AuraSkills content files (skills/abilities/rewards) when safe.
+    # Never overwrites user-modified content files; writes *.v2.example.yml for manual merge.
+    generate-content-files: true
+  mana:
+    # Consumes AuraSkills mana per summon trigger (batch). AuraSkills shows its own "not enough mana" feedback.
+    enabled: true
+    cost-per-trigger: 3.0
+    allow-when-auraskills-missing: true
   xp:
     minion-hit:
       enabled: true
@@ -26,6 +34,82 @@ progression:
       amount: 8.0
       attribution-window-ticks: 200
       max-per-minute: 80.0
+  scaling:
+    enabled: true
+    chance:
+      per-level: 0.005
+      max: 0.95
+    minions-per-hit:
+      per-level: 0.10
+      max: 12
+    max-active:
+      per-level: 0.25
+      max: 30
+  crit:
+    enabled: true
+    # AuraSkills-authoritative by default: uses owner AuraSkills crit_chance/crit_damage stats.
+    # Summoning rewards grant +1 crit_chance/level and +1 crit_damage every 2 levels (Archery/Fighting-like cadence).
+    source: auraskills
+    max-chance: 0.40
+    min-damage-multiplier: 1.0
+    max-damage-multiplier: 3.0
+    # Legacy fields (only used when source: legacy; ignored in auraskills mode to avoid double-dipping):
+    # base-chance: 0.0
+    # per-level: 0.008
+    # damage-multiplier: 1.5
+  minion-damage:
+    owner-strength:
+      enabled: true
+      # Bonus damage per effective attack-damage trait unit from owner Strength (capped).
+      per-attack-damage-trait: 0.20
+      max-bonus: 12.0
+  abilities:
+    enabled: true
+    # Prefer AuraSkills ability levels for multi-level effectiveness (fallback: skill level >= unlock => level 1).
+    use-auraskills-ability-levels: true
+    debuff:
+      enabled: true
+      unlock-level: 2
+      base-chance: 0.15
+      chance-per-level: 0.015
+      max-chance: 0.45
+      cooldown-ticks: 60
+      effect: SLOWNESS
+      duration-ticks: 60
+      duration-per-level: 4
+      max-duration-ticks: 120
+      amplifier: 0
+      # If true, any common debuff on target counts for lifesteal synergy bonus; if false, only the configured effect counts.
+      synergy-any-common-debuff: true
+    cleave:
+      enabled: true
+      unlock-level: 4
+      base-chance: 0.12
+      chance-per-level: 0.012
+      max-chance: 0.40
+      cooldown-ticks: 80
+      base-radius: 2.0
+      radius-per-level: 0.10
+      max-radius: 4.0
+      max-targets: 3
+      base-damage-ratio: 0.25
+      damage-ratio-per-level: 0.015
+      max-damage-ratio: 0.60
+      # If true, damage-ratio uses the primary hit's pre-crit base damage; if false, uses final post-crit damage.
+      damage-ratio-uses-base-damage: false
+      max-damage: 8.0
+      spread-debuff: true
+      # Per-owner AoE damage budget per minute (0 = unlimited). Budget-capped cleave victims are skipped.
+      max-damage-per-minute: 180.0
+    lifesteal:
+      enabled: true
+      unlock-level: 6
+      base-heal-percent-max-hp: 0.0075
+      heal-percent-per-level: 0.0010
+      max-heal-percent-max-hp: 0.03
+      debuffed-bonus-multiplier: 1.25
+      per-hit-heal-cap: 2.5
+      max-heal-per-minute: 40.0
 profiles:
   bee_swarm:
     mob-type: BEE

@@ -44,8 +44,9 @@ public class SummonManager {
         long required = SummonProfile.COOLDOWN_TICKS * 50L;
         if (last != null && now - last < required) return false;
         // max-active is a shared pool across triggers (counted per profile)
+        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
         int count = tracker.getActiveCount(player.getUniqueId(), profile.name);
-        if (count >= profile.maxActive) return false;
+        if (count >= stats.maxActive) return false;
         return true;
     }
 
@@ -55,13 +56,20 @@ public class SummonManager {
                 .put(key, System.currentTimeMillis());
     }
 
-    public void spawn(Player player, SummonProfile profile, LivingEntity target) {
+    /** @return number of minions spawned (0 if blocked/capped/mana insufficient). */
+    public int spawn(Player player, SummonProfile profile, LivingEntity target) {
         Location spawnLoc = resolveSpawnLocation(player, target);
+        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
         // Never exceed the per-profile cap, even when a batch is larger than the remaining slots.
         int active = tracker.getActiveCount(player.getUniqueId(), profile.name);
-        int toSpawn = Math.min(profile.minionsPerHit, Math.max(0, profile.maxActive - active));
-        GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + profile.minionsPerHit + " x " + profile.mobType
-                + " for " + player.getName() + " at " + spawnLoc + " (active " + active + "/" + profile.maxActive + ")");
+        int toSpawn = Math.min(stats.minionsPerHit, Math.max(0, stats.maxActive - active));
+        if (toSpawn <= 0) return 0;
+        if (!tryConsumeSummonMana(player)) {
+            GlovedPlugin.logDebug("[Summon] Mana blocked summon for " + player.getName() + " profile " + profile.name);
+            return 0;
+        }
+        GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + stats.minionsPerHit + " (base " + profile.minionsPerHit + ") x " + profile.mobType
+                + " for " + player.getName() + " at " + spawnLoc + " (active " + active + "/" + stats.maxActive + ", base " + profile.maxActive + ", lvl " + stats.summoningLevel + ")");
         List<UUID> spawned = new ArrayList<>();
         for (int i = 0; i < toSpawn; i++) {
             EntityType type = profile.resolveEntityType();
@@ -136,6 +144,39 @@ public class SummonManager {
         if (!spawned.isEmpty()) {
             playSummonEffects(player, spawnLoc, spawned.size());
             GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName());
+        }
+        return spawned.size();
+    }
+
+    /** Consumes AuraSkills mana per summon trigger (batch). Returns true if allowed/consumed. */
+    private boolean tryConsumeSummonMana(Player player) {
+        try {
+            if (config == null || !config.isManaEnabled()) return true;
+            double cost = Math.max(0.0, config.getManaCostPerTrigger());
+            if (cost <= 0.0) return true;
+            if (player == null || !player.isOnline()) return false;
+            if (plugin.getServer().getPluginManager().getPlugin("AuraSkills") == null) {
+                return config.isManaAllowWhenAuraSkillsMissing();
+            }
+            Class<?> apiClass = Class.forName("dev.aurelium.auraskills.api.AuraSkillsApi");
+            Object api = apiClass.getMethod("get").invoke(null);
+            if (api == null) return config.isManaAllowWhenAuraSkillsMissing();
+            Object user = apiClass.getMethod("getUser", UUID.class).invoke(api, player.getUniqueId());
+            if (user == null) return config.isManaAllowWhenAuraSkillsMissing();
+            try {
+                Object loaded = user.getClass().getMethod("isLoaded").invoke(user);
+                if (loaded instanceof Boolean b && !b) return config.isManaAllowWhenAuraSkillsMissing();
+            } catch (Throwable ignored) {}
+            Object ok = user.getClass().getMethod("consumeMana", double.class).invoke(user, cost);
+            if (ok instanceof Boolean b) return b;
+            // Fallback: manual check+set
+            double mana = ((Number) user.getClass().getMethod("getMana").invoke(user)).doubleValue();
+            if (mana + 1.0e-9 < cost) return false;
+            user.getClass().getMethod("setMana", double.class).invoke(user, Math.max(0.0, mana - cost));
+            return true;
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Mana consume failed: " + t);
+            return config == null || config.isManaAllowWhenAuraSkillsMissing();
         }
     }
 

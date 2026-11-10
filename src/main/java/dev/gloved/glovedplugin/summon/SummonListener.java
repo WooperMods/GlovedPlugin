@@ -45,10 +45,14 @@ public class SummonListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         try {
-            if (tracker == null || event.getPlayer() == null) return;
-            if (coordinator != null) coordinator.invalidateOwner(event.getPlayer().getUniqueId());
-            tracker.removeAllForPlayer(event.getPlayer().getUniqueId());
-            GlovedPlugin.logDebug("[Summon] Removed minions for quitting player " + event.getPlayer().getName());
+            if (event.getPlayer() == null) return;
+            java.util.UUID id = event.getPlayer().getUniqueId();
+            try { if (plugin.getSummonProgression() != null) plugin.getSummonProgression().onPlayerQuit(id); } catch (Throwable ignored) {}
+            try { if (plugin.getSummonAbilityService() != null) plugin.getSummonAbilityService().onPlayerQuit(id); } catch (Throwable ignored) {}
+            if (tracker == null) return;
+            if (coordinator != null) coordinator.invalidateOwner(id);
+            tracker.removeAllForPlayer(id);
+            GlovedPlugin.logDebug("[Summon] Removed minions/state for quitting player " + event.getPlayer().getName());
         } catch (Throwable t) {
             plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error cleaning up minions on quit", t);
         }
@@ -85,8 +89,9 @@ public class SummonListener implements Listener {
             }
 
             if (!manager.canSummon(player, profile, SummonTrigger.ABILITY)) return;
+            int spawned = manager.spawn(player, profile, null);
+            if (spawned <= 0) return;
             manager.setCooldown(player, profile, SummonTrigger.ABILITY);
-            manager.spawn(player, profile, null);
 
             // Activation feedback (subtle, non-spammy)
             try {
@@ -94,7 +99,7 @@ public class SummonListener implements Listener {
                 player.getWorld().spawnParticle(Particle.ENCHANT, player.getLocation().add(0, 1.0, 0), 10, 0.35, 0.45, 0.35, 0.02);
             } catch (Throwable ignored) {}
 
-            GlovedPlugin.logDebug("[Summon] Right-click ability triggered for " + player.getName() + " profile " + profileName);
+            GlovedPlugin.logDebug("[Summon] Right-click ability triggered for " + player.getName() + " profile " + profileName + " spawned=" + spawned);
         } catch (Throwable t) {
             plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerInteract (suppressed)", t);
         }
@@ -149,19 +154,24 @@ public class SummonListener implements Listener {
                 SummonEnchant.clearProfile(item);
                 continue;
             }
+            EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
             if (!manager.canSummon(player, profile, SummonTrigger.ARMOR)) {
                 GlovedPlugin.logDebug("[Summon Armor] CanSummon false for " + player.getName() + " profile " + profileName);
                 continue;
             }
             double roll = rand.nextDouble();
-            GlovedPlugin.logDebug("[Summon Armor] Chance roll " + roll + " vs " + profile.chance + " for profile " + profileName);
-            if (roll > profile.chance) {
+            GlovedPlugin.logDebug("[Summon Armor] Chance roll " + roll + " vs " + stats.chance + " (base " + profile.chance + ", lvl " + stats.summoningLevel + ") for profile " + profileName);
+            if (roll > stats.chance) {
                 GlovedPlugin.logDebug("[Summon Armor] Chance failed for profile " + profileName);
                 continue;
             }
+            int spawned = manager.spawn(player, profile, damager);
+            if (spawned <= 0) {
+                GlovedPlugin.logDebug("[Summon Armor] Spawn blocked (mana/cap/other) for " + player.getName() + " profile " + profileName);
+                continue;
+            }
             manager.setCooldown(player, profile, SummonTrigger.ARMOR);
-            manager.spawn(player, profile, damager);
-            GlovedPlugin.logDebug("[Summon Armor] Summon triggered for " + player.getName() + " profile " + profileName + " from armor slot " + slots[i]);
+            GlovedPlugin.logDebug("[Summon Armor] Summon triggered for " + player.getName() + " profile " + profileName + " from armor slot " + slots[i] + " spawned=" + spawned);
         }
         } catch (Throwable t) {
             plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerDamaged (suppressed to avoid kick)", t);

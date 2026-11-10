@@ -45,6 +45,16 @@ final class SummonXpState {
         recentKillCredit.clear();
     }
 
+    void onPlayerQuit(UUID ownerId) {
+        if (ownerId == null) return;
+        lastHitXpTickByOwner.remove(ownerId);
+        hitXpWindowByOwner.remove(ownerId);
+        killXpWindowByOwner.remove(ownerId);
+        String prefix = ownerId + ":";
+        lastHitXpTickByOwnerTarget.keySet().removeIf(k -> k.startsWith(prefix));
+        // kill credits are keyed by victim; stale entries expire naturally on consume checks
+    }
+
     boolean tryConsumeHitXp(UUID ownerId, UUID targetId, SummonConfig cfg, long nowTick) {
         double amount = cfg.getProgressionHitXpAmount();
         if (amount <= 0) return false;

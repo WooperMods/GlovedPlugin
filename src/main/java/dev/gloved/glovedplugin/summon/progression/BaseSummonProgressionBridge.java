@@ -41,6 +41,21 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
     }
 
     @Override
+    public void onPlayerQuit(UUID ownerId) {
+        state.onPlayerQuit(ownerId);
+    }
+
+    @Override
+    public int getAbilityLevel(UUID ownerId, String abilityId) {
+        return 0;
+    }
+
+    @Override
+    public OwnerCombatStats resolveOwnerCombatStats(UUID ownerId) {
+        return OwnerCombatStats.unavailable();
+    }
+
+    @Override
     public void onMinionHit(Player owner, LivingEntity minion, LivingEntity target, String profileName, double finalDamage) {
         try {
             SummonConfig cfg = config;
@@ -71,6 +86,11 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
             if (owner == null || victim == null || cfg == null || !cfg.isProgressionEnabled() || !cfg.isProgressionKillXpEnabled()) return;
             state.recordKillCredit(victim.getUniqueId(), owner.getUniqueId(), profileName, nowTick);
         } catch (Throwable ignored) {}
+    }
+
+    @Override
+    public int getSummoningLevel(UUID ownerId) {
+        return 0;
     }
 
     @Override

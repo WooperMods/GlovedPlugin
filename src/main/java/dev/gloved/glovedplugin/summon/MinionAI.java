@@ -9,6 +9,8 @@ import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
@@ -33,6 +35,7 @@ public class MinionAI {
     private SummonConfig summonConfig;
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge progression =
             new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
+    private dev.gloved.glovedplugin.summon.progression.SummonAbilityService abilityService;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> recentDamagers = new java.util.concurrent.ConcurrentHashMap<>();
     private static final long DAMAGER_TTL_MS = 10_000L;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Long>> unreachableCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -56,6 +59,10 @@ public class MinionAI {
 
     public void setProgression(dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge progression) {
         this.progression = progression != null ? progression : new dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge();
+    }
+
+    public void setAbilityService(dev.gloved.glovedplugin.summon.progression.SummonAbilityService abilityService) {
+        this.abilityService = abilityService;
     }
 
     public static void recordRecentDamager(Player player, LivingEntity damager) {
@@ -364,22 +371,50 @@ public class MinionAI {
                             try {
                                 ((org.bukkit.entity.LivingEntity) mob).attack(target);
                             } catch (Exception ignored) {}
-                            // Level-scaled damage with player credit, no weapon scaling, no base mob damage
+                            // Level-scaled damage with player credit, no weapon scaling, no base mob damage.
+                            // Owner AuraSkills Strength (attack-damage trait) can add a capped bonus to minion damage.
                             int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
                             boolean isElite = isEliteMob(target);
-                            double damage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
+                            double baseDamage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
                             try {
-                                DamageSource src = DamageSource.builder(DamageType.GENERIC)
-                                        .withDirectEntity(minion)
-                                        .withCausingEntity(owner)
-                                        .build();
-                                target.damage(damage, src);
+                                if (summonConfig != null && summonConfig.isStrengthDamageEnabled() && progression != null) {
+                                    var st = progression.resolveOwnerCombatStats(owner.getUniqueId());
+                                    if (st != null && st.available()) {
+                                        double bonus = Math.max(0.0, st.attackDamageTrait()) * summonConfig.getStrengthDamagePerAttackDamageTrait();
+                                        bonus = Math.min(bonus, Math.max(0.0, summonConfig.getStrengthDamageMaxBonus()));
+                                        baseDamage += bonus;
+                                    }
+                                }
+                            } catch (Throwable ignored) {}
+                            double finalDamage = baseDamage;
+                            boolean crit = false;
+                            boolean targetDebuffedBefore = false;
+                            try {
+                                if (abilityService != null && summonConfig != null) {
+                                    var hr = abilityService.applyCritAndDamage(owner, minion, target, baseDamage, summonConfig);
+                                    finalDamage = hr.damage;
+                                    crit = hr.crit;
+                                    targetDebuffedBefore = hr.targetDebuffedBefore;
+                                } else {
+                                    DamageSource src = DamageSource.builder(DamageType.GENERIC)
+                                            .withDirectEntity(minion)
+                                            .withCausingEntity(owner)
+                                            .build();
+                                    target.damage(baseDamage, src);
+                                }
                                 applyKnockback(minion, owner, target);
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + damage + " to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
+                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + finalDamage + " (base " + baseDamage + ", crit=" + crit + ") to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
                                 try {
-                                    progression.onMinionHit(owner, minion, target, profile != null ? profile.name : null, damage);
+                                    progression.onMinionHit(owner, minion, target, profile != null ? profile.name : null, finalDamage);
                                 } catch (Throwable t) {
                                     GlovedPlugin.logDebug("[SummonXP] Hit hook dispatch error: " + t);
+                                }
+                                try {
+                                    if (abilityService != null && summonConfig != null) {
+                                        abilityService.onAfterPrimaryHit(owner, minion, target, profile != null ? profile.name : null, finalDamage, baseDamage, crit, targetDebuffedBefore, summonConfig);
+                                    }
+                                } catch (Throwable t) {
+                                    GlovedPlugin.logDebug("[SummonAbility] Ability hook dispatch error: " + t);
                                 }
                             } catch (Exception e) {
                                 GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
@@ -612,7 +647,7 @@ public class MinionAI {
     }
 
     /**
-     * Minions have a 1/4th chance (of the profile's base chance) to spawn more minions of their
+     * Minions have a 1/4th chance (of the effective profile chance) to spawn more minions of their
      * own type on hit, following the same cooldown and max-active rules as the player.
      */
     private void trySummonFromMinion(LivingEntity minion, Player owner, LivingEntity target) {
@@ -626,12 +661,35 @@ public class MinionAI {
         SummonProfile profile = summonConfig.getProfile(profileName);
         if (profile == null) return;
         if (!summonManager.canSummon(liveOwner, profile, SummonTrigger.MINION)) return;
-        double minionChance = profile.chance * 0.25;
+        EffectiveSummonStats stats = EffectiveSummonStats.resolve(liveOwner, profile, summonConfig, progression);
+        double minionChance = stats.chance * 0.25;
         if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > minionChance) return;
+        int spawned = summonManager.spawn(liveOwner, profile, target);
+        if (spawned <= 0) return;
         summonManager.setCooldown(liveOwner, profile, SummonTrigger.MINION);
-        summonManager.spawn(liveOwner, profile, target);
+        spawnMinionProcVfx(minion, target, spawned);
         GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " triggered spawn for " + liveOwner.getName()
-                + " profile " + profileName + " (minion-chance=" + minionChance + ")");
+                + " profile " + profileName + " spawned=" + spawned + " (minion-chance=" + minionChance + ", lvl " + stats.summoningLevel + ")");
+    }
+
+    private void spawnMinionProcVfx(LivingEntity minion, LivingEntity target, int spawned) {
+        try {
+            if (minion == null || minion.getWorld() == null) return;
+            org.bukkit.World world = minion.getWorld();
+            Location at = minion.getLocation().add(0, 0.9, 0);
+            world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 18 + Math.min(spawned * 6, 24), 0.45, 0.55, 0.45, 0.03);
+            world.spawnParticle(Particle.REVERSE_PORTAL, at, 16 + Math.min(spawned * 4, 16), 0.4, 0.5, 0.4, 0.08);
+            world.spawnParticle(Particle.WITCH, at, 10 + Math.min(spawned * 2, 10), 0.35, 0.4, 0.35, 0.02);
+            world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 8 + Math.min(spawned * 2, 8), 0.25, 0.5, 0.25, 0.01);
+            if (target != null && target.getWorld() == world) {
+                Location tc = target.getLocation().add(0, 1.0, 0);
+                world.spawnParticle(Particle.ELECTRIC_SPARK, tc, 10, 0.25, 0.3, 0.25, 0.03);
+            }
+            world.playSound(at, Sound.ENTITY_EVOKER_PREPARE_SUMMON, 0.5f, 1.6f);
+            world.playSound(at, Sound.BLOCK_BEACON_POWER_SELECT, 0.35f, 1.85f);
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Failed to play minion proc VFX: " + t);
+        }
     }
 
     /**

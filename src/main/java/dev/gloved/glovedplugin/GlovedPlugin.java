@@ -45,6 +45,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
     private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge summonProgression;
+    private dev.gloved.glovedplugin.summon.progression.SummonAbilityService summonAbilityService;
 
     {
         logger = getLogger();
@@ -178,6 +179,8 @@ public final class GlovedPlugin extends JavaPlugin {
         this.minionAI.setSummon(this.summonConfig, this.summonManager);
         this.summonProgression = createSummonProgressionBridge();
         this.minionAI.setProgression(this.summonProgression);
+        this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
+        this.minionAI.setAbilityService(this.summonAbilityService);
         this.summonProgression.onEnable();
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker, this.summonCoordinator), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig), this);
@@ -234,6 +237,8 @@ public final class GlovedPlugin extends JavaPlugin {
         if (this.summonProgression != null) {
             this.summonProgression = refreshSummonProgressionBridge(this.summonProgression);
             if (this.minionAI != null) this.minionAI.setProgression(this.summonProgression);
+            this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
+            if (this.minionAI != null) this.minionAI.setAbilityService(this.summonAbilityService);
             this.summonProgression.onReload(this.summonConfig);
         }
         if (this.clumpNametagManager != null) {
@@ -271,6 +276,14 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.summon.SummonInstanceTracker getSummonTracker() {
         return summonTracker;
+    }
+
+    public dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge getSummonProgression() {
+        return summonProgression;
+    }
+
+    public dev.gloved.glovedplugin.summon.progression.SummonAbilityService getSummonAbilityService() {
+        return summonAbilityService;
     }
 
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge createSummonProgressionBridge() {
@@ -418,6 +431,9 @@ public final class GlovedPlugin extends JavaPlugin {
             if (glovedBridge != null) glovedBridge.shutdown();
         } catch (Exception ignored) {}
         EditSessionCache.storeAll(this);
+        if (summonAbilityService != null) {
+            try { summonAbilityService.clear(); } catch (Exception ignored) {}
+        }
         if (summonProgression != null) {
             try { summonProgression.onDisable(); } catch (Exception ignored) {}
         }
