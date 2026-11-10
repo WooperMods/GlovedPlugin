@@ -84,7 +84,6 @@ public class SummonMoveGoal implements Goal<Mob> {
             if (pf == null) return;
             LivingEntity target = mob.getTarget();
             TargetIntent intent = readIntent(mob);
-            double speedMult = speedMultiplier(intent);
             if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())
                     && owner.getWorld().equals(mob.getWorld())) {
                 // Bodyguard positioning: when peeling a threat off the owner, path to a point
@@ -95,7 +94,7 @@ public class SummonMoveGoal implements Goal<Mob> {
                 if (intent == TargetIntent.PEELING && distSq > MIN_CHASE_DIST_SQ) {
                     Location interpose = interposeLocation(mob, owner, target);
                     if (interpose != null) {
-                        pf.moveTo(interpose, mobSpeed(mob) * speedMult);
+                        pf.moveTo(interpose, moveSpeedForIntent(mob, intent));
                         try { mob.lookAt(target); } catch (Throwable ignored) {}
                         return;
                     }
@@ -104,7 +103,7 @@ public class SummonMoveGoal implements Goal<Mob> {
                     // In melee range: stop pathfinding, let MinionAI handle the attack.
                     pf.stopPathfinding();
                 } else {
-                    pf.moveTo(target.getLocation(), mobSpeed(mob) * speedMult);
+                    pf.moveTo(target.getLocation(), moveSpeedForIntent(mob, intent));
                     try { mob.lookAt(target); } catch (Throwable ignored) {}
                 }
                 return;
@@ -116,7 +115,7 @@ public class SummonMoveGoal implements Goal<Mob> {
                 pf.stopPathfinding();
                 return;
             }
-            pf.moveTo(owner.getLocation(), mobSpeed(mob) * speedMult);
+            pf.moveTo(owner.getLocation(), moveSpeedForIntent(mob, intent));
             try { mob.lookAt(owner); } catch (Throwable ignored) {}
         } catch (Exception ignored) {}
     }
@@ -151,11 +150,21 @@ public class SummonMoveGoal implements Goal<Mob> {
     private static double speedMultiplier(TargetIntent intent) {
         return switch (intent) {
             case IDLE -> 1.0;       // normal follow speed
-            case DEFENSIVE -> 1.35; // get back to owner faster when hurt
-            case PEELING -> 1.6;    // close gap fast to protect owner
-            case FINISHING -> 1.25; // secure the kill quickly
+            case DEFENSIVE -> 1.25; // get back to owner faster when hurt
+            case PEELING -> 1.4;    // close gap fast to protect owner
+            case FINISHING -> 1.15; // secure the kill quickly
             case CHASING -> 1.0;    // normal pursuit speed
         };
+    }
+
+    /** Final speed cap for minion movement so speed bursts never go out of control. */
+    private static final double MAX_MOVE_SPEED = 1.6;
+
+    /** Base speed with a hard cap, then intent multiplier applied, then clamped to MAX_MOVE_SPEED. */
+    private static double moveSpeedForIntent(Mob mob, TargetIntent intent) {
+        double base = mobSpeed(mob);
+        double multiplied = base * speedMultiplier(intent);
+        return Math.max(0.5, Math.min(MAX_MOVE_SPEED, multiplied));
     }
 
     /**
