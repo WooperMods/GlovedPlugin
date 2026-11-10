@@ -9,6 +9,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -65,19 +66,76 @@ public class SoulTrapRecipeManager implements Listener {
 
     private void registerTierRecipe(SoulTrapTier tier) {
         NamespacedKey key = new NamespacedKey(plugin, "soul_trap_" + tier.id);
-        ShapelessRecipe recipe = new ShapelessRecipe(key, buildTrapItem(tier));
+        ItemStack result = buildTrapItem(tier);
 
-        // Add all ingredients (shapeless = any order)
-        for (SoulTrapTier.MaterialIngredient ing : tier.ingredients) {
-            recipe.addIngredient(ing.material);
-        }
-        // Extra ingredients (e.g. ghast tear, dragon breath)
-        for (SoulTrapTier.MaterialIngredient ing : tier.extraIngredients) {
-            recipe.addIngredient(ing.material);
+        if ("snare".equals(tier.id)) {
+            ShapelessRecipe recipe = new ShapelessRecipe(key, result);
+            // Add all ingredients (shapeless = any order)
+            for (SoulTrapTier.MaterialIngredient ing : tier.ingredients) {
+                recipe.addIngredient(ing.material);
+            }
+            for (SoulTrapTier.MaterialIngredient ing : tier.extraIngredients) {
+                recipe.addIngredient(ing.material);
+            }
+            Bukkit.addRecipe(recipe);
+        } else {
+            ShapedRecipe recipe = createShapedRecipe(key, result, tier);
+            if (recipe == null) {
+                plugin.getLogger().warning("[Summon] No shaped recipe defined for trap tier: " + tier.id);
+                return;
+            }
+            Bukkit.addRecipe(recipe);
         }
 
-        Bukkit.addRecipe(recipe);
         plugin.getLogger().info("[Summon] Registered trap recipe: " + tier.id + " -> " + tier.displayName);
+    }
+
+    /**
+     * 3x3 (9-slot) shaped recipes for traps above Snare, themed by rarity and
+     * increasing in cost/difficulty.
+     */
+    private ShapedRecipe createShapedRecipe(NamespacedKey key, ItemStack result, SoulTrapTier tier) {
+        ShapedRecipe recipe = new ShapedRecipe(key, result);
+        switch (tier.id) {
+            case "trap" -> {
+                // Uncommon: soul sand frame with arrows and a glass bottle core
+                recipe.shape("SAS", "ABA", "SAS");
+                recipe.setIngredient('S', Material.SOUL_SAND);
+                recipe.setIngredient('A', Material.ARROW);
+                recipe.setIngredient('B', Material.GLASS_BOTTLE);
+            }
+            case "cage" -> {
+                // Rare: iron cage around an amethyst core
+                recipe.shape("III", "IAI", "III");
+                recipe.setIngredient('I', Material.IRON_BARS);
+                recipe.setIngredient('A', Material.AMETHYST_SHARD);
+            }
+            case "chalice" -> {
+                // Epic: gilded chalice infused with amethyst and ghast tear
+                recipe.shape("GGG", "ATA", "GGG");
+                recipe.setIngredient('G', Material.GOLD_INGOT);
+                recipe.setIngredient('A', Material.AMETHYST_SHARD);
+                recipe.setIngredient('T', Material.GHAST_TEAR);
+            }
+            case "relic" -> {
+                // Legendary: diamond lattice bound by echo shards and bottled experience
+                recipe.shape("DED", "EBE", "DED");
+                recipe.setIngredient('D', Material.DIAMOND);
+                recipe.setIngredient('E', Material.ECHO_SHARD);
+                recipe.setIngredient('B', Material.EXPERIENCE_BOTTLE);
+            }
+            case "prism" -> {
+                // Mythic: netherite prism resonating with echo shards and dragon's breath
+                recipe.shape("NEN", "EDE", "NEN");
+                recipe.setIngredient('N', Material.NETHERITE_INGOT);
+                recipe.setIngredient('E', Material.ECHO_SHARD);
+                recipe.setIngredient('D', Material.DRAGON_BREATH);
+            }
+            default -> {
+                return null;
+            }
+        }
+        return recipe;
     }
 
     /** Build the trap ItemStack with custom name, lore, and PDC tag. */
