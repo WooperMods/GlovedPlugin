@@ -98,22 +98,24 @@ public class SoulTrapRecipeManager implements Listener {
         ShapedRecipe recipe = new ShapedRecipe(key, result);
         switch (tier.id) {
             case "trap" -> {
-                // Uncommon: soul sand frame with arrows and a glass bottle core
-                recipe.shape("SAS", "ABA", "SAS");
+                // Uncommon: simple soul-binding vessel (easy 3x3 step above Snare)
+                recipe.shape("SSS", "ABA", "SSS");
                 recipe.setIngredient('S', Material.SOUL_SAND);
                 recipe.setIngredient('A', Material.ARROW);
                 recipe.setIngredient('B', Material.GLASS_BOTTLE);
             }
             case "cage" -> {
-                // Rare: iron cage around an amethyst core
-                recipe.shape("III", "IAI", "III");
+                // Rare: reinforced cage lit with soul lanterns and an amethyst focus
+                recipe.shape("ILI", "IAI", "ILI");
                 recipe.setIngredient('I', Material.IRON_BARS);
+                recipe.setIngredient('L', Material.SOUL_LANTERN);
                 recipe.setIngredient('A', Material.AMETHYST_SHARD);
             }
             case "chalice" -> {
-                // Epic: gilded chalice infused with amethyst and ghast tear
-                recipe.shape("GGG", "ATA", "GGG");
-                recipe.setIngredient('G', Material.GOLD_INGOT);
+                // Epic: Nether-forged chalice requiring rarer soul materials
+                recipe.shape("COC", "ATA", "COC");
+                recipe.setIngredient('C', Material.CRYING_OBSIDIAN);
+                recipe.setIngredient('O', Material.GOLD_INGOT);
                 recipe.setIngredient('A', Material.AMETHYST_SHARD);
                 recipe.setIngredient('T', Material.GHAST_TEAR);
             }
