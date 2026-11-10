@@ -2,6 +2,7 @@ package dev.gloved.glovedplugin.summon.soul.trap;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -11,7 +12,9 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionType;
 
 import java.util.*;
 
@@ -179,11 +182,34 @@ public class SoulTrapRecipeManager implements Listener {
         var key = new org.bukkit.NamespacedKey("gloved", "summon_trap");
         pdc.set(key, PersistentDataType.STRING, tier.id);
 
+        // Color the potion to match the soul rarity this trap tends to capture
+        if (meta instanceof PotionMeta potionMeta) {
+            potionMeta.setColor(potionColorForTier(tier));
+            try {
+                potionMeta.setBasePotionType(PotionType.WATER);
+            } catch (Throwable ignored) {
+                // Fallback for API differences; custom color is still applied
+            }
+        }
+
         // Allow stacking up to 64 (potions default to stack of 1)
         meta.setMaxStackSize(64);
 
         item.setItemMeta(meta);
         return item;
+    }
+
+    private static Color potionColorForTier(SoulTrapTier tier) {
+        if (tier == null) return Color.WHITE;
+        return switch (tier.id) {
+            case "snare" -> Color.fromRGB(255, 255, 255);   // Common (§f)
+            case "trap" -> Color.fromRGB(85, 255, 85);      // Uncommon (§a)
+            case "cage" -> Color.fromRGB(85, 85, 255);      // Rare (§9)
+            case "chalice" -> Color.fromRGB(170, 0, 170);   // Epic (§5)
+            case "relic" -> Color.fromRGB(255, 170, 0);     // Legendary (§6)
+            case "prism" -> Color.fromRGB(255, 85, 255);    // Mythic (§d)
+            default -> Color.WHITE;
+        };
     }
 
     private static String soulQualityLine(SoulTrapTier tier) {
