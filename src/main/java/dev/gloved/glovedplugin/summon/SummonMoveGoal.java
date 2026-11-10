@@ -4,9 +4,11 @@ import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.MinionAI.TargetIntent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -81,15 +83,28 @@ public class SummonMoveGoal implements Goal<Mob> {
             var pf = mob.getPathfinder();
             if (pf == null) return;
             LivingEntity target = mob.getTarget();
+            TargetIntent intent = readIntent(mob);
+            double speedMult = speedMultiplier(intent);
             if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())
                     && owner.getWorld().equals(mob.getWorld())) {
-                // Move toward our attack target every tick so the path stays current.
+                // Bodyguard positioning: when peeling a threat off the owner, path to a point
+                // between the owner and the threat so the minion interposes itself. Once in
+                // melee range, stop and let MinionAI handle the attack (knockback pushes
+                // the target away from the owner on every hit).
                 double distSq = mob.getLocation().distanceSquared(target.getLocation());
+                if (intent == TargetIntent.PEELING && distSq > MIN_CHASE_DIST_SQ) {
+                    Location interpose = interposeLocation(mob, owner, target);
+                    if (interpose != null) {
+                        pf.moveTo(interpose, mobSpeed(mob) * speedMult);
+                        try { mob.lookAt(target); } catch (Throwable ignored) {}
+                        return;
+                    }
+                }
                 if (distSq <= MIN_CHASE_DIST_SQ) {
                     // In melee range: stop pathfinding, let MinionAI handle the attack.
                     pf.stopPathfinding();
                 } else {
-                    pf.moveTo(target.getLocation(), mobSpeed(mob));
+                    pf.moveTo(target.getLocation(), mobSpeed(mob) * speedMult);
                     try { mob.lookAt(target); } catch (Throwable ignored) {}
                 }
                 return;
@@ -101,7 +116,7 @@ public class SummonMoveGoal implements Goal<Mob> {
                 pf.stopPathfinding();
                 return;
             }
-            pf.moveTo(owner.getLocation(), mobSpeed(mob) * 0.9);
+            pf.moveTo(owner.getLocation(), mobSpeed(mob) * speedMult);
             try { mob.lookAt(owner); } catch (Throwable ignored) {}
         } catch (Exception ignored) {}
     }
@@ -120,6 +135,61 @@ public class SummonMoveGoal implements Goal<Mob> {
             }
         } catch (Exception ignored) {}
         return 1.0;
+    }
+
+    /** Read the minion's current targeting intent from its PDC (set by MinionAI). */
+    private static TargetIntent readIntent(Mob mob) {
+        try {
+            NamespacedKey key = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_target_intent");
+            String val = mob.getPersistentDataContainer().get(key, PersistentDataType.STRING);
+            if (val != null) return TargetIntent.valueOf(val);
+        } catch (Throwable ignored) {}
+        return TargetIntent.IDLE;
+    }
+
+    /** Speed multiplier for each targeting intent. */
+    private static double speedMultiplier(TargetIntent intent) {
+        return switch (intent) {
+            case IDLE -> 1.0;       // normal follow speed
+            case DEFENSIVE -> 1.35; // get back to owner faster when hurt
+            case PEELING -> 1.6;    // close gap fast to protect owner
+            case FINISHING -> 1.25; // secure the kill quickly
+            case CHASING -> 1.0;    // normal pursuit speed
+        };
+    }
+
+    /**
+     * Compute a bodyguard interpose point: a location on the line between the owner and the
+     * threat, closer to the owner, so the minion positions itself between them.
+     * Returns null if the positions are degenerate.
+     */
+    private static Location interposeLocation(Mob mob, Player owner, LivingEntity threat) {
+        try {
+            Location oLoc = owner.getLocation();
+            Location tLoc = threat.getLocation();
+            // Vector from threat to owner
+            double dx = oLoc.getX() - tLoc.getX();
+            double dz = oLoc.getZ() - tLoc.getZ();
+            double dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 1.0) return null;
+            // Interpose point: 60% of the way from threat toward owner (closer to owner)
+            double t = 0.6;
+            double ix = tLoc.getX() + dx * t;
+            double iz = tLoc.getZ() + dz * t;
+            double iy = oLoc.getY();
+            Location interpose = oLoc.getWorld().getBlockAt((int) ix, (int) iy, (int) iz).getLocation();
+            interpose.setX(ix);
+            interpose.setZ(iz);
+            interpose.setY(iy);
+            // Don't interpose too close to the threat (melee range) or too far from owner
+            double d2ToThreat = interpose.distanceSquared(tLoc);
+            double d2ToOwner = interpose.distanceSquared(oLoc);
+            if (d2ToThreat < MIN_CHASE_DIST_SQ || d2ToOwner > 49.0) { // >7 blocks from owner
+                return null;
+            }
+            return interpose;
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     @Override

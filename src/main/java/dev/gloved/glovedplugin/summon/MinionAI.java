@@ -195,25 +195,80 @@ public class MinionAI {
         }
     }
 
+    /** Targeting intent for a minion - drives movement speed bursts and bodyguard positioning. */
+    public enum TargetIntent {
+        IDLE,           // following owner, normal speed
+        DEFENSIVE,      // minion low HP, staying near owner
+        PEELING,        // chasing threat attacking owner, high speed burst
+        FINISHING,      // chasing near-dead target, small speed burst
+        CHASING         // general pursuit, normal speed
+    }
+
+    /** Minion HP thresholds. */
+    private static final double MINION_LOW_HP_PCT = 0.30;
+    private static final double OWNER_LOW_HP_PCT = 0.30;
+    private static final double TARGET_NEAR_DEAD_PCT = 0.30;
+
+    /** Bodyguard radius: threats within this many blocks of the owner are urgent. */
+    private static final double BODYGUARD_RADIUS_SQ = 6.0 * 6.0;
+
+    /** Hysteresis: a new target must score this much higher to displace current target. */
+    private static final double TARGET_SWITCH_THRESHOLD = 1.25;
+
+    /** Per-owner target assignment counts for swarm-avoidance (minions spread out). */
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, Integer>> targetAssignments =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long ASSIGNMENT_TTL_MS = 10_000L;
+
+    /** Determine a minion's targeting intent from its current state and target. */
+    public static TargetIntent determineIntent(LivingEntity minion, Player owner, LivingEntity target) {
+        if (target == null) return TargetIntent.IDLE;
+        double minionHpPct = minion.getHealth() / minion.getMaxHealth();
+        if (minionHpPct < MINION_LOW_HP_PCT) return TargetIntent.DEFENSIVE;
+        if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+            if (mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId())) {
+                return TargetIntent.PEELING;
+            }
+        }
+        double targetHpPct = target.getHealth() / target.getMaxHealth();
+        if (targetHpPct < TARGET_NEAR_DEAD_PCT) return TargetIntent.FINISHING;
+        return TargetIntent.CHASING;
+    }
+
     /**
      * Score a candidate target for a minion. Priority stack:
-     * 1. Actively attacking the owner (peel threat off player)
+     * 1. Actively attacking the owner (peel threat off player) - boosted when owner is low HP
      * 2. Actively attacking this minion (hit back)
      * 3. Recently damaged the owner
      * 4. Recently damaged this minion
      * 5. Close to the owner (owner in danger - bodyguard)
      * 6. Close to the minion (self-defense tiebreaker)
+     * 7. Low target HP (easier to finish - clear threats fast)
+     * 8. Defensive penalty if minion is low HP and target is far from owner
      */
     private static double scoreTarget(Player owner, LivingEntity minion, LivingEntity target,
                                        Set<UUID> recentDamagerIds) {
         double score = 0.0;
         UUID tid = target.getUniqueId();
+        Location tLoc = target.getLocation();
+        Location mLoc = minion.getLocation();
+        Location oLoc = owner.getLocation();
+
+        double minionHpPct = minion.getHealth() / minion.getMaxHealth();
+        double ownerHpPct = owner.getHealth() / owner.getMaxHealth();
+        double targetHpPct = target.getHealth() / target.getMaxHealth();
+        boolean minionLowHp = minionHpPct < MINION_LOW_HP_PCT;
+        boolean ownerLowHp = ownerHpPct < OWNER_LOW_HP_PCT;
+
+        double d2Owner = tLoc.distanceSquared(oLoc);
+        double d2Minion = mLoc.distanceSquared(tLoc);
 
         // 1. Actively attacking the owner - highest priority
         if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
             UUID mobTarget = mobEnt.getTarget().getUniqueId();
             if (mobTarget.equals(owner.getUniqueId())) {
                 score += 10_000_000.0; // attacking owner - must peel
+                if (ownerLowHp) score += 5_000_000.0; // owner dying - extra urgent
             } else if (mobTarget.equals(minion.getUniqueId())) {
                 score += 5_000_000.0; // attacking this minion - hit back
             }
@@ -230,17 +285,66 @@ public class MinionAI {
         }
 
         // 4. Close to the owner - owner is in danger (bodyguard radius ~6 blocks)
-        double d2Owner = target.getLocation().distanceSquared(owner.getLocation());
-        double ownerThreatRadiusSq = 6.0 * 6.0;
-        if (d2Owner <= ownerThreatRadiusSq) {
-            score += (1.0 - d2Owner / ownerThreatRadiusSq) * 500_000.0;
+        if (d2Owner <= BODYGUARD_RADIUS_SQ) {
+            score += (1.0 - d2Owner / BODYGUARD_RADIUS_SQ) * 500_000.0;
         }
 
         // 5. Close to the minion - self-defense tiebreaker
-        double d2Minion = minion.getLocation().distanceSquared(target.getLocation());
         score += Math.max(0.0, 10000.0 - Math.min(d2Minion, 10000.0)) * 0.001;
 
+        // 6. Target HP - lower is easier to finish; near-dead targets get a bonus
+        if (targetHpPct < 0.5) {
+            score += (1.0 - targetHpPct) * 200_000.0; // up to +100k for almost-dead
+        }
+
+        // 7. Defensive modifier: low-HP minion should not chase far from owner
+        if (minionLowHp && d2Owner > 100.0) { // more than 10 blocks from owner
+            score *= 0.5; // penalize distant targets when hurt
+        }
+
+        // 8. Swarm avoidance: if many minions already target this enemy, deprioritize
+        int assignmentCount = getTargetAssignmentCount(owner.getUniqueId(), tid);
+        if (assignmentCount >= 1) {
+            score -= assignmentCount * 300_000.0; // spread minions across multiple enemies
+        }
+
         return score;
+    }
+
+    private static int getTargetAssignmentCount(UUID ownerId, UUID targetId) {
+        var map = targetAssignments.get(ownerId);
+        if (map == null) return 0;
+        Integer v = map.get(targetId);
+        return v == null ? 0 : v;
+    }
+
+    private static void setTargetAssignmentCount(UUID ownerId, UUID targetId, int count) {
+        targetAssignments.computeIfAbsent(ownerId, k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(targetId, count);
+    }
+
+    public static void clearTargetAssignment(UUID ownerId, UUID targetId) {
+        var map = targetAssignments.get(ownerId);
+        if (map != null) {
+            map.remove(targetId);
+            if (map.isEmpty()) targetAssignments.remove(ownerId);
+        }
+    }
+
+    /** Record that a minion is now targeting a target (for swarm avoidance). */
+    public static void recordTargetAssignment(UUID ownerId, LivingEntity minion, LivingEntity target) {
+        if (ownerId == null || target == null) return;
+        var map = targetAssignments.computeIfAbsent(ownerId, k -> new java.util.concurrent.ConcurrentHashMap<>());
+        map.merge(target.getUniqueId(), 1, Integer::sum);
+    }
+
+    /** Store targeting intent on the minion's PDC so SummonMoveGoal can read it for speed bursts. */
+    public static void storeIntent(LivingEntity minion, TargetIntent intent) {
+        if (minion == null) return;
+        try {
+            NamespacedKey key = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_target_intent");
+            minion.getPersistentDataContainer().set(key, PersistentDataType.STRING, intent.name());
+        } catch (Throwable ignored) {}
     }
 
     public void monitorMinion(LivingEntity minion, Player owner, SummonProfile profile) {
@@ -255,6 +359,8 @@ public class MinionAI {
             double lastFollowDist = Double.MAX_VALUE;
             long followStuckSince = 0L;
             long followUnreachableSince = 0L;
+            UUID previousAssignmentTarget = null;
+            TargetIntent currentIntent = TargetIntent.IDLE;
             Location navGoal = null;
             long navGoalTick = -1L;
             long lastOwnerReachCheck = -1000L;
@@ -310,6 +416,10 @@ public class MinionAI {
             public void run() {
                 try {
                 if (minion.isDead() || !tracker.isSummoned(minion.getUniqueId())) {
+                    // Clear swarm assignment so other minions aren't penalized for a dead target.
+                    if (previousAssignmentTarget != null) {
+                        clearTargetAssignment(owner.getUniqueId(), previousAssignmentTarget);
+                    }
                     cancel();
                     return;
                 }
@@ -415,8 +525,9 @@ public class MinionAI {
                     return d2Owner > maxTargetSq && d2Minion > maxTargetSq;
                 });
 
-                // Per-minion target selection: filter by reachability, score by owner-defensive
-                // priority, pick best target with stickiness. No shared coordinator state.
+                // Per-minion target selection: filter by reachability, score by smart owner-defensive
+                // priority (HP-aware, target-HP-aware, swarm-aware), pick best target with stickiness.
+                // Track target assignments for swarm avoidance across minions of the same owner.
                 List<ScoredTarget> scored = new ArrayList<>();
                 double maxChaseSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
                 for (LivingEntity le : candidates) {
@@ -447,7 +558,8 @@ public class MinionAI {
                 LivingEntity newTarget = null;
                 if (!scored.isEmpty()) {
                     LivingEntity best = scored.get(0).entity;
-                    // Stickiness: keep current target unless a much higher-priority target appears.
+                    // Stickiness with hysteresis: keep current target unless a much higher-priority
+                    // target appears (>= 25% higher score). Low-HP targets are preferred for finishing.
                     if (lastTarget != null && !lastTarget.isDead()
                             && !CombatTargetRules.isProtected(plugin, owner, lastTarget)) {
                         Double currentScore = null;
@@ -458,7 +570,7 @@ public class MinionAI {
                                 break;
                             }
                         }
-                        if (currentScore != null && bestScore <= currentScore * 1.25) {
+                        if (currentScore != null && bestScore <= currentScore * TARGET_SWITCH_THRESHOLD) {
                             newTarget = lastTarget;
                         } else {
                             newTarget = best;
@@ -479,13 +591,23 @@ public class MinionAI {
                     lastTarget = target;
                     lastTargetTick = now;
                 } else {
-                    // Fallback to memory briefly if coordinator yielded nothing but recent target may still be valid
+                    // Fallback to memory briefly if no scored target but recent target may still be valid
                     if (lastTarget != null && now - lastTargetTick < 40 && !lastTarget.isDead()
                             && !CombatTargetRules.isProtected(plugin, owner, lastTarget)) {
                         target = lastTarget;
                     } else {
                         lastTarget = null;
                     }
+                }
+
+                // Track target assignments for swarm avoidance: clear old, record new.
+                // Done after the dead/protected check so we don't track invalid targets.
+                if (previousAssignmentTarget != null) {
+                    clearTargetAssignment(owner.getUniqueId(), previousAssignmentTarget);
+                }
+                if (target != null) {
+                    recordTargetAssignment(owner.getUniqueId(), minion, target);
+                    previousAssignmentTarget = target.getUniqueId();
                 }
 
                 // A newly acquired target should not be gated by a stale attack cooldown
@@ -495,6 +617,12 @@ public class MinionAI {
                         && !target.getUniqueId().equals(previousLastTarget.getUniqueId())) {
                     lastAttackTick = 0L;
                 }
+
+                // Determine and store targeting intent so SummonMoveGoal can apply speed bursts
+                // and bodyguard positioning.
+                TargetIntent intent = determineIntent(minion, owner, target);
+                storeIntent(minion, intent);
+                currentIntent = intent;
 
                 // Unreachable target detection: drop target if distance hasn't improved for ~5s
                 if (target != null) {
