@@ -176,12 +176,12 @@ public class SoulService {
         CollectResult res = persistSoulToVault(killer, soul, cfg, false, true);
         if (res.stored()) {
             playCaptureFeedback(killer, soul, false, 0, fromMinionKill);
-            playCaptureTrail(from, killer, soul);
+            playSoulTrail(from, killer.getLocation().add(0, 1.0, 0), soul);
             debug("Captured soul " + soul.getRarity() + " " + soul.getFamilyKey() + " for " + killer.getName() + " (lvl=" + level + ", minionKill=" + fromMinionKill + ")");
             return new CaptureResult(true, soul, "stored", false);
         } else if (res.convertedToEssence()) {
             playCaptureFeedback(killer, soul, true, res.essence(), fromMinionKill);
-            playCaptureTrail(from, killer, soul);
+            playSoulTrail(from, killer.getLocation().add(0, 1.0, 0), soul);
             debug("Captured soul (essence) " + soul.getRarity() + " " + soul.getFamilyKey() + " for " + killer.getName());
             return new CaptureResult(true, soul, "vault-full-converted", true);
         }
@@ -358,12 +358,13 @@ public class SoulService {
         } catch (Throwable ignored) {}
     }
 
-    /** Visual trail from capture source to player when a soul is captured. */
-    private void playCaptureTrail(Location from, Player toPlayer, SoulInstance soul) {
+    /** Visual trail from start location to end location (e.g. capture→player, player→minion on summon, minion→player on despawn). */
+    public void playSoulTrail(Location start, Location end, SoulInstance soul) {
         try {
-            if (from == null || toPlayer == null || from.getWorld() == null) return;
-            if (!from.getWorld().equals(toPlayer.getWorld())) return;
-            final Location start = from.clone();
+            if (start == null || end == null || start.getWorld() == null) return;
+            if (!start.getWorld().equals(end.getWorld())) return;
+            final Location trailStart = start.clone();
+            final Location trailEnd = end.clone();
             final int durationTicks = 14;
             final org.bukkit.scheduler.BukkitRunnable task = new org.bukkit.scheduler.BukkitRunnable() {
                 int tick = 0;
@@ -371,27 +372,27 @@ public class SoulService {
                 @Override
                 public void run() {
                     try {
-                        if (!toPlayer.isOnline() || toPlayer.getWorld() == null || !toPlayer.getWorld().equals(start.getWorld())) {
+                        if (trailEnd.getWorld() == null || !trailEnd.getWorld().equals(trailStart.getWorld())) {
                             cancel();
                             return;
                         }
-                        Location target = toPlayer.getLocation().clone().add(0, 1.0, 0);
+                        Location target = trailEnd.clone();
                         double progress = Math.min(1.0, tick / (double) durationTicks);
-                        // leading point moves toward player over time
+                        // leading point moves toward target over time
                         double lead = Math.min(1.0, progress * 1.15);
                         double trailLen = 0.35;
                         double tail = Math.max(0.0, lead - trailLen);
                         int steps = 10;
                         for (int i = 0; i <= steps; i++) {
                             double t = tail + (lead - tail) * (i / (double) steps);
-                            Location p = start.clone().add(target.clone().subtract(start).multiply(t));
-                            start.getWorld().spawnParticle(org.bukkit.Particle.SOUL, p, 1, 0.02, 0.02, 0.02, 0.0);
+                            Location p = trailStart.clone().add(target.clone().subtract(trailStart).multiply(t));
+                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.SOUL, p, 1, 0.02, 0.02, 0.02, 0.0);
                             if (i % 2 == 0) {
-                                start.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, p, 1, 0.01, 0.01, 0.01, 0.0);
+                                trailStart.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, p, 1, 0.01, 0.01, 0.01, 0.0);
                             }
                         }
                         if (progress >= 0.95) {
-                            start.getWorld().spawnParticle(org.bukkit.Particle.END_ROD, target, 6, 0.15, 0.2, 0.15, 0.01);
+                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.END_ROD, target, 6, 0.15, 0.2, 0.15, 0.01);
                         }
                         tick++;
                         if (tick > durationTicks) cancel();
@@ -402,7 +403,7 @@ public class SoulService {
             };
             task.runTaskTimer(plugin, 0L, 1L);
         } catch (Throwable t) {
-            GlovedPlugin.logDebug("[Souls] playCaptureTrail failed: " + t);
+            GlovedPlugin.logDebug("[Souls] playSoulTrail failed: " + t);
         }
     }
 

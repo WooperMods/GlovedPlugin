@@ -11,6 +11,7 @@ import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -197,6 +198,21 @@ public class SummonManager {
         }
         if (!spawned.isEmpty()) {
             playSummonEffects(player, spawnLoc, spawned.size());
+            // Trail from player head to first spawned minion
+            try {
+                var soulService = plugin.getSoulService();
+                if (soulService != null) {
+                    UUID firstId = spawned.iterator().next();
+                    Entity firstEnt = Bukkit.getEntity(firstId);
+                    LivingEntity firstMinion = firstEnt instanceof LivingEntity le ? le : null;
+                    if (firstMinion != null && !firstMinion.isDead()) {
+                        soulService.playSoulTrail(
+                                player.getLocation().add(0, 1.0, 0),
+                                firstMinion.getLocation().add(0, firstMinion.getHeight() * 0.5, 0),
+                                null);
+                    }
+                }
+            } catch (Throwable ignored) {}
             GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName() + " (soul-cast=" + (soul != null) + ")");
         }
         return spawned.size();

@@ -54,6 +54,21 @@ public class SummonInstanceTracker {
         }
         if (le != null && !le.isDead()) {
             playDespawnVFX(le);
+            // Trail from minion to player head on despawn
+            try {
+                if (playerId != null) {
+                    var player = Bukkit.getPlayer(playerId);
+                    if (player != null && player.isOnline() && player.getWorld().equals(le.getWorld())) {
+                        var soulService = plugin.getSoulService();
+                        if (soulService != null) {
+                            soulService.playSoulTrail(
+                                    le.getLocation().add(0, le.getHeight() * 0.5, 0),
+                                    player.getLocation().add(0, 1.0, 0),
+                                    null);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
             le.remove();
         }
     }
