@@ -226,6 +226,9 @@ public class MinionAI {
         double minionHpPct = minion.getHealth() / minion.getMaxHealth();
         if (minionHpPct < MINION_LOW_HP_PCT) return TargetIntent.DEFENSIVE;
         if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+            if (mobEnt.getTarget().getUniqueId().equals(minion.getUniqueId())) {
+                return TargetIntent.CHASING; // hitting back at our attacker - survival first
+            }
             if (mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId())) {
                 return TargetIntent.PEELING;
             }
@@ -236,19 +239,21 @@ public class MinionAI {
     }
 
     /**
-     * Score a candidate target for a minion. The balance between self-preservation and
-     * owner-protection scales with the minion's current HP:
+     * Score a candidate target for a minion. Self-preservation always comes first:
+     * a minion that is being attacked will handle that threat before anything else,
+     * regardless of HP. When not under immediate threat, the balance between
+     * self-preservation and owner-protection scales with current HP:
      *
      *   - At full HP: protect the owner at all costs (except death to self).
      *   - As HP drops: self-preservation becomes increasingly important.
      *   - At near-death: stay defensive, don't over-extend, prioritize survival.
      *
      * Priority stack:
-     * 1. Actively attacking this minion (survival - hit back first)
-     * 2. Actively attacking the owner (peel threat off player)
+     * 1. Actively attacking this minion (survival - always #1)
+     * 2. Close to the minion (immediate self-defense threat)
      * 3. Recently damaged this minion
-     * 4. Recently damaged the owner
-     * 5. Close to the minion (immediate self-defense threat)
+     * 4. Actively attacking the owner (peel threat off player)
+     * 5. Recently damaged the owner
      * 6. Close to the owner (bodyguard - owner in danger)
      * 7. Low target HP (easier to finish - clear threats fast)
      */
@@ -263,7 +268,6 @@ public class MinionAI {
         double minionHpPct = minion.getHealth() / minion.getMaxHealth();
         double ownerHpPct = owner.getHealth() / owner.getMaxHealth();
         double targetHpPct = target.getHealth() / target.getMaxHealth();
-        boolean minionLowHp = minionHpPct < MINION_LOW_HP_PCT;
         boolean ownerLowHp = ownerHpPct < OWNER_LOW_HP_PCT;
 
         // Self-preservation weight scales inversely with minion HP:
@@ -274,38 +278,36 @@ public class MinionAI {
         double d2Owner = tLoc.distanceSquared(oLoc);
         double d2Minion = mLoc.distanceSquared(tLoc);
 
-        // 1. Actively attacking this minion - survival is #1, scaled by how hurt we are
+        // 1. Actively attacking this minion - survival is ALWAYS #1
         if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
             UUID mobTarget = mobEnt.getTarget().getUniqueId();
             if (mobTarget.equals(minion.getUniqueId())) {
-                double base = 10_000_000.0;
-                score += base * (0.5 + selfWeight); // more urgent the lower our HP
+                score += 15_000_000.0; // attacking me - must handle first, always
             } else if (mobTarget.equals(owner.getUniqueId())) {
-                // attacking owner - peel, but weighted by how much HP we have to spare
-                double base = 10_000_000.0 * ownerWeight;
-                score += base; // full HP -> full peel urgency, low HP -> less
-                if (ownerLowHp) score += 2_000_000.0 * ownerWeight; // owner dying
+                // attacking owner - peel, weighted by how much HP we have to spare
+                score += 10_000_000.0 * ownerWeight; // full HP -> full peel urgency
+                if (ownerLowHp) score += 3_000_000.0 * ownerWeight; // owner dying
             }
         }
 
-        // 2. Recently damaged this minion (hit back for survival)
+        // 2. Close to the minion - immediate self-defense threat (always high priority)
+        double closeToMinionBonus = Math.max(0.0, 8.0 - Math.sqrt(d2Minion)) / 8.0; // 1.0 at melee, 0 at 8 blocks
+        score += closeToMinionBonus * 12_000_000.0; // right next to me = huge priority
+
+        // 3. Recently damaged this minion (hit back for survival)
         if (MinionAI.getRecentDamagers(minion).contains(tid)) {
-            score += 3_000_000.0 * (0.5 + selfWeight);
+            score += 5_000_000.0 * (0.5 + selfWeight);
         }
 
-        // 3. Recently damaged the owner
+        // 4. Recently damaged the owner
         if (recentDamagerIds != null && recentDamagerIds.contains(tid)) {
             score += 2_000_000.0 * ownerWeight;
         }
 
-        // 4. Close to the minion - immediate self-defense threat (scaled by self-preservation)
-        double closeToMinionBonus = Math.max(0.0, 8.0 - Math.sqrt(d2Minion)) / 8.0; // 1.0 at melee, 0 at 8 blocks
-        score += closeToMinionBonus * 2_000_000.0 * (0.5 + selfWeight);
-
         // 5. Close to the owner - owner is in danger (bodyguard radius ~6 blocks)
         if (d2Owner <= BODYGUARD_RADIUS_SQ) {
             double ownerDanger = (1.0 - d2Owner / BODYGUARD_RADIUS_SQ); // 1.0 right on owner
-            score += ownerDanger * 1_500_000.0 * ownerWeight;
+            score += ownerDanger * 2_000_000.0 * ownerWeight;
         }
 
         // 6. Target HP - lower is easier to finish; near-dead targets get a bonus
