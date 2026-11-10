@@ -81,6 +81,11 @@ public class SoulTrapRecipeManager implements Listener {
     }
 
     /** Build the trap ItemStack with custom name, lore, and PDC tag. */
+    public static ItemStack createTrapItem(SoulTrapTier tier) {
+        return buildTrapItem(tier);
+    }
+
+    /** Build the trap ItemStack with custom name, lore, and PDC tag. */
     private static ItemStack buildTrapItem(SoulTrapTier tier) {
         ItemStack item = new ItemStack(Material.POTION, 1);
         var meta = item.getItemMeta();

@@ -399,6 +399,7 @@ public class GlovedCommand implements BasicCommand {
             case "menu", "vault", "gui" -> handleSoulMenu(source, args, svc);
             case "cast", "summon" -> handleSoulCast(source, svc);
             case "codex" -> handleSoulCodex(source, args, svc);
+            case "trap", "traps" -> handleSoulTrapGive(source, args);
             case "help" -> handleSoulHelp(source);
             default -> handleSoulHelp(source);
         }
@@ -777,11 +778,62 @@ public class GlovedCommand implements BasicCommand {
         }
     }
 
+    private void handleSoulTrapGive(CommandSourceStack source, String[] args) {
+        // /gloved soul trap <tier> [amount] [player]
+        if (args.length < 3) {
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul trap <snare|trap|cage|chalice|relic|prism> [amount] [player]"));
+            return;
+        }
+        var tier = dev.gloved.glovedplugin.summon.soul.trap.SoulTrapTier.fromId(args[2].toLowerCase(Locale.ROOT));
+        if (tier == null) {
+            source.getSender().sendMessage(Component.text("Unknown trap tier: " + args[2] + " (expected snare|trap|cage|chalice|relic|prism)", net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
+        int amount = 1;
+        Player target = null;
+        if (args.length >= 4) {
+            try {
+                amount = Integer.parseInt(args[3]);
+            } catch (Exception ignored) {
+                target = Bukkit.getPlayerExact(args[3]);
+                if (target == null) target = Bukkit.getPlayer(args[3]);
+                if (target == null) {
+                    source.getSender().sendMessage(Component.text("Invalid amount or player: " + args[3], net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+            }
+        }
+        if (args.length >= 5) {
+            target = Bukkit.getPlayerExact(args[4]);
+            if (target == null) target = Bukkit.getPlayer(args[4]);
+            if (target == null) {
+                source.getSender().sendMessage(Component.text("Player not found: " + args[4], net.kyori.adventure.text.format.NamedTextColor.RED));
+                return;
+            }
+        }
+        if (target == null) {
+            if (source.getSender() instanceof Player p) target = p;
+            else {
+                source.getSender().sendMessage(Component.text("Console must specify a player: /gloved soul trap <tier> [amount] <player>"));
+                return;
+            }
+        }
+        amount = Math.max(1, Math.min(64, amount));
+        var item = dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager.createTrapItem(tier);
+        item.setAmount(amount);
+        var leftover = target.getInventory().addItem(item);
+        if (!leftover.isEmpty()) {
+            for (var drop : leftover.values()) target.getWorld().dropItemNaturally(target.getLocation(), drop);
+        }
+        source.getSender().sendMessage(Component.text("Gave " + amount + "x " + tier.displayName.replace("&", "§") + " §ato " + target.getName(), net.kyori.adventure.text.format.NamedTextColor.GREEN));
+    }
+
     private void handleSoulHelp(CommandSourceStack source) {
         source.getSender().sendMessage(Component.text("=== Gloved Soul Commands ===", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
         source.getSender().sendMessage(Component.text("/gloved soul menu|cast|list|info|codex|loadout|select <slot>|equip <slot> <id>|unequip <slot>", net.kyori.adventure.text.format.NamedTextColor.GRAY));
         source.getSender().sendMessage(Component.text("/gloved soul inspect <id> | compare <idA> <idB> | lock <id> | favorite <id> | salvage <id>", net.kyori.adventure.text.format.NamedTextColor.GRAY));
         source.getSender().sendMessage(Component.text("/gloved soul give <player> <ENTITY_TYPE> [rarity] | simulate <ENTITY_TYPE> [rarity] [count]", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+        source.getSender().sendMessage(Component.text("/gloved soul trap <tier> [amount] [player] - give a soul trap item", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         source.getSender().sendMessage(Component.text("Soul Focus (hotbar slot 9): Right-click = Vault, Left-click = Cast selected soul", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
         source.getSender().sendMessage(Component.text("Permission: gloved.soul", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
     }
@@ -791,7 +843,7 @@ public class GlovedCommand implements BasicCommand {
         java.util.function.Predicate<String> match = s -> q.isEmpty() || s.toLowerCase(Locale.ROOT).startsWith(q);
         if (args.length == 2) {
             java.util.List<String> subs = new ArrayList<>();
-            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare")) {
+            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare", "trap")) {
                 if (match.test(s)) subs.add(s);
             }
             return subs;
@@ -802,6 +854,11 @@ public class GlovedCommand implements BasicCommand {
                 List<String> out = new ArrayList<>();
                 for (Player p : Bukkit.getOnlinePlayers()) if (match.test(p.getName())) out.add(p.getName());
                 if (sub.equals("codex")) for (String n : List.of("10","20","50")) if (match.test(n)) out.add(n);
+                return out;
+            }
+            if (sub.equals("trap") || sub.equals("traps")) {
+                java.util.List<String> out = new ArrayList<>();
+                for (String t : List.of("snare", "trap", "cage", "chalice", "relic", "prism")) if (match.test(t)) out.add(t);
                 return out;
             }
             if (sub.equals("list")) {
@@ -841,6 +898,12 @@ public class GlovedCommand implements BasicCommand {
                 for (String n : List.of("1","3","5","10")) if (match.test(n)) out.add(n);
                 return out;
             }
+            if (sub.equals("trap") || sub.equals("traps")) {
+                List<String> out = new ArrayList<>();
+                for (String n : List.of("1","4","16","32","64")) if (match.test(n)) out.add(n);
+                for (Player p : Bukkit.getOnlinePlayers()) if (match.test(p.getName())) out.add(p.getName());
+                return out;
+            }
             if (sub.equals("list")) {
                 List<String> out = new ArrayList<>();
                 for (String n : List.of("1","2","3","4","5")) if (match.test(n)) out.add(n);
@@ -853,6 +916,11 @@ public class GlovedCommand implements BasicCommand {
             if (sub.equals("simulate") || sub.equals("sim")) {
                 List<String> out = new ArrayList<>();
                 for (String n : List.of("1","3","5","10","20")) if (match.test(n)) out.add(n);
+                return out;
+            }
+            if (sub.equals("trap") || sub.equals("traps")) {
+                List<String> out = new ArrayList<>();
+                for (Player p : Bukkit.getOnlinePlayers()) if (match.test(p.getName())) out.add(p.getName());
                 return out;
             }
         }
