@@ -179,6 +179,17 @@ public class SoulItemListener implements Listener {
             }
             if (a == Action.LEFT_CLICK_AIR || a == Action.LEFT_CLICK_BLOCK) {
                 event.setCancelled(true);
+                if (player.isSneaking()) {
+                    var tracker = plugin.getSummonTracker();
+                    if (tracker == null) {
+                        player.sendMessage("§cSummon system unavailable.");
+                        return;
+                    }
+                    tracker.removeAllForPlayer(player.getUniqueId());
+                    player.sendMessage("§7Despawned all your active minions.");
+                    player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.6f, 1.4f);
+                    return;
+                }
                 SoulService svc = plugin.getSoulService();
                 if (svc == null) {
                     player.sendMessage("§cSoul system unavailable.");
