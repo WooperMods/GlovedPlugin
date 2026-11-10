@@ -60,12 +60,34 @@ public class SummonListener implements Listener {
         try {
             LivingEntity damager = resolveDamager(event.getDamager());
 
-            // Minions are not damageable by their owner
+            // Minions are not damageable by their owner, and cannot be damaged by other players
+            // (or their minions) when PvP is disabled between the parties or in non-PvP zones.
             if (tracker != null && event.getEntity() instanceof LivingEntity victim) {
                 UUID ownerId = tracker.getOwner(victim.getUniqueId());
-                if (ownerId != null && damager instanceof Player owner && owner.getUniqueId().equals(ownerId)) {
-                    event.setCancelled(true);
-                    return;
+                if (ownerId != null) {
+                    if (damager instanceof Player damagerPlayer) {
+                        // Owner can't damage their own minion
+                        if (damagerPlayer.getUniqueId().equals(ownerId)) {
+                            event.setCancelled(true);
+                            return;
+                        }
+                        // Other players can't damage this minion in non-PvP contexts
+                        if (dev.gloved.glovedplugin.combat.CombatTargetRules.isProtected(plugin, damagerPlayer, victim)) {
+                            event.setCancelled(true);
+                            return;
+                        }
+                    } else if (damager != null) {
+                        // Damage caused by another summoned minion: apply the same PvP/zone rules
+                        UUID damagerOwnerId = tracker.getOwner(damager.getUniqueId());
+                        if (damagerOwnerId != null && !damagerOwnerId.equals(ownerId)) {
+                            Player damagerOwner = Bukkit.getPlayer(damagerOwnerId);
+                            if (damagerOwner == null
+                                    || dev.gloved.glovedplugin.combat.CombatTargetRules.isProtected(plugin, damagerOwner, victim)) {
+                                event.setCancelled(true);
+                                return;
+                            }
+                        }
+                    }
                 }
             }
 
