@@ -17,6 +17,8 @@ import java.util.*;
  */
 public class SoulTrapRecipeManager {
     private final GlovedPlugin plugin;
+    private final net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer serializer =
+            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand();
 
     public SoulTrapRecipeManager(GlovedPlugin plugin) {
         this.plugin = plugin;
@@ -58,21 +60,27 @@ public class SoulTrapRecipeManager {
         var meta = item.getItemMeta();
         if (meta == null) return item;
 
-        // Custom display name with color codes
-        net.kyori.adventure.text.Component displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
-                .deserialize(tier.displayName);
+        net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer serializer =
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand();
+
+        // Custom display name with color codes, no italics
+        net.kyori.adventure.text.Component displayName = serializer.deserialize(tier.displayName)
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false);
         meta.displayName(displayName);
 
         // Lore describing the trap
         List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
         lore.add(net.kyori.adventure.text.Component.empty());
-        lore.add(net.kyori.adventure.text.Component.text(
-                "§7Capture a mob's soul without killing it."));
-        lore.add(net.kyori.adventure.text.Component.text(
-                String.format("§7Success: §f%d%%", (int) Math.round(tier.successChance * 100))));
+        lore.add(serializer.deserialize(
+                "§7Capture a mob's soul without killing it.")
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+        lore.add(serializer.deserialize(
+                String.format("§7Success: §f%d%%", (int) Math.round(tier.successChance * 100)))
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
         lore.add(net.kyori.adventure.text.Component.empty());
-        lore.add(net.kyori.adventure.text.Component.text(
-                "§7Right-click a living mob to attempt capture."));
+        lore.add(serializer.deserialize(
+                "§7Right-click a living mob to attempt capture.")
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
         meta.lore(lore);
 
         // PDC tag so listeners can identify the trap tier

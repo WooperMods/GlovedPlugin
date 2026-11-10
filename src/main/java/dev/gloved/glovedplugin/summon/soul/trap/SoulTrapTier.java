@@ -61,7 +61,7 @@ public final class SoulTrapTier {
                 new MaterialIngredient(Material.ARROW, 1),
                 new MaterialIngredient(Material.GLASS_BOTTLE, 1)
         );
-        return new SoulTrapTier("trap", "&7Soul Trap", ingredients, List.of(),
+        return new SoulTrapTier("trap", "&aSoul Trap", ingredients, List.of(),
                 0.55, SoulRarity.UNCOMMON, 1,
                 PotionEffectType.SLOWNESS, 2, 900, 5.0);
     }
@@ -73,7 +73,7 @@ public final class SoulTrapTier {
                 new MaterialIngredient(Material.IRON_BARS, 1),
                 new MaterialIngredient(Material.AMETHYST_SHARD, 1)
         );
-        return new SoulTrapTier("cage", "&fSoul Cage", ingredients, List.of(),
+        return new SoulTrapTier("cage", "&9Soul Cage", ingredients, List.of(),
                 0.70, SoulRarity.RARE, 2,
                 PotionEffectType.WEAKNESS, 1, 1200, 5.0);
     }
@@ -88,7 +88,7 @@ public final class SoulTrapTier {
         List<MaterialIngredient> extra = List.of(
                 new MaterialIngredient(Material.GHAST_TEAR, 1)
         );
-        return new SoulTrapTier("chalice", "&6Soul Chalice", ingredients, extra,
+        return new SoulTrapTier("chalice", "&5Soul Chalice", ingredients, extra,
                 0.85, SoulRarity.EPIC, 3,
                 PotionEffectType.POISON, 1, 1800, 5.0);
     }
@@ -102,7 +102,7 @@ public final class SoulTrapTier {
         List<MaterialIngredient> extra = List.of(
                 new MaterialIngredient(Material.EXPERIENCE_BOTTLE, 1)
         );
-        return new SoulTrapTier("relic", "&bSoul Relic", ingredients, extra,
+        return new SoulTrapTier("relic", "&6Soul Relic", ingredients, extra,
                 0.95, SoulRarity.LEGENDARY, 4,
                 PotionEffectType.BLINDNESS, 1, 2400, 5.0);
     }
@@ -116,7 +116,7 @@ public final class SoulTrapTier {
         List<MaterialIngredient> extra = List.of(
                 new MaterialIngredient(Material.DRAGON_BREATH, 1)
         );
-        return new SoulTrapTier("prism", "&fSoul Prism", ingredients, extra,
+        return new SoulTrapTier("prism", "&dSoul Prism", ingredients, extra,
                 1.00, SoulRarity.MYTHIC, 5,
                 PotionEffectType.WITHER, 1, 3600, 5.0);
     }
