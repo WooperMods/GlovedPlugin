@@ -179,8 +179,10 @@ public class SoulVaultInv implements InventoryHolder {
             Component rarityName = soul.getRarity().coloredNameComponent();
             Component rest = (soul.getRarity() == SoulRarity.MYTHIC)
                     ? Component.text(" " + mobName + " Soul ", net.kyori.adventure.text.format.NamedTextColor.RED)
+                            .decoration(TextDecoration.BOLD, false)
                     : Component.text(" " + mobName + " Soul ", soul.getRarity().getColor());
-            Component name = rarityName
+            Component name = Component.empty()
+                    .append(rarityName)
                     .append(rest)
                     .append(Component.text("(" + q + ")", net.kyori.adventure.text.format.NamedTextColor.GRAY))
                     .decoration(TextDecoration.ITALIC, false);
