@@ -295,6 +295,7 @@ public class MinionAI {
                         target = null;
                     }
                 }
+                LivingEntity previousLastTarget = lastTarget;
                 if (target != null) {
                     lastTarget = target;
                     lastTargetTick = now;
@@ -306,6 +307,14 @@ public class MinionAI {
                     } else {
                         lastTarget = null;
                     }
+                }
+
+                // A newly acquired target should not be gated by a stale attack cooldown
+                // left over from a previous target.
+                if (target != null
+                        && previousLastTarget != null
+                        && !target.getUniqueId().equals(previousLastTarget.getUniqueId())) {
+                    lastAttackTick = 0L;
                 }
 
                 // Unreachable target detection: drop target if distance hasn't improved for ~5s
