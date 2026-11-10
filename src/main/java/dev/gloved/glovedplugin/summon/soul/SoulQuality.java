@@ -2,7 +2,15 @@ package dev.gloved.glovedplugin.summon.soul;
 
 import java.util.List;
 
-/** Computes soul quality as average percentage of affix rolls vs their max possible values. */
+/**
+ * Computes soul quality so that it is tightly integrated with rarity.
+ *
+ * <p>Quality is no longer just "average affix roll vs that rarity's max" (which made a perfect
+ * common look as good as a perfect legendary). Instead each rarity owns a quality band:
+ * rarity sets the floor and the range, and affix rolls determine where within the band the
+ * soul lands. A common can never reach legendary quality and a legendary never drops to common
+ * quality.</p>
+ */
 public final class SoulQuality {
     private SoulQuality() {}
 
@@ -18,16 +26,16 @@ public final class SoulQuality {
         };
     }
 
-    /** Flat quality bonus added by rarity, so higher-rarity souls inherently score higher quality. */
-    public static double rarityQualityBonus(SoulRarity rarity) {
+    /** Base quality floor for each rarity (quality when affixes roll at their minimum). */
+    public static double baseQuality(SoulRarity rarity) {
         if (rarity == null) return 0.0;
         return switch (rarity) {
-            case COMMON -> 0.0;
-            case UNCOMMON -> 5.0;
-            case RARE -> 10.0;
-            case EPIC -> 15.0;
-            case LEGENDARY -> 20.0;
-            case MYTHIC -> 25.0;
+            case COMMON -> 20.0;
+            case UNCOMMON -> 35.0;
+            case RARE -> 50.0;
+            case EPIC -> 65.0;
+            case LEGENDARY -> 80.0;
+            case MYTHIC -> 90.0;
         };
     }
 
@@ -44,15 +52,23 @@ public final class SoulQuality {
         };
     }
 
-    /** Average percentage (0..100) of all affix stats compared to their max for the soul's rarity,
-     *  plus a rarity-based quality bonus so higher rarities inherently score higher. */
-    public static double percent(SoulInstance soul) {
-        if (soul == null) return 0.0;
-        return percent(soul.getRarity(), soul.getAffixes());
+    /** Quality variance range for each rarity (max attainable quality minus {@link #baseQuality}). */
+    public static double qualityRange(SoulRarity rarity) {
+        if (rarity == null) return 0.0;
+        return switch (rarity) {
+            case COMMON -> 20.0;   // 20-40%
+            case UNCOMMON -> 20.0; // 35-55%
+            case RARE -> 20.0;     // 50-70%
+            case EPIC -> 20.0;     // 65-85%
+            case LEGENDARY -> 15.0; // 80-95%
+            case MYTHIC -> 10.0;   // 90-100%
+        };
     }
 
-    public static double percent(SoulRarity rarity, List<SoulAffixRoll> affixes) {
-        if (affixes == null || affixes.isEmpty()) return rarityQualityBonus(rarity);
+    /** Average percentage (0..100) of all affix stats compared to their max for the soul's rarity.
+     *  Used as the position within the rarity's quality band. */
+    public static double affixQualityPercent(SoulRarity rarity, List<SoulAffixRoll> affixes) {
+        if (affixes == null || affixes.isEmpty()) return 0.0;
         double sum = 0.0;
         int count = 0;
         for (SoulAffixRoll r : affixes) {
@@ -64,10 +80,25 @@ public final class SoulQuality {
             sum += Math.min(100.0, pct);
             count++;
         }
-        if (count == 0) return rarityQualityBonus(rarity);
-        double avg = sum / count;
-        double withBonus = Math.min(100.0, avg + rarityQualityBonus(rarity));
-        return Math.round(withBonus * 10.0) / 10.0; // 1 decimal
+        if (count == 0) return 0.0;
+        return Math.round((sum / count) * 10.0) / 10.0;
+    }
+
+    /**
+     * Final quality (0..100): {@link #baseQuality} plus the affix-roll position within the
+     * rarity's {@link #qualityRange}. Higher rarities always score higher than lower rarities
+     * for equivalent roll quality.
+     */
+    public static double percent(SoulRarity rarity, List<SoulAffixRoll> affixes) {
+        if (rarity == null) return 0.0;
+        double affixPct = affixQualityPercent(rarity, affixes);
+        double quality = baseQuality(rarity) + (affixPct / 100.0) * qualityRange(rarity);
+        return Math.max(0.0, Math.min(100.0, quality));
+    }
+
+    public static double percent(SoulInstance soul) {
+        if (soul == null) return 0.0;
+        return percent(soul.getRarity(), soul.getAffixes());
     }
 
     public static String format(SoulInstance soul) {
