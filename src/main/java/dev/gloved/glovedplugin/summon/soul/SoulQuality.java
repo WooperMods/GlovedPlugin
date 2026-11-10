@@ -23,11 +23,11 @@ public final class SoulQuality {
         if (rarity == null) return 0.0;
         return switch (rarity) {
             case COMMON -> 0.0;
-            case UNCOMMON -> 10.0;
-            case RARE -> 20.0;
-            case EPIC -> 30.0;
-            case LEGENDARY -> 40.0;
-            case MYTHIC -> 50.0;
+            case UNCOMMON -> 5.0;
+            case RARE -> 10.0;
+            case EPIC -> 15.0;
+            case LEGENDARY -> 20.0;
+            case MYTHIC -> 25.0;
         };
     }
 
