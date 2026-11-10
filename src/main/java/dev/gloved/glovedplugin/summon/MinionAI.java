@@ -198,7 +198,7 @@ public class MinionAI {
     /** Targeting intent for a minion - drives movement speed bursts and bodyguard positioning. */
     public enum TargetIntent {
         IDLE,           // following owner, normal speed
-        DEFENSIVE,      // minion low HP, staying near owner
+        DEFENSIVE,      // minion low HP, staying near owner, not over-extending
         PEELING,        // chasing threat attacking owner, high speed burst
         FINISHING,      // chasing near-dead target, small speed burst
         CHASING         // general pursuit, normal speed
@@ -236,15 +236,21 @@ public class MinionAI {
     }
 
     /**
-     * Score a candidate target for a minion. Priority stack:
-     * 1. Actively attacking the owner (peel threat off player) - boosted when owner is low HP
-     * 2. Actively attacking this minion (hit back)
-     * 3. Recently damaged the owner
-     * 4. Recently damaged this minion
-     * 5. Close to the owner (owner in danger - bodyguard)
-     * 6. Close to the minion (self-defense tiebreaker)
+     * Score a candidate target for a minion. The balance between self-preservation and
+     * owner-protection scales with the minion's current HP:
+     *
+     *   - At full HP: protect the owner at all costs (except death to self).
+     *   - As HP drops: self-preservation becomes increasingly important.
+     *   - At near-death: stay defensive, don't over-extend, prioritize survival.
+     *
+     * Priority stack:
+     * 1. Actively attacking this minion (survival - hit back first)
+     * 2. Actively attacking the owner (peel threat off player)
+     * 3. Recently damaged this minion
+     * 4. Recently damaged the owner
+     * 5. Close to the minion (immediate self-defense threat)
+     * 6. Close to the owner (bodyguard - owner in danger)
      * 7. Low target HP (easier to finish - clear threats fast)
-     * 8. Defensive penalty if minion is low HP and target is far from owner
      */
     private static double scoreTarget(Player owner, LivingEntity minion, LivingEntity target,
                                        Set<UUID> recentDamagerIds) {
@@ -260,49 +266,54 @@ public class MinionAI {
         boolean minionLowHp = minionHpPct < MINION_LOW_HP_PCT;
         boolean ownerLowHp = ownerHpPct < OWNER_LOW_HP_PCT;
 
+        // Self-preservation weight scales inversely with minion HP:
+        // full HP -> low self weight (protect owner), near-death -> high self weight (survive)
+        double selfWeight = 1.0 - minionHpPct; // 0.0 at full HP, 1.0 at 0 HP
+        double ownerWeight = minionHpPct;      // 1.0 at full HP, 0.0 at 0 HP
+
         double d2Owner = tLoc.distanceSquared(oLoc);
         double d2Minion = mLoc.distanceSquared(tLoc);
 
-        // 1. Actively attacking the owner - highest priority
+        // 1. Actively attacking this minion - survival is #1, scaled by how hurt we are
         if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
             UUID mobTarget = mobEnt.getTarget().getUniqueId();
-            if (mobTarget.equals(owner.getUniqueId())) {
-                score += 10_000_000.0; // attacking owner - must peel
-                if (ownerLowHp) score += 5_000_000.0; // owner dying - extra urgent
-            } else if (mobTarget.equals(minion.getUniqueId())) {
-                score += 5_000_000.0; // attacking this minion - hit back
+            if (mobTarget.equals(minion.getUniqueId())) {
+                double base = 10_000_000.0;
+                score += base * (0.5 + selfWeight); // more urgent the lower our HP
+            } else if (mobTarget.equals(owner.getUniqueId())) {
+                // attacking owner - peel, but weighted by how much HP we have to spare
+                double base = 10_000_000.0 * ownerWeight;
+                score += base; // full HP -> full peel urgency, low HP -> less
+                if (ownerLowHp) score += 2_000_000.0 * ownerWeight; // owner dying
             }
         }
 
-        // 2. Recently damaged the owner
-        if (recentDamagerIds != null && recentDamagerIds.contains(tid)) {
-            score += 2_000_000.0;
-        }
-
-        // 3. Recently damaged this minion
+        // 2. Recently damaged this minion (hit back for survival)
         if (MinionAI.getRecentDamagers(minion).contains(tid)) {
-            score += 1_500_000.0;
+            score += 3_000_000.0 * (0.5 + selfWeight);
         }
 
-        // 4. Close to the owner - owner is in danger (bodyguard radius ~6 blocks)
+        // 3. Recently damaged the owner
+        if (recentDamagerIds != null && recentDamagerIds.contains(tid)) {
+            score += 2_000_000.0 * ownerWeight;
+        }
+
+        // 4. Close to the minion - immediate self-defense threat (scaled by self-preservation)
+        double closeToMinionBonus = Math.max(0.0, 8.0 - Math.sqrt(d2Minion)) / 8.0; // 1.0 at melee, 0 at 8 blocks
+        score += closeToMinionBonus * 2_000_000.0 * (0.5 + selfWeight);
+
+        // 5. Close to the owner - owner is in danger (bodyguard radius ~6 blocks)
         if (d2Owner <= BODYGUARD_RADIUS_SQ) {
-            score += (1.0 - d2Owner / BODYGUARD_RADIUS_SQ) * 500_000.0;
+            double ownerDanger = (1.0 - d2Owner / BODYGUARD_RADIUS_SQ); // 1.0 right on owner
+            score += ownerDanger * 1_500_000.0 * ownerWeight;
         }
-
-        // 5. Close to the minion - self-defense tiebreaker
-        score += Math.max(0.0, 10000.0 - Math.min(d2Minion, 10000.0)) * 0.001;
 
         // 6. Target HP - lower is easier to finish; near-dead targets get a bonus
         if (targetHpPct < 0.5) {
-            score += (1.0 - targetHpPct) * 200_000.0; // up to +100k for almost-dead
+            score += (1.0 - targetHpPct) * 300_000.0; // up to ~150k for almost-dead
         }
 
-        // 7. Defensive modifier: low-HP minion should not chase far from owner
-        if (minionLowHp && d2Owner > 100.0) { // more than 10 blocks from owner
-            score *= 0.5; // penalize distant targets when hurt
-        }
-
-        // 8. Swarm avoidance: if many minions already target this enemy, deprioritize
+        // 7. Swarm avoidance: if many minions already target this enemy, deprioritize
         int assignmentCount = getTargetAssignmentCount(owner.getUniqueId(), tid);
         if (assignmentCount >= 1) {
             score -= assignmentCount * 300_000.0; // spread minions across multiple enemies
