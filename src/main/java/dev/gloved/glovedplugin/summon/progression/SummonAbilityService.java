@@ -272,7 +272,7 @@ public class SummonAbilityService {
                             applyDebuff(victim, cfg, Math.max(1, debuffLvl));
                         }
                         boolean victimDebuffedForSynergy = victimDebuffedBefore || (debuffProcced && cfg.isAbilityCleaveSpreadDebuff()) || isDebuffed(victim, cfg);
-                        if (lifestealLvl > 0 && cfg.isAbilityLifestealEnabled()) applyLifesteal(owner, victim, victimDebuffedForSynergy, cfg, now, lifestealLvl, mods);
+                        if (lifestealLvl > 0 && cfg.isAbilityLifestealEnabled()) applyLifesteal(owner, minion, victim, victimDebuffedForSynergy, cfg, now, lifestealLvl, mods);
                     }
                     if (!cleaveVictims.isEmpty()) {
                         spawnCleaveProcVfx(minion, primaryTarget, cleaveVictims.size(), cleaveLvl);
@@ -281,7 +281,7 @@ public class SummonAbilityService {
             }
 
             boolean primaryDebuffedForSynergy = primaryDebuffedBefore || debuffProcced || isDebuffed(primaryTarget, cfg);
-            if (lifestealLvl > 0 && cfg.isAbilityLifestealEnabled()) applyLifesteal(owner, primaryTarget, primaryDebuffedForSynergy, cfg, now, lifestealLvl, mods);
+            if (lifestealLvl > 0 && cfg.isAbilityLifestealEnabled()) applyLifesteal(owner, minion, primaryTarget, primaryDebuffedForSynergy, cfg, now, lifestealLvl, mods);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonAbility] Ability resolution error: " + t);
         }
@@ -360,11 +360,11 @@ public class SummonAbilityService {
         }
     }
 
-    private void applyLifesteal(Player owner, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel) {
-        applyLifesteal(owner, target, targetDebuffed, cfg, nowTick, abilityLevel, SoulCombatMods.none());
+    private void applyLifesteal(Player owner, LivingEntity minion, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel) {
+        applyLifesteal(owner, minion, target, targetDebuffed, cfg, nowTick, abilityLevel, SoulCombatMods.none());
     }
 
-    private void applyLifesteal(Player owner, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel, SoulCombatMods mods) {
+    private void applyLifesteal(Player owner, LivingEntity minion, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel, SoulCombatMods mods) {
         try {
             if (owner == null || !owner.isOnline() || owner.isDead()) return;
             double ownerMax = 20.0;
@@ -394,8 +394,49 @@ public class SummonAbilityService {
                         + (targetDebuffed ? " (debuffed bonus)" : "") + " target=" + (target != null ? target.getType() : "?"));
                 spawnLifestealProcVfx(owner, target, heal, targetDebuffed, abilityLevel);
             }
+            // Heal other active minions of the same owner when lifesteal procs
+            healOtherMinions(owner, minion, heal, perHitCap, nowTick, cfg);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonAbility] Lifesteal failed: " + t);
+        }
+    }
+
+    /**
+     * Heal other active minions of the same owner when lifesteal procs.
+     * Each other minion receives a portion of the owner's heal amount,
+     * capped at half the per-hit cap.
+     */
+    private void healOtherMinions(Player owner, LivingEntity sourceMinion, double ownerHeal, double perHitCap, long nowTick, SummonConfig cfg) {
+        if (owner == null || !owner.isOnline() || sourceMinion == null) return;
+        var tracker = plugin.getSummonTracker();
+        if (tracker == null) return;
+        List<LivingEntity> minions = tracker.getActiveMinions(owner.getUniqueId());
+        if (minions == null || minions.isEmpty()) return;
+        double perMinionHeal = Math.max(0.0, ownerHeal * 0.5); // half of owner heal per other minion
+        double perMinionCap = Math.max(0.0, perHitCap * 0.5);
+        if (perMinionHeal <= 0 || perMinionCap <= 0) return;
+        int healed = 0;
+        for (LivingEntity other : minions) {
+            if (other == null || other.isDead()) continue;
+            if (other.getUniqueId().equals(sourceMinion.getUniqueId())) continue;
+            if (other.getWorld() != sourceMinion.getWorld()) continue;
+            double h = Math.min(perMinionHeal, perMinionCap);
+            if (h <= 0) continue;
+            try {
+                double before = other.getHealth();
+                double maxHp = 20.0;
+                try {
+                    var attr = other.getAttribute(Attribute.MAX_HEALTH);
+                    if (attr != null) maxHp = Math.max(1.0, attr.getValue());
+                } catch (Throwable ignored) {}
+                double next = Math.min(maxHp, before + h);
+                if (next > before) other.setHealth(next);
+                if (other.getHealth() > before + 1.0e-9) healed++;
+                spawnLifestealProcVfx(other, sourceMinion, h, false, 0);
+            } catch (Throwable ignored) {}
+        }
+        if (healed > 0) {
+            GlovedPlugin.logDebug("[SummonAbility] Lifesteal shared with " + healed + " other minion(s) of " + owner.getName());
         }
     }
 
@@ -437,7 +478,7 @@ public class SummonAbilityService {
         } catch (Throwable ignored) {}
     }
 
-    private void spawnLifestealProcVfx(Player owner, LivingEntity target, double heal, boolean targetDebuffed, int level) {
+    private void spawnLifestealProcVfx(LivingEntity owner, LivingEntity target, double heal, boolean targetDebuffed, int level) {
         try {
             if (owner == null || owner.getWorld() == null) return;
             var world = owner.getWorld();
