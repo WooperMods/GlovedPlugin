@@ -89,7 +89,7 @@ public class SummonMoveGoal implements Goal<Mob> {
                     // In melee range: stop pathfinding, let MinionAI handle the attack.
                     pf.stopPathfinding();
                 } else {
-                    pf.moveTo(target.getLocation(), mobSpeed(mob) * 0.9);
+                    pf.moveTo(target.getLocation(), mobSpeed(mob));
                     try { mob.lookAt(target); } catch (Throwable ignored) {}
                 }
                 return;
@@ -114,9 +114,9 @@ public class SummonMoveGoal implements Goal<Mob> {
         try {
             var move = mob.getAttribute(Attribute.MOVEMENT_SPEED);
             if (move != null) {
-                // Normalize to Paper pathfinder speed scale (~1.0 is normal walking speed).
+                // Normalize to Paper pathfinder speed scale: 1.0 = normal walking speed.
                 double base = move.getValue();
-                return Math.max(0.7, Math.min(1.8, base / 0.3));
+                return Math.max(1.0, Math.min(2.0, base / 0.3));
             }
         } catch (Exception ignored) {}
         return 1.0;
