@@ -66,7 +66,7 @@ public final class SoulItem {
                 case RARE -> "§9";
                 case EPIC -> "§5";
                 case LEGENDARY -> "§6";
-                case MYTHIC -> "§d";
+                case MYTHIC -> "§x§F§F§6§9§B§4";
             };
             return rarityColor + soul.getRarity().name() + " " + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
         } catch (Throwable ignored) {

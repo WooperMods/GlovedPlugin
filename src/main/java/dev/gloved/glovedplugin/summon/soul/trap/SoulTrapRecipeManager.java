@@ -156,7 +156,11 @@ public class SoulTrapRecipeManager implements Listener {
         if (meta == null) return item;
 
         net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer serializer =
-                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand();
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.builder()
+                        .character('&')
+                        .hexColors()
+                        .useUnusualXRepeatedCharacterHexFormat()
+                        .build();
 
         // Custom display name with color codes, no italics
         net.kyori.adventure.text.Component displayName = serializer.deserialize(tier.displayName)
@@ -207,7 +211,7 @@ public class SoulTrapRecipeManager implements Listener {
             case "cage" -> Color.fromRGB(85, 85, 255);      // Rare (§9)
             case "chalice" -> Color.fromRGB(170, 0, 170);   // Epic (§5)
             case "relic" -> Color.fromRGB(255, 170, 0);     // Legendary (§6)
-            case "prism" -> Color.fromRGB(255, 85, 255);    // Mythic (§d)
+            case "prism" -> Color.fromRGB(255, 105, 180);   // Mythic (hot pink)
             default -> Color.WHITE;
         };
     }

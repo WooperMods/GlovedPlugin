@@ -187,7 +187,7 @@ public final class SoulDropItem {
             case RARE -> "§9";
             case EPIC -> "§5";
             case LEGENDARY -> "§6";
-            case MYTHIC -> "§d";
+            case MYTHIC -> "§x§F§F§6§9§B§4";
         };
     }
 
