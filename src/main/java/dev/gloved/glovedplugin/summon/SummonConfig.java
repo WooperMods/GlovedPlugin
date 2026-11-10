@@ -19,7 +19,6 @@ import java.util.*;
 public class SummonConfig {
     private final JavaPlugin plugin;
     private boolean enabled;
-    private boolean minionProcSummon = false;
     private boolean clumpedNametagsEnabled = true;
     private int clumpedNametagsMinCount = 4;
     private double clumpedNametagsRadius = 2.0;
@@ -149,7 +148,6 @@ public class SummonConfig {
         try { yaml.save(file); } catch (Exception ignored) {}
 
         enabled = yaml.getBoolean("enabled", true);
-        minionProcSummon = yaml.getBoolean("minion-proc-summon", false);
         clumpedNametagsEnabled = yaml.getBoolean("clumped-nametags.enabled", true);
         clumpedNametagsMinCount = Math.max(2, yaml.getInt("clumped-nametags.min-count", 4));
         clumpedNametagsRadius = Math.max(0.5, yaml.getDouble("clumped-nametags.radius", 2.0));
@@ -269,7 +267,6 @@ public class SummonConfig {
 
     private static void backfill(FileConfiguration cfg) {
         if (!cfg.isSet("enabled")) cfg.set("enabled", true);
-        setIfMissing(cfg, "minion-proc-summon", false);
         setIfMissing(cfg, "clumped-nametags.enabled", true);
         setIfMissing(cfg, "clumped-nametags.min-count", 4);
         setIfMissing(cfg, "clumped-nametags.radius", 2.0);
@@ -424,8 +421,6 @@ public class SummonConfig {
     // --- Existing getters (preserved) ---
 
     public boolean isEnabled() { return enabled; }
-    public boolean isMinionProcSummon() { return minionProcSummon; }
-
     public boolean isClumpedNametagsEnabled() { return clumpedNametagsEnabled; }
     public int getClumpedNametagsMinCount() { return clumpedNametagsMinCount; }
     public double getClumpedNametagsRadius() { return clumpedNametagsRadius; }

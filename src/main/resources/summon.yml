@@ -3,8 +3,6 @@
 # No static profile catalog is required. Keep this config minimal; use defaults unless tuning.
 
 enabled: true
-# Allow minions to proc-summon more minions of their family on hit (chance * 0.25). Default off.
-minion-proc-summon: false
 
 # Clumped nametags: when too many minions cluster, hide individual tags and show one shared label.
 clumped-nametags:

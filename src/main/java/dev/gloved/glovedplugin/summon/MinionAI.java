@@ -991,52 +991,6 @@ public class MinionAI {
     }
 
     /**
-     * Minions have a 1/4th chance (of the effective profile chance) to spawn more minions of their
-     * own type on hit, following the same cooldown and max-active rules as the player.
-     */
-    private void trySummonFromMinion(LivingEntity minion, Player owner, LivingEntity target) {
-        if (summonManager == null || summonConfig == null) return;
-        if (!summonConfig.isMinionProcSummon()) return;
-        Player liveOwner = Bukkit.getPlayer(owner.getUniqueId());
-        if (liveOwner == null || !liveOwner.isOnline()) return;
-        NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
-        String profileName = minion.getPersistentDataContainer().get(profileKey, PersistentDataType.STRING);
-        if (profileName == null) return;
-        SummonProfile profile = summonConfig.getProfile(profileName);
-        if (profile == null) return;
-        if (!summonManager.canSummon(liveOwner, profile, SummonTrigger.MINION)) return;
-        EffectiveSummonStats stats = EffectiveSummonStats.resolve(liveOwner, profile, summonConfig, progression);
-        double minionChance = stats.chance * 0.25;
-        if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > minionChance) return;
-        int spawned = summonManager.spawn(liveOwner, profile, target);
-        if (spawned <= 0) return;
-        summonManager.setCooldown(liveOwner, profile, SummonTrigger.MINION);
-        spawnMinionProcVfx(minion, target, spawned);
-        GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " triggered spawn for " + liveOwner.getName()
-                + " profile " + profileName + " spawned=" + spawned + " (minion-chance=" + minionChance + ", lvl " + stats.summoningLevel + ")");
-    }
-
-    private void spawnMinionProcVfx(LivingEntity minion, LivingEntity target, int spawned) {
-        try {
-            if (minion == null || minion.getWorld() == null) return;
-            org.bukkit.World world = minion.getWorld();
-            Location at = minion.getLocation().add(0, 0.9, 0);
-            world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 18 + Math.min(spawned * 6, 24), 0.45, 0.55, 0.45, 0.03);
-            world.spawnParticle(Particle.REVERSE_PORTAL, at, 16 + Math.min(spawned * 4, 16), 0.4, 0.5, 0.4, 0.08);
-            world.spawnParticle(Particle.WITCH, at, 10 + Math.min(spawned * 2, 10), 0.35, 0.4, 0.35, 0.02);
-            world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 8 + Math.min(spawned * 2, 8), 0.25, 0.5, 0.25, 0.01);
-            if (target != null && target.getWorld() == world) {
-                Location tc = target.getLocation().add(0, 1.0, 0);
-                world.spawnParticle(Particle.ELECTRIC_SPARK, tc, 10, 0.25, 0.3, 0.25, 0.03);
-            }
-            world.playSound(at, Sound.ENTITY_EVOKER_PREPARE_SUMMON, 0.5f, 1.6f);
-            world.playSound(at, Sound.BLOCK_BEACON_POWER_SELECT, 0.35f, 1.85f);
-        } catch (Throwable t) {
-            GlovedPlugin.logDebug("[Summon] Failed to play minion proc VFX: " + t);
-        }
-    }
-
-    /**
      * Vanilla melee reach: {@code (mobWidth * 2)^2 + targetWidth}, matching
      * {@code MeleeAttackGoal#getAttackReachSqr}, plus a 2-block bonus.
      */
@@ -1137,7 +1091,6 @@ public class MinionAI {
         } catch (Exception e) {
             GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
         }
-        trySummonFromMinion(minion, owner, target);
         return finalDamage;
     }
 

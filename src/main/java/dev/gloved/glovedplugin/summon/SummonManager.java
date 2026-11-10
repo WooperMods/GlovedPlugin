@@ -81,17 +81,6 @@ public class SummonManager {
                 .put(key, System.currentTimeMillis());
     }
 
-    /** @return number of minions spawned (0 if blocked/capped/mana insufficient). */
-    public int spawn(Player player, SummonProfile profile, LivingEntity target) {
-        if (player == null || profile == null) return 0;
-        // preserve existing behavior: consume trigger mana before spawning
-        if (!tryConsumeSummonMana(player)) {
-            GlovedPlugin.logDebug("[Summon] Mana blocked summon for " + player.getName() + " profile " + profile.name);
-            return 0;
-        }
-        return spawnFromSoul(player, profile, null, target);
-    }
-
     /** Spawn from dynamic soul/profile template; tags summon_soul_id/summon_family when soul provided. */
     public int spawnFromSoul(Player player, SummonProfile profile, dev.gloved.glovedplugin.summon.soul.SoulInstance soul, LivingEntity target) {
         return spawnFromSoul(player, profile, soul, target, false);
@@ -360,40 +349,6 @@ public class SummonManager {
                 else if (size < 1) slime.setSize(1);
             }
         } catch (Throwable ignored) {}
-    }
-
-    private boolean tryConsumeSummonMana(Player player) {
-        try {
-            if (config == null || !config.isManaEnabled()) return true;
-            double cost = Math.max(0.0, config.getManaCostPerTrigger());
-            // Use soul-config base mana if present (Phase 0 foundation); fall back to progression trigger cost.
-            if (config.getSoulConfig() != null) {
-                cost = Math.max(cost, config.getSoulConfig().getCastBaseManaCost());
-            }
-            if (cost <= 0.0) return true;
-            if (player == null || !player.isOnline()) return false;
-            if (plugin.getServer().getPluginManager().getPlugin("AuraSkills") == null) {
-                return config.isManaAllowWhenAuraSkillsMissing();
-            }
-            Class<?> apiClass = Class.forName("dev.aurelium.auraskills.api.AuraSkillsApi");
-            Object api = apiClass.getMethod("get").invoke(null);
-            if (api == null) return config.isManaAllowWhenAuraSkillsMissing();
-            Object user = apiClass.getMethod("getUser", UUID.class).invoke(api, player.getUniqueId());
-            if (user == null) return config.isManaAllowWhenAuraSkillsMissing();
-            try {
-                Object loaded = user.getClass().getMethod("isLoaded").invoke(user);
-                if (loaded instanceof Boolean b && !b) return config.isManaAllowWhenAuraSkillsMissing();
-            } catch (Throwable ignored) {}
-            Object ok = user.getClass().getMethod("consumeMana", double.class).invoke(user, cost);
-            if (ok instanceof Boolean b) return b;
-            double mana = ((Number) user.getClass().getMethod("getMana").invoke(user)).doubleValue();
-            if (mana + 1.0e-9 < cost) return false;
-            user.getClass().getMethod("setMana", double.class).invoke(user, Math.max(0.0, mana - cost));
-            return true;
-        } catch (Throwable t) {
-            GlovedPlugin.logDebug("[Summon] Mana consume failed: " + t);
-            return config == null || config.isManaAllowWhenAuraSkillsMissing();
-        }
     }
 
     private static boolean shouldRemoveVanillaGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {
