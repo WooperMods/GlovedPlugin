@@ -198,18 +198,19 @@ public class SummonManager {
         }
         if (!spawned.isEmpty()) {
             playSummonEffects(player, spawnLoc, spawned.size());
-            // Trail from player head to first spawned minion
+            // Trail from player head to each spawned minion
             try {
                 var soulService = plugin.getSoulService();
                 if (soulService != null) {
-                    UUID firstId = spawned.iterator().next();
-                    Entity firstEnt = Bukkit.getEntity(firstId);
-                    LivingEntity firstMinion = firstEnt instanceof LivingEntity le ? le : null;
-                    if (firstMinion != null && !firstMinion.isDead()) {
-                        soulService.playSoulTrail(
-                                player.getLocation().add(0, 1.0, 0),
-                                firstMinion.getLocation().add(0, firstMinion.getHeight() * 0.5, 0),
-                                null);
+                    Location from = player.getLocation().add(0, 1.0, 0);
+                    for (UUID id : spawned) {
+                        Entity ent = Bukkit.getEntity(id);
+                        if (ent instanceof LivingEntity minion && !minion.isDead()) {
+                            soulService.playSoulTrail(
+                                    from,
+                                    minion.getLocation().add(0, minion.getHeight() * 0.5, 0),
+                                    null);
+                        }
                     }
                 }
             } catch (Throwable ignored) {}
