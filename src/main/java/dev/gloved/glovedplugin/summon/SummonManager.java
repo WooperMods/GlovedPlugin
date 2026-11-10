@@ -188,6 +188,15 @@ public class SummonManager {
                 return true; // plugin owns targeting
             }
         } catch (Exception ignored) {}
+        // SummonMoveGoal handles all movement (chase target + follow owner), so remove
+        // any remaining vanilla MOVE-type goals (e.g. MoveTowardsTargetGoal, random stroll)
+        // that would conflict with it by stopping/overriding the path.
+        try {
+            var types = goal.getTypes();
+            if (types != null && types.contains(com.destroystokyo.paper.entity.ai.GoalType.MOVE)) {
+                return true;
+            }
+        } catch (Exception ignored) {}
         try {
             var key = goal.getKey();
             if (key != null && key.getNamespacedKey() != null) {

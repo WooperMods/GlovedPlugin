@@ -29,8 +29,6 @@ public class SummonMoveGoal implements Goal<Mob> {
     private final SummonInstanceTracker tracker;
     private final Mob mob;
     private final GoalKey<Mob> key;
-    private Location lastPathGoal = null;
-    private long lastPathTick = -1L;
 
     public SummonMoveGoal(GlovedPlugin plugin, SummonInstanceTracker tracker, Mob mob) {
         this.plugin = plugin;
@@ -85,26 +83,15 @@ public class SummonMoveGoal implements Goal<Mob> {
             LivingEntity target = mob.getTarget();
             if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())
                     && owner.getWorld().equals(mob.getWorld())) {
-                // Move toward our attack target. Throttle path rebuilds so mobs don't cut corners.
-                Location targetLoc = target.getLocation();
-                long now = Bukkit.getCurrentTick();
-                boolean needPath = true;
-                if (lastPathGoal != null && now - lastPathTick < 20
-                        && lastPathGoal.distanceSquared(targetLoc) <= 4.0) {
-                    needPath = false;
-                }
-                double distSq = mob.getLocation().distanceSquared(targetLoc);
+                // Move toward our attack target every tick so the path stays current.
+                double distSq = mob.getLocation().distanceSquared(target.getLocation());
                 if (distSq <= MIN_CHASE_DIST_SQ) {
                     // In melee range: stop pathfinding, let MinionAI handle the attack.
                     pf.stopPathfinding();
-                } else if (needPath) {
-                    // Target moved enough to warrant a new path; rebuild it.
-                    pf.moveTo(targetLoc, mobSpeed(mob) * 0.9);
-                    lastPathGoal = targetLoc.clone();
-                    lastPathTick = now;
+                } else {
+                    pf.moveTo(target.getLocation(), mobSpeed(mob) * 0.9);
                     try { mob.lookAt(target); } catch (Throwable ignored) {}
                 }
-                // !needPath && far: keep the existing path running; do not stop it.
                 return;
             }
             // No target: follow owner
@@ -126,7 +113,11 @@ public class SummonMoveGoal implements Goal<Mob> {
         } catch (Exception ignored) {}
         try {
             var move = mob.getAttribute(Attribute.MOVEMENT_SPEED);
-            if (move != null) return Math.max(0.2, move.getValue());
+            if (move != null) {
+                // Normalize to Paper pathfinder speed scale (~1.0 is normal walking speed).
+                double base = move.getValue();
+                return Math.max(0.7, Math.min(1.8, base / 0.3));
+            }
         } catch (Exception ignored) {}
         return 1.0;
     }
