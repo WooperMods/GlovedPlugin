@@ -88,6 +88,9 @@ public class SoulTrapRecipeManager {
         var key = new org.bukkit.NamespacedKey("gloved", "summon_trap");
         pdc.set(key, PersistentDataType.STRING, tier.id);
 
+        // Allow stacking up to 64 (potions default to stack of 1)
+        meta.setMaxStackSize(64);
+
         item.setItemMeta(meta);
         return item;
     }
