@@ -59,7 +59,7 @@ public class SoulTrapRecipeManager {
         if (meta == null) return item;
 
         // Custom display name with color codes
-        net.kyori.adventure.text.Component displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+        net.kyori.adventure.text.Component displayName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
                 .deserialize(tier.displayName);
         meta.displayName(displayName);
 
