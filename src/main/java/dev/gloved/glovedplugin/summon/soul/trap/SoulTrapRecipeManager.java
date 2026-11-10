@@ -100,6 +100,8 @@ public class SoulTrapRecipeManager implements Listener {
         lore.add(serializer.deserialize(
                 "§7Capture a mob's soul without killing it.")
                 .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
+        lore.add(serializer.deserialize(soulQualityLine(tier))
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
         lore.add(net.kyori.adventure.text.Component.empty());
         lore.add(serializer.deserialize(
                 "§7Right-click a living mob to take its soul.")
@@ -116,5 +118,17 @@ public class SoulTrapRecipeManager implements Listener {
 
         item.setItemMeta(meta);
         return item;
+    }
+
+    private static String soulQualityLine(SoulTrapTier tier) {
+        return switch (tier.id) {
+            case "snare" -> "§7Can draw out even the most ordinary souls.";
+            case "trap" -> "§7Better suited to drawing out finer souls.";
+            case "cage" -> "§7Tends to capture stronger, rarer souls.";
+            case "chalice" -> "§7Attuned to souls of great power.";
+            case "relic" -> "§7Resonates with truly legendary souls.";
+            case "prism" -> "§7Draws forth only the most mythic souls.";
+            default -> "§7Draws out souls of varying quality.";
+        };
     }
 }
