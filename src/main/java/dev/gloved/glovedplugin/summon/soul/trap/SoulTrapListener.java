@@ -88,8 +88,6 @@ public class SoulTrapListener implements Listener {
         target.addPotionEffect(new org.bukkit.potion.PotionEffect(
                 org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 1, false, false));
 
-        target.setHealth(1.0);
-
         // Mark the soul as permanently taken: the mob can no longer target or
         // attack anything, and its soul can never be taken again.
         var soullessPdc = target.getPersistentDataContainer();
