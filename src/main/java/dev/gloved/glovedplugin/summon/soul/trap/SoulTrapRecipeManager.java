@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionType;
@@ -201,6 +202,14 @@ public class SoulTrapRecipeManager implements Listener {
                 // Fallback for API differences; custom color is still applied
             }
         }
+
+        // Hide vanilla potion tooltip text like "No Effects"
+        try {
+            meta.addItemFlags(ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+        } catch (Throwable ignored) {}
+        try {
+            meta.addItemFlags(ItemFlag.valueOf("HIDE_POTION_EFFECTS"));
+        } catch (Throwable ignored) {}
 
         // Allow stacking up to 64 (potions default to stack of 1)
         meta.setMaxStackSize(64);
