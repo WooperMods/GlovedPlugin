@@ -1,7 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.trap;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.MinionAI;
 import dev.gloved.glovedplugin.summon.SummonConfig;
 import dev.gloved.glovedplugin.summon.soul.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.SoulConfig;
@@ -32,7 +31,6 @@ public class SoulTrapListener implements Listener {
     private final SummonConfig config;
     private final SoulService soulService;
     private static final NamespacedKey SOULLESS_KEY = new NamespacedKey("gloved", "summon_soulless");
-    private final Map<UUID, Long> exhaustedMobs = new HashMap<>(); // mob UUID -> exhaustion expiry (ms)
 
     public SoulTrapListener(GlovedPlugin plugin, SummonConfig config, SoulService soulService) {
         this.plugin = plugin;
@@ -60,11 +58,10 @@ public class SoulTrapListener implements Listener {
             return;
         }
 
-        UUID mobId = target.getUniqueId();
-        long now = System.currentTimeMillis();
-        Long exhaustUntil = exhaustedMobs.get(mobId);
-        if (exhaustUntil != null && now < exhaustUntil) {
-            player.sendMessage(net.kyori.adventure.text.Component.text("§cThis mob's soul is exhausted from a recent capture."));
+        // A mob whose soul has already been taken can never be trapped again.
+        var targetPdc = target.getPersistentDataContainer();
+        if (targetPdc.has(SOULLESS_KEY, PersistentDataType.BOOLEAN)) {
+            player.sendMessage(net.kyori.adventure.text.Component.text("§cThis mob's soul has already been taken."));
             return;
         }
 
@@ -77,31 +74,10 @@ public class SoulTrapListener implements Listener {
             return;
         }
 
-        boolean isElite = MinionAI.isEliteMob(target);
-        double effectiveChance = tier.successChance;
-        if (isElite) {
-            effectiveChance *= (1.0 - config.getSoulTrapsEliteResistance());
-        }
-        boolean isBoss = target instanceof org.bukkit.entity.Boss
-                || target.getType() == EntityType.WITHER
-                || target.getType() == EntityType.ENDER_DRAGON;
-        if (isBoss) {
-            effectiveChance *= (1.0 - config.getSoulTrapsBossResistance());
-        }
-
-        boolean success = java.util.concurrent.ThreadLocalRandom.current().nextDouble() < effectiveChance;
-
+        // Consume the trap — capture is guaranteed.
         item.setAmount(item.getAmount() - 1);
 
-        if (success) {
-            extractSoul(player, target, tier);
-        } else {
-            target.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.RESISTANCE, 200, 0, false, false));
-            if (target instanceof Mob mob) {
-                mob.setTarget(player);
-            }
-            player.sendMessage(net.kyori.adventure.text.Component.text("§cThe trap failed! The mob resisted."));
-        }
+        extractSoul(player, target, tier);
     }
 
     private void extractSoul(Player player, LivingEntity target, SoulTrapTier tier) {
@@ -110,8 +86,13 @@ public class SoulTrapListener implements Listener {
 
         target.setHealth(1.0);
 
-        long exhaustionEnd = System.currentTimeMillis() + config.getSoulTrapsTrapExhaustionTicks();
-        exhaustedMobs.put(target.getUniqueId(), exhaustionEnd);
+        // Mark the soul as permanently taken: the mob can no longer target or
+        // attack anything, and its soul can never be taken again.
+        var soullessPdc = target.getPersistentDataContainer();
+        soullessPdc.set(SOULLESS_KEY, PersistentDataType.BOOLEAN, true);
+        if (target instanceof Mob mob) {
+            mob.setTarget(null);
+        }
 
         UUID ownerId = player.getUniqueId();
         SoulConfig cfg = config.getSoulConfig();

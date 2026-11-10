@@ -74,12 +74,9 @@ public class SoulTrapRecipeManager {
         lore.add(serializer.deserialize(
                 "§7Capture a mob's soul without killing it.")
                 .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
-        lore.add(serializer.deserialize(
-                String.format("§7Success: §f%d%%", (int) Math.round(tier.successChance * 100)))
-                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
         lore.add(net.kyori.adventure.text.Component.empty());
         lore.add(serializer.deserialize(
-                "§7Right-click a living mob to attempt capture.")
+                "§7Right-click a living mob to take its soul.")
                 .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false));
         meta.lore(lore);
 
