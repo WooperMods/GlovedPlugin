@@ -86,7 +86,7 @@ public class SoulTrapListener implements Listener {
 
         // Soulless mobs are permanently slowed.
         target.addPotionEffect(new org.bukkit.potion.PotionEffect(
-                org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false));
+                org.bukkit.potion.PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 1, false, false));
 
         target.setHealth(1.0);
 
