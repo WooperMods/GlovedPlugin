@@ -673,7 +673,6 @@ public class SoulService {
         if (soul != null) {
             SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
             if (cd != null) mult *= Math.max(0.5, Math.min(3.0, cd.costMult()));
-            mult *= 1.0 + (soul.getRarity().ordinal() * 0.04);
             SoulStatSnapshot snap = getSnapshot(soul);
             mult *= Math.max(0.5, Math.min(1.5, snap.costEfficiency()));
         }
