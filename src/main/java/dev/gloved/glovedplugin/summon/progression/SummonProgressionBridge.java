@@ -30,5 +30,8 @@ public interface SummonProgressionBridge {
     /** Owner combat stats snapshot for minion crit/strength (AuraSkills-authoritative when available). */
     default OwnerCombatStats resolveOwnerCombatStats(UUID ownerId) { return OwnerCombatStats.unavailable(); }
 
+    default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey) {}
+    default void onSoulCast(Player owner, String familyKey) {}
+
     default void onPlayerQuit(UUID ownerId) {}
 }

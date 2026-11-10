@@ -1,13 +1,141 @@
+# GlovedPlugin - Dynamic Soul Summoning
+# Fully dynamic soul system: souls are captured from eligible living mobs (entity type = family).
+# No static profile catalog is required. Keep this config minimal; use defaults unless tuning.
+
 enabled: true
-# Allow minions to proc-summon more minions of their profile on hit (chance * 0.25). Default off.
+# Allow minions to proc-summon more minions of their family on hit (chance * 0.25). Default off.
 minion-proc-summon: false
-# Clumped nametags: when too many minions cluster, hide individual tags and show one shared proxy label.
+
+# Clumped nametags: when too many minions cluster, hide individual tags and show one shared label.
 clumped-nametags:
   enabled: true
   min-count: 4
   radius: 2.0
   update-ticks: 10
   format: "{nametag} x{count}"
+
+souls:
+  enabled: true
+  dynamic:
+    allow-all-living: true
+    allow-bosses: false
+    default-batch: 1
+    default-nametag-format: "{player}'s {mob}"
+    blacklist:
+      - ENDER_DRAGON
+      - WITHER
+      - WARDEN
+      - GIANT
+      - PLAYER
+      - ARMOR_STAND
+
+  categories:
+    PASSIVE:
+      max-active-per-type: 3
+      cost-mult: 0.8
+      hp-mult: 0.9
+      enabled: true
+    NEUTRAL:
+      max-active-per-type: 2
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    HOSTILE:
+      max-active-per-type: 2
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    FLYING:
+      max-active-per-type: 3
+      cost-mult: 1.1
+      hp-mult: 0.9
+      enabled: true
+    AQUATIC:
+      max-active-per-type: 3
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    AMBIENT:
+      max-active-per-type: 2
+      cost-mult: 0.6
+      hp-mult: 0.7
+      enabled: true
+    BOSS:
+      max-active-per-type: 1
+      cost-mult: 3.0
+      hp-mult: 1.5
+      enabled: false
+    SPECIAL:
+      max-active-per-type: 1
+      cost-mult: 1.2
+      hp-mult: 1.0
+      enabled: true
+
+  capture:
+    base-chance: 0.08
+    luck-per-level: 0.0015
+    luck-max-bonus: 0.06
+    minion-kills:
+      enabled: true
+      chance-multiplier: 0.5
+    by-category-mult:
+      PASSIVE: 0.8
+      NEUTRAL: 1.0
+      HOSTILE: 1.0
+      FLYING: 1.0
+      AQUATIC: 1.0
+      AMBIENT: 0.7
+      BOSS: 0.5
+      SPECIAL: 1.0
+    dr:
+      enabled: true
+      window-seconds: 600
+      radius: 48.0
+    pity:
+      enabled: true
+      rare-threshold: 40
+      epic-threshold: 120
+      legendary-threshold: 350
+
+  rarity:
+    weights:
+      COMMON: 5000
+      UNCOMMON: 2800
+      RARE: 1400
+      EPIC: 600
+      LEGENDARY: 180
+      MYTHIC: 20
+    min-levels:
+      COMMON: 0
+      UNCOMMON: 0
+      RARE: 5
+      EPIC: 15
+      LEGENDARY: 30
+      MYTHIC: 50
+
+  vault:
+    base-capacity: 30
+    max-capacity: 80
+    capacity-per-level: 0.5
+    overflow: CONVERT_TO_ESSENCE
+    loadout:
+      base-slots: 1
+      levels-per-slot: 10
+      max-slots: 5
+
+  cast:
+    shared-gcd-ticks: 40
+    base-cooldown-ticks: 240
+    base-mana-cost: 12.0
+    replace-policy: BLOCK_IF_CAPPED
+
+  caps:
+    global-max-active-base: 2
+    global-max-active-per-level: 0.15
+    global-max-active-max: 8
+
+  debug-telemetry: true
+
 progression:
   enabled: true
   auraskills:
@@ -15,7 +143,6 @@ progression:
     skill-id: summoning
     apply-multipliers: true
     # Best-effort backfill: generate/migrate AuraSkills content files (skills/abilities/rewards) when safe.
-    # Never overwrites user-modified content files; writes *.v2.example.yml for manual merge.
     generate-content-files: true
   mana:
     # Consumes AuraSkills mana per summon trigger (batch). AuraSkills shows its own "not enough mana" feedback.
@@ -34,6 +161,14 @@ progression:
       amount: 8.0
       attribution-window-ticks: 200
       max-per-minute: 80.0
+    soul-capture:
+      enabled: true
+      amount: 2.0
+      max-per-minute: 60.0
+    soul-cast:
+      enabled: true
+      amount: 1.0
+      max-per-minute: 40.0
   scaling:
     enabled: true
     chance:
@@ -47,25 +182,17 @@ progression:
       max: 30
   crit:
     enabled: true
-    # AuraSkills-authoritative by default: uses owner AuraSkills crit_chance/crit_damage stats.
-    # Summoning rewards grant +1 crit_chance/level and +1 crit_damage every 2 levels (Archery/Fighting-like cadence).
     source: auraskills
     max-chance: 0.40
     min-damage-multiplier: 1.0
     max-damage-multiplier: 3.0
-    # Legacy fields (only used when source: legacy; ignored in auraskills mode to avoid double-dipping):
-    # base-chance: 0.0
-    # per-level: 0.008
-    # damage-multiplier: 1.5
   minion-damage:
     owner-strength:
       enabled: true
-      # Bonus damage per effective attack-damage trait unit from owner Strength (capped).
       per-attack-damage-trait: 0.20
       max-bonus: 12.0
   abilities:
     enabled: true
-    # Prefer AuraSkills ability levels for multi-level effectiveness (fallback: skill level >= unlock => level 1).
     use-auraskills-ability-levels: true
     debuff:
       enabled: true
@@ -79,7 +206,6 @@ progression:
       duration-per-level: 4
       max-duration-ticks: 120
       amplifier: 0
-      # If true, any common debuff on target counts for lifesteal synergy bonus; if false, only the configured effect counts.
       synergy-any-common-debuff: true
     cleave:
       enabled: true
@@ -95,11 +221,9 @@ progression:
       base-damage-ratio: 0.25
       damage-ratio-per-level: 0.015
       max-damage-ratio: 0.60
-      # If true, damage-ratio uses the primary hit's pre-crit base damage; if false, uses final post-crit damage.
-      damage-ratio-uses-base-damage: false
       max-damage: 8.0
+      damage-ratio-uses-base-damage: false
       spread-debuff: true
-      # Per-owner AoE damage budget per minute (0 = unlimited). Budget-capped cleave victims are skipped.
       max-damage-per-minute: 180.0
     lifesteal:
       enabled: true
@@ -110,80 +234,3 @@ progression:
       debuffed-bonus-multiplier: 1.25
       per-hit-heal-cap: 2.5
       max-heal-per-minute: 40.0
-profiles:
-  bee_swarm:
-    mob-type: BEE
-    enchant-name: "Bee Swarm"
-    chance: 0.6
-    minions-per-hit: 2
-    max-active: 10
-  pillager_raiders:
-    mob-type: VINDICATOR
-    enchant-name: "Pillager Raiders"
-    chance: 0.5
-    minions-per-hit: 1
-    max-active: 5
-    nametag-color: YELLOW
-  allay_aid:
-    mob-type: ALLAY
-    enchant-name: "Allay Aid"
-    chance: 0.6
-    minions-per-hit: 2
-    max-active: 10
-    nametag-color: LIGHT_PURPLE
-  vex_vengeance:
-    mob-type: VEX
-    enchant-name: "Vex Vengeance"
-    chance: 0.6
-    minions-per-hit: 2
-    max-active: 10
-    nametag-color: GRAY
-  fish_school:
-    mob-type: SALMON
-    enchant-name: "Fish School"
-    chance: 0.75
-    minions-per-hit: 10
-    max-active: 50
-    nametag-color: AQUA
-  phantom_haunt:
-    mob-type: PHANTOM
-    enchant-name: "Phantom Haunt"
-    chance: 0.5
-    minions-per-hit: 2
-    max-active: 8
-    nametag-color: DARK_BLUE
-  wither_legion:
-    mob-type: WITHER_SKELETON
-    enchant-name: "Wither Legion"
-    chance: 0.45
-    minions-per-hit: 2
-    max-active: 6
-    nametag-color: DARK_GRAY
-  chicken_flock:
-    mob-type: CHICKEN
-    enchant-name: "Chicken Flock"
-    chance: 0.7
-    minions-per-hit: 4
-    max-active: 12
-    nametag-color: WHITE
-  bat_swarm:
-    mob-type: BAT
-    enchant-name: "Bat Swarm"
-    chance: 0.6
-    minions-per-hit: 5
-    max-active: 15
-    nametag-color: DARK_GRAY
-  sulfur_cubes:
-    mob-type: SULFUR_CUBE
-    enchant-name: "Sulfur Cubes"
-    chance: 0.5
-    minions-per-hit: 2
-    max-active: 6
-    nametag-color: GOLD
-  slime_squad:
-    mob-type: SLIME
-    enchant-name: "Slime Squad"
-    chance: 0.6
-    minions-per-hit: 3
-    max-active: 10
-    nametag-color: GREEN

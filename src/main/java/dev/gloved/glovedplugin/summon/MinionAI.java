@@ -4,7 +4,6 @@ import com.destroystokyo.paper.entity.Pathfinder;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.CombatTargetRules;
 import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
-import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -29,7 +28,6 @@ public class MinionAI {
     private final GlovedPlugin plugin;
     private final SummonInstanceTracker tracker;
     private final ReachabilityService reachabilityService;
-    private final SummonTargetCoordinator coordinator;
     private final Map<UUID, UUID> minionTasks = new HashMap<>();
     private SummonManager summonManager;
     private SummonConfig summonConfig;
@@ -42,11 +40,13 @@ public class MinionAI {
     private static final java.util.concurrent.ConcurrentHashMap<UUID, java.util.concurrent.ConcurrentHashMap<UUID, org.bukkit.Location>> unreachableLocationCache = new java.util.concurrent.ConcurrentHashMap<>();
     private static final long UNREACHABLE_TTL_MS = 10_000L;
     private static final java.util.concurrent.ConcurrentHashMap<UUID, Long> lastWaypointLog = new java.util.concurrent.ConcurrentHashMap<>();
+    // Trait ICDs (bounded proc behavior)
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, Long> unstableIcd = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentHashMap<UUID, Long> packboundIcd = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public MinionAI(GlovedPlugin plugin, SummonInstanceTracker tracker, SummonTargetCoordinator coordinator) {
+    public MinionAI(GlovedPlugin plugin, SummonInstanceTracker tracker) {
         this.plugin = plugin;
         this.tracker = tracker;
-        this.coordinator = coordinator;
         this.reachabilityService = new ReachabilityService(plugin);
         startGlobalTask();
     }
@@ -63,6 +63,26 @@ public class MinionAI {
 
     public void setAbilityService(dev.gloved.glovedplugin.summon.progression.SummonAbilityService abilityService) {
         this.abilityService = abilityService;
+    }
+
+    private dev.gloved.glovedplugin.summon.soul.SoulInstance resolveMinionSoul(LivingEntity minion) {
+        try {
+            if (minion == null || plugin.getSoulService() == null) return null;
+            NamespacedKey k = new NamespacedKey(plugin, "summon_soul_id");
+            String id = minion.getPersistentDataContainer().get(k, PersistentDataType.STRING);
+            if (id == null || id.isBlank()) return null;
+            return plugin.getSoulService().getSoulCached(java.util.UUID.fromString(id));
+        } catch (Throwable ignored) { return null; }
+    }
+
+    private dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot resolveMinionSnapshot(LivingEntity minion) {
+        try {
+            if (minion == null || plugin.getSoulService() == null) return dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.identity();
+            NamespacedKey k = new NamespacedKey(plugin, "summon_soul_id");
+            String id = minion.getPersistentDataContainer().get(k, PersistentDataType.STRING);
+            if (id == null || id.isBlank()) return dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.identity();
+            return plugin.getSoulService().getSnapshot(java.util.UUID.fromString(id));
+        } catch (Throwable ignored) { return dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.identity(); }
     }
 
     public static void recordRecentDamager(Player player, LivingEntity damager) {
@@ -160,6 +180,67 @@ public class MinionAI {
 
     private void startGlobalTask() {
         // Custom minion-targeting goals removed: use vanilla targeting only.
+    }
+
+    /** Per-minion target score: higher = higher priority. */
+    private static final class ScoredTarget {
+        final LivingEntity entity;
+        final UUID id;
+        final double score;
+
+        ScoredTarget(LivingEntity entity, double score) {
+            this.entity = entity;
+            this.id = entity.getUniqueId();
+            this.score = score;
+        }
+    }
+
+    /**
+     * Score a candidate target for a minion. Priority stack:
+     * 1. Actively attacking the owner (peel threat off player)
+     * 2. Actively attacking this minion (hit back)
+     * 3. Recently damaged the owner
+     * 4. Recently damaged this minion
+     * 5. Close to the owner (owner in danger - bodyguard)
+     * 6. Close to the minion (self-defense tiebreaker)
+     */
+    private static double scoreTarget(Player owner, LivingEntity minion, LivingEntity target,
+                                       Set<UUID> recentDamagerIds) {
+        double score = 0.0;
+        UUID tid = target.getUniqueId();
+
+        // 1. Actively attacking the owner - highest priority
+        if (target instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+            UUID mobTarget = mobEnt.getTarget().getUniqueId();
+            if (mobTarget.equals(owner.getUniqueId())) {
+                score += 10_000_000.0; // attacking owner - must peel
+            } else if (mobTarget.equals(minion.getUniqueId())) {
+                score += 5_000_000.0; // attacking this minion - hit back
+            }
+        }
+
+        // 2. Recently damaged the owner
+        if (recentDamagerIds != null && recentDamagerIds.contains(tid)) {
+            score += 2_000_000.0;
+        }
+
+        // 3. Recently damaged this minion
+        if (MinionAI.getRecentDamagers(minion).contains(tid)) {
+            score += 1_500_000.0;
+        }
+
+        // 4. Close to the owner - owner is in danger (bodyguard radius ~6 blocks)
+        double d2Owner = target.getLocation().distanceSquared(owner.getLocation());
+        double ownerThreatRadiusSq = 6.0 * 6.0;
+        if (d2Owner <= ownerThreatRadiusSq) {
+            score += (1.0 - d2Owner / ownerThreatRadiusSq) * 500_000.0;
+        }
+
+        // 5. Close to the minion - self-defense tiebreaker
+        double d2Minion = minion.getLocation().distanceSquared(target.getLocation());
+        score += Math.max(0.0, 10000.0 - Math.min(d2Minion, 10000.0)) * 0.001;
+
+        return score;
     }
 
     public void monitorMinion(LivingEntity minion, Player owner, SummonProfile profile) {
@@ -334,34 +415,62 @@ public class MinionAI {
                     return d2Owner > maxTargetSq && d2Minion > maxTargetSq;
                 });
 
-                // Global candidates: owner-valid threats for shared coordinator state (prune/rebalance/coverage).
-                // Per-minion constraints are passed as a predicate so one minion's pathing limits don't
-                // make others "forget" enemies (including those close to the owner).
-                List<LivingEntity> globalCandidates = new ArrayList<>(candidates);
+                // Per-minion target selection: filter by reachability, score by owner-defensive
+                // priority, pick best target with stickiness. No shared coordinator state.
+                List<ScoredTarget> scored = new ArrayList<>();
                 double maxChaseSq = SummonProfile.FOLLOW_RANGE * SummonProfile.FOLLOW_RANGE;
-                java.util.function.Predicate<UUID> unavailableForMinion = (UUID targetId) -> {
-                    if (mob == null) return false;
-                    Entity te = owner.getWorld().getEntity(targetId);
-                    if (!(te instanceof LivingEntity tle)) return true;
-                    if (minion.getWorld() != tle.getWorld()) return true;
-                    if (MinionAI.isCachedUnreachable(minion.getUniqueId(), targetId, tle.getLocation())) return true;
+                for (LivingEntity le : candidates) {
+                    UUID id = le.getUniqueId();
+                    Entity te = owner.getWorld().getEntity(id);
+                    if (!(te instanceof LivingEntity tle)) continue;
+                    // Reachability pre-filter: never pathfind at unreachable enemies.
+                    if (!reachabilityService.canReachEntity(mob, tle)) {
+                        MinionAI.cacheUnreachable(minion.getUniqueId(), id, tle.getLocation());
+                        continue;
+                    }
                     if (!isFlyingMob) {
                         double dy = Math.abs(minion.getLocation().getY() - tle.getLocation().getY());
-                        if (dy > 16) return true;
+                        if (dy > 16) continue;
                     }
-                    return minion.getLocation().distanceSquared(tle.getLocation()) > maxChaseSq;
-                };
+                    double d2 = minion.getLocation().distanceSquared(tle.getLocation());
+                    if (d2 > maxChaseSq) continue;
+                    double score = scoreTarget(owner, minion, tle, recentDamagerIds);
+                    scored.add(new ScoredTarget(tle, score));
+                }
+                scored.sort((a, b) -> {
+                    int c = Double.compare(b.score, a.score);
+                    if (c != 0) return c;
+                    return a.id.compareTo(b.id);
+                });
 
                 long now = Bukkit.getCurrentTick();
-                if (!globalCandidates.isEmpty()) {
-                    target = coordinator.assign(owner, (LivingEntity) minion, globalCandidates, recentDamagerIds, now, unavailableForMinion);
-                }
-                if (target != null) {
-                    boolean globallyValid = false;
-                    for (LivingEntity gc : globalCandidates) {
-                        if (gc.getUniqueId().equals(target.getUniqueId())) { globallyValid = true; break; }
+                LivingEntity newTarget = null;
+                if (!scored.isEmpty()) {
+                    LivingEntity best = scored.get(0).entity;
+                    // Stickiness: keep current target unless a much higher-priority target appears.
+                    if (lastTarget != null && !lastTarget.isDead()
+                            && !CombatTargetRules.isProtected(plugin, owner, lastTarget)) {
+                        Double currentScore = null;
+                        Double bestScore = scored.get(0).score;
+                        for (ScoredTarget st : scored) {
+                            if (st.id.equals(lastTarget.getUniqueId())) {
+                                currentScore = st.score;
+                                break;
+                            }
+                        }
+                        if (currentScore != null && bestScore <= currentScore * 1.25) {
+                            newTarget = lastTarget;
+                        } else {
+                            newTarget = best;
+                        }
+                    } else {
+                        newTarget = best;
                     }
-                    if (target.isDead() || CombatTargetRules.isProtected(plugin, owner, target) || !globallyValid) {
+                }
+                target = newTarget;
+
+                if (target != null) {
+                    if (target.isDead() || CombatTargetRules.isProtected(plugin, owner, target)) {
                         target = null;
                     }
                 }
@@ -390,7 +499,6 @@ public class MinionAI {
                 // Unreachable target detection: drop target if distance hasn't improved for ~5s
                 if (target != null) {
                     if (minion.getWorld() != target.getWorld()) {
-                        coordinator.invalidateMinion(minion.getUniqueId());
                         target = null;
                         lastTarget = null;
                         lastTargetDist = Double.MAX_VALUE;
@@ -410,7 +518,7 @@ public class MinionAI {
                                     // Consider unreachable, drop target
                                     GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " stuck on target " + target.getName() + ", dropping");
                                     MinionAI.cacheUnreachable(minion.getUniqueId(), target.getUniqueId(), target.getLocation());
-                                    coordinator.invalidateMinion(minion.getUniqueId());
+
                                     target = null;
                                     lastTarget = null;
                                     lastTargetDist = Double.MAX_VALUE;
@@ -450,55 +558,9 @@ public class MinionAI {
                             try {
                                 ((org.bukkit.entity.LivingEntity) mob).attack(target);
                             } catch (Exception ignored) {}
-                            // Level-scaled damage with player credit, no weapon scaling, no base mob damage.
-                            // Owner AuraSkills Strength (attack-damage trait) can add a capped bonus to minion damage.
-                            int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
-                            boolean isElite = isEliteMob(target);
-                            double baseDamage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
-                            try {
-                                if (summonConfig != null && summonConfig.isStrengthDamageEnabled() && progression != null) {
-                                    var st = progression.resolveOwnerCombatStats(owner.getUniqueId());
-                                    if (st != null && st.available()) {
-                                        double bonus = Math.max(0.0, st.attackDamageTrait()) * summonConfig.getStrengthDamagePerAttackDamageTrait();
-                                        bonus = Math.min(bonus, Math.max(0.0, summonConfig.getStrengthDamageMaxBonus()));
-                                        baseDamage += bonus;
-                                    }
-                                }
-                            } catch (Throwable ignored) {}
-                            double finalDamage = baseDamage;
-                            boolean crit = false;
-                            boolean targetDebuffedBefore = false;
-                            try {
-                                if (abilityService != null && summonConfig != null) {
-                                    var hr = abilityService.applyCritAndDamage(owner, minion, target, baseDamage, summonConfig);
-                                    finalDamage = hr.damage;
-                                    crit = hr.crit;
-                                    targetDebuffedBefore = hr.targetDebuffedBefore;
-                                } else {
-                                    DamageSource src = DamageSource.builder(DamageType.GENERIC)
-                                            .withDirectEntity(minion)
-                                            .withCausingEntity(owner)
-                                            .build();
-                                    target.damage(baseDamage, src);
-                                }
-                                applyKnockback(minion, owner, target);
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + finalDamage + " (base " + baseDamage + ", crit=" + crit + ") to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
-                                try {
-                                    progression.onMinionHit(owner, minion, target, profile != null ? profile.name : null, finalDamage);
-                                } catch (Throwable t) {
-                                    GlovedPlugin.logDebug("[SummonXP] Hit hook dispatch error: " + t);
-                                }
-                                try {
-                                    if (abilityService != null && summonConfig != null) {
-                                        abilityService.onAfterPrimaryHit(owner, minion, target, profile != null ? profile.name : null, finalDamage, baseDamage, crit, targetDebuffedBefore, summonConfig);
-                                    }
-                                } catch (Throwable t) {
-                                    GlovedPlugin.logDebug("[SummonAbility] Ability hook dispatch error: " + t);
-                                }
-                            } catch (Exception e) {
-                                GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
-                            }
-                            trySummonFromMinion(minion, owner, target);
+                            double finalDamage = applyMinionHit(minion, owner, target,
+                                    isEliteMob(target) ? 7.0 + EliteMobsIntegration.getCombatLevel(owner) * 0.4 : 7.0,
+                                    now, profile != null ? profile.name : null);
                             lastAttackTick = now;
                         }
                     }
@@ -561,6 +623,68 @@ public class MinionAI {
         // Fallback to exact player location
         GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " teleporting to owner " + owner.getName() + " fallback via teleportNearPlayer");
         minion.teleport(base);
+    }
+
+    private double packboundMultiplier(LivingEntity minion, Player owner, dev.gloved.glovedplugin.summon.soul.SoulInstance soul) {
+        try {
+            if (minion == null || owner == null || soul == null || tracker == null) return 1.0;
+            String fam = soul.getFamilyKey();
+            int same = 0;
+            for (LivingEntity le : tracker.getActiveMinions(owner.getUniqueId())) {
+                if (le == null || le.isDead()) continue;
+                if (le.getWorld() != minion.getWorld()) continue;
+                if (le.getLocation().distanceSquared(minion.getLocation()) > 256.0) continue; // 16 blocks
+                try {
+                    var pdc = le.getPersistentDataContainer();
+                    String f = pdc.get(new NamespacedKey(plugin, "summon_family"), PersistentDataType.STRING);
+                    if (f == null) f = pdc.get(new NamespacedKey(plugin, "summon_profile"), PersistentDataType.STRING);
+                    if (fam.equalsIgnoreCase(f)) same++;
+                } catch (Throwable ignored) {}
+            }
+            if (same >= 2) {
+                // bounded: +3% per nearby same-family ally up to +12%
+                return 1.0 + Math.min(0.12, (same - 1) * 0.03);
+            }
+        } catch (Throwable ignored) {}
+        return 1.0;
+    }
+
+    private void applyUnstableTrait(Player owner, LivingEntity minion, LivingEntity primaryTarget, dev.gloved.glovedplugin.summon.soul.SoulInstance soul, double finalDamage, double baseDamage, long nowTick) {
+        if (owner == null || minion == null || primaryTarget == null || soul == null) return;
+        if (!soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.UNSTABLE)) return;
+        Long last = unstableIcd.get(minion.getUniqueId());
+        if (last != null && nowTick - last < 80) return; // ~4s ICD
+        // ~18% proc chance, bounded
+        if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > 0.18) return;
+        unstableIcd.put(minion.getUniqueId(), nowTick);
+        double radius = 2.75;
+        double aoe = Math.max(0.75, Math.min(6.0, Math.max(finalDamage, baseDamage) * 0.35));
+        int hit = 0;
+        try {
+            if (primaryTarget.getWorld() != null) {
+                primaryTarget.getWorld().spawnParticle(Particle.EXPLOSION, primaryTarget.getLocation().add(0, 0.8, 0), 1, 0, 0, 0, 0);
+                primaryTarget.getWorld().spawnParticle(Particle.FLAME, primaryTarget.getLocation().add(0, 0.8, 0), 18, 0.6, 0.4, 0.6, 0.02);
+                primaryTarget.getWorld().playSound(primaryTarget.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.35f, 1.35f);
+            }
+        } catch (Throwable ignored) {}
+        for (Entity e : primaryTarget.getNearbyEntities(radius, radius, radius)) {
+            if (hit >= 3) break;
+            if (!(e instanceof LivingEntity le) || le.isDead()) continue;
+            if (le.getUniqueId().equals(primaryTarget.getUniqueId())) continue;
+            if (le.getUniqueId().equals(owner.getUniqueId()) || le.getUniqueId().equals(minion.getUniqueId())) continue;
+            try {
+                var pdc = le.getPersistentDataContainer();
+                if (pdc.has(new NamespacedKey(plugin, "summon_mobtype"), PersistentDataType.STRING)) continue;
+            } catch (Throwable ignored) {}
+            if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
+            try {
+                DamageSource src = DamageSource.builder(DamageType.GENERIC).withDirectEntity(minion).withCausingEntity(owner).build();
+                le.damage(aoe, src);
+                try { progression.recordKillCredit(owner, minion, le, null, nowTick); } catch (Throwable ignored) {}
+                hit++;
+            } catch (Throwable ignored) {}
+        }
+        GlovedPlugin.logDebug("[SummonTrait] UNSTABLE proc by minion " + minion.getUniqueId() + " aoe=" + aoe + " extraTargets=" + hit);
     }
 
     static void moveMobTowards(org.bukkit.entity.Mob mob, Location target, double speedFactor) {
@@ -804,7 +928,79 @@ public class MinionAI {
         target.knockback(strength, direction.getX(), direction.getZ());
     }
 
-    private static boolean isEliteMob(LivingEntity entity) {
+    /**
+     * Shared damage application for minion attacks (melee and ranged).
+     * Computes owner-credited, level/soul/trait/strength/ability scaled damage
+     * using the same pipeline as custom melee attacks, applies it to the target,
+     * and dispatches trait/progression/ability hooks. Returns the final damage.
+     */
+    public double applyMinionHit(LivingEntity minion, Player owner, LivingEntity target,
+                                 double rawBaseDamage, long nowTick, String profileName) {
+        double baseDamage = rawBaseDamage;
+        try {
+            if (summonConfig != null && summonConfig.isStrengthDamageEnabled() && progression != null) {
+                var st = progression.resolveOwnerCombatStats(owner.getUniqueId());
+                if (st != null && st.available()) {
+                    double bonus = Math.max(0.0, st.attackDamageTrait()) * summonConfig.getStrengthDamagePerAttackDamageTrait();
+                    bonus = Math.min(bonus, Math.max(0.0, summonConfig.getStrengthDamageMaxBonus()));
+                    baseDamage += bonus;
+                }
+            }
+        } catch (Throwable ignored) {}
+        // Soul stat modifiers (Phase 4)
+        dev.gloved.glovedplugin.summon.soul.SoulInstance soul = resolveMinionSoul(minion);
+        var soulService = plugin.getSoulService();
+        dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot soulSnap = (soul != null && soulService != null)
+                ? soulService.getSnapshot(soul) : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.identity();
+        double soulDamageMult = Math.max(0.25, Math.min(4.0, soulSnap.damageMultiplier()));
+        if (soul != null && soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.FRENZIED)) soulDamageMult *= 1.08;
+        if (soul != null && soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.BULWARK)) soulDamageMult *= 0.97;
+        if (soul != null && soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.PACKBOUND)) {
+            soulDamageMult *= packboundMultiplier(minion, owner, soul);
+        }
+        baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
+
+        int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
+        boolean isElite = isEliteMob(target);
+        double finalDamage = baseDamage;
+        boolean crit = false;
+        boolean targetDebuffedBefore = false;
+        try {
+            if (abilityService != null && summonConfig != null) {
+                var hr = abilityService.applyCritAndDamage(owner, minion, target, baseDamage, summonConfig, soul, soulSnap);
+                finalDamage = hr.damage;
+                crit = hr.crit;
+                targetDebuffedBefore = hr.targetDebuffedBefore;
+            } else {
+                DamageSource src = DamageSource.builder(DamageType.GENERIC)
+                        .withDirectEntity(minion)
+                        .withCausingEntity(owner)
+                        .build();
+                target.damage(baseDamage, src);
+            }
+            applyKnockback(minion, owner, target);
+            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " dealt level-scaled damage " + finalDamage + " (base " + baseDamage + ", crit=" + crit + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ") to " + target.getName() + " for player " + owner.getName() + " level=" + ownerLevel + " elite=" + isElite);
+            try {
+                progression.onMinionHit(owner, minion, target, profileName, finalDamage);
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[SummonXP] Hit hook dispatch error: " + t);
+            }
+            try {
+                if (abilityService != null && summonConfig != null) {
+                    abilityService.onAfterPrimaryHit(owner, minion, target, profileName, finalDamage, baseDamage, crit, targetDebuffedBefore, summonConfig, soul, soulSnap);
+                }
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[SummonAbility] Ability hook dispatch error: " + t);
+            }
+            try { applyUnstableTrait(owner, minion, target, soul, finalDamage, baseDamage, nowTick); } catch (Throwable ignored) {}
+        } catch (Exception e) {
+            GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
+        }
+        trySummonFromMinion(minion, owner, target);
+        return finalDamage;
+    }
+
+    public static boolean isEliteMob(LivingEntity entity) {
         try {
             org.bukkit.plugin.Plugin p = Bukkit.getPluginManager().getPlugin("EliteMobs");
             if (p == null) return false;

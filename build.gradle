@@ -33,6 +33,10 @@ repositories {
         name = "magmaguy"
         url = "https://repo.magmaguy.com/releases"
     }
+    maven {
+        name = "fancyinnovations"
+        url = "https://repo.fancyinnovations.com/releases"
+    }
 }
 
 dependencies {
@@ -41,6 +45,7 @@ dependencies {
     compileOnly "org.xerial:sqlite-jdbc:3.48.0.0"
     compileOnly "net.luckperms:api:5.4"
     compileOnly "dev.aurelium:auraskills-api-bukkit:2.4.0"
+    compileOnly "de.oliver:FancyHolograms:2.8.0"
 }
 
 

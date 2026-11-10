@@ -1,191 +1,158 @@
 package dev.gloved.glovedplugin.summon;
 
+import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.persistence.PersistentDataType;
 
-import java.util.HashSet;
-import java.util.Random;
-import java.util.Set;
+import java.util.UUID;
+import java.util.logging.Level;
 
+/**
+ * Summon event listener: cleanup, owner-damage protection, and enemy engagement targeting.
+ */
 public class SummonListener implements Listener {
     private final GlovedPlugin plugin;
-    private final SummonConfig config;
-    private final SummonManager manager;
+    @SuppressWarnings("unused") private final SummonConfig config;
+    @SuppressWarnings("unused") private final SummonManager manager;
     private final SummonInstanceTracker tracker;
-    private final SummonTargetCoordinator coordinator;
-    private final Random rand = new Random();
 
     public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager,
-                          SummonInstanceTracker tracker, SummonTargetCoordinator coordinator) {
+                          SummonInstanceTracker tracker) {
         this.plugin = plugin;
         this.config = config;
         this.manager = manager;
         this.tracker = tracker;
-        this.coordinator = coordinator;
     }
 
     public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager) {
-        this(plugin, config, manager, null, null);
+        this(plugin, config, manager, null);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         try {
             if (event.getPlayer() == null) return;
-            java.util.UUID id = event.getPlayer().getUniqueId();
+            UUID id = event.getPlayer().getUniqueId();
             try { if (plugin.getSummonProgression() != null) plugin.getSummonProgression().onPlayerQuit(id); } catch (Throwable ignored) {}
             try { if (plugin.getSummonAbilityService() != null) plugin.getSummonAbilityService().onPlayerQuit(id); } catch (Throwable ignored) {}
+            try { if (plugin.getSoulService() != null) plugin.getSoulService().onPlayerQuit(id); } catch (Throwable ignored) {}
             if (tracker == null) return;
-            if (coordinator != null) coordinator.invalidateOwner(id);
             tracker.removeAllForPlayer(id);
             GlovedPlugin.logDebug("[Summon] Removed minions/state for quitting player " + event.getPlayer().getName());
         } catch (Throwable t) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error cleaning up minions on quit", t);
+            plugin.getLogger().log(Level.WARNING, "[Summon] Error cleaning up minions on quit", t);
         }
     }
 
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = false)
-    public void onPlayerInteract(PlayerInteractEvent event) {
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         try {
-            if (!config.isEnabled()) return;
-            if (event.getHand() != EquipmentSlot.HAND) return;
-            Action action = event.getAction();
-            if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
-            if (action == Action.RIGHT_CLICK_BLOCK) {
-                var block = event.getClickedBlock();
-                if (block != null && block.getType().isInteractable()) {
+            LivingEntity damager = resolveDamager(event.getDamager());
+
+            // Minions are not damageable by their owner
+            if (tracker != null && event.getEntity() instanceof LivingEntity victim) {
+                UUID ownerId = tracker.getOwner(victim.getUniqueId());
+                if (ownerId != null && damager instanceof Player owner && owner.getUniqueId().equals(ownerId)) {
+                    event.setCancelled(true);
                     return;
                 }
             }
-            Player player = event.getPlayer();
-            if (player.isSneaking()) return;
 
-            ItemStack item = event.getItem();
-            if (item == null || item.getType().isAir()) {
-                item = player.getInventory().getItemInMainHand();
-            }
-            if (item == null || item.getType().isAir()) return;
-
-            String profileName = SummonEnchant.getProfile(item);
-            if (profileName == null) return;
-            SummonProfile profile = config.getProfile(profileName);
-            if (profile == null) {
-                SummonEnchant.clearProfile(item);
-                return;
+            // Track who damages minions so they can prioritize hitting back
+            if (tracker != null && event.getEntity() instanceof LivingEntity victim
+                    && tracker.isSummoned(victim.getUniqueId()) && damager != null) {
+                MinionAI.recordRecentDamager(victim, damager);
             }
 
-            if (!manager.canSummon(player, profile, SummonTrigger.ABILITY)) return;
-            int spawned = manager.spawn(player, profile, null);
-            if (spawned <= 0) return;
-            manager.setCooldown(player, profile, SummonTrigger.ABILITY);
+            // Track recent damagers for minion AI and engagement
+            if (event.getEntity() instanceof Player player) {
+                if (damager != null) MinionAI.recordRecentDamager(player, damager);
+                if (damager instanceof Mob mob) {
+                    ensureEngagedTargetGoal(mob, player.getUniqueId());
+                }
+            }
 
-            // Activation feedback (subtle, non-spammy)
-            try {
-                player.playSound(player.getLocation(), Sound.ENTITY_EVOKER_PREPARE_SUMMON, 0.35f, 1.7f);
-                player.getWorld().spawnParticle(Particle.ENCHANT, player.getLocation().add(0, 1.0, 0), 10, 0.35, 0.45, 0.35, 0.02);
-            } catch (Throwable ignored) {}
-
-            GlovedPlugin.logDebug("[Summon] Right-click ability triggered for " + player.getName() + " profile " + profileName + " spawned=" + spawned);
+            // Player damaging a mob while having summons => engaged
+            if (damager instanceof Player player && event.getEntity() instanceof Mob mob && tracker != null) {
+                if (!tracker.isSummoned(mob.getUniqueId()) && !tracker.getActiveMinions(player.getUniqueId()).isEmpty()) {
+                    ensureEngagedTargetGoal(mob, player.getUniqueId());
+                }
+            }
         } catch (Throwable t) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerInteract (suppressed)", t);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onPlayerDamaged(EntityDamageByEntityEvent event) {
-        try {
-        if (!config.isEnabled()) {
-            GlovedPlugin.logDebug("[Summon Armor] Config disabled");
-            return;
-        }
-        if (!(event.getEntity() instanceof Player player)) {
-            return;
-        }
-        LivingEntity damager = null;
-        if (event.getDamager() instanceof LivingEntity le) {
-            damager = le;
-        } else if (event.getDamager() instanceof org.bukkit.entity.Projectile proj && proj.getShooter() instanceof LivingEntity le) {
-            damager = le;
-        }
-        if (damager == null) {
-            GlovedPlugin.logDebug("[Summon Armor] Damager not living");
-            return;
-        }
-        if (player.isSneaking()) {
-            GlovedPlugin.logDebug("[Summon Armor] Player sneaking, abort");
-            return;
-        }
-        // Avoid triggering on own minions
-        NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
-        if (damager.getPersistentDataContainer().has(mobTypeKey, PersistentDataType.STRING)) {
-            GlovedPlugin.logDebug("[Summon Armor] Damager is a summoned minion, abort");
-            return;
-        }
-
-        var inv = player.getInventory();
-        ItemStack[] armor = {inv.getHelmet(), inv.getChestplate(), inv.getLeggings(), inv.getBoots()};
-        EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
-        Set<String> processed = new HashSet<>();
-
-        for (int i = 0; i < armor.length; i++) {
-            ItemStack item = armor[i];
-            if (item == null || item.getType().isAir()) continue;
-            String profileName = SummonEnchant.getProfile(item);
-            if (profileName == null) continue;
-            if (processed.contains(profileName)) continue;
-            processed.add(profileName);
-
-            SummonProfile profile = config.getProfile(profileName);
-            if (profile == null) {
-                SummonEnchant.clearProfile(item);
-                continue;
-            }
-            EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
-            if (!manager.canSummon(player, profile, SummonTrigger.ARMOR)) {
-                GlovedPlugin.logDebug("[Summon Armor] CanSummon false for " + player.getName() + " profile " + profileName);
-                continue;
-            }
-            double roll = rand.nextDouble();
-            GlovedPlugin.logDebug("[Summon Armor] Chance roll " + roll + " vs " + stats.chance + " (base " + profile.chance + ", lvl " + stats.summoningLevel + ") for profile " + profileName);
-            if (roll > stats.chance) {
-                GlovedPlugin.logDebug("[Summon Armor] Chance failed for profile " + profileName);
-                continue;
-            }
-            int spawned = manager.spawn(player, profile, damager);
-            if (spawned <= 0) {
-                GlovedPlugin.logDebug("[Summon Armor] Spawn blocked (mana/cap/other) for " + player.getName() + " profile " + profileName);
-                continue;
-            }
-            manager.setCooldown(player, profile, SummonTrigger.ARMOR);
-            GlovedPlugin.logDebug("[Summon Armor] Summon triggered for " + player.getName() + " profile " + profileName + " from armor slot " + slots[i] + " spawned=" + spawned);
-        }
-        } catch (Throwable t) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onPlayerDamaged (suppressed to avoid kick)", t);
+            plugin.getLogger().log(Level.WARNING, "[Summon] Error in onEntityDamageByEntity (suppressed)", t);
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+    public void onEntityTarget(EntityTargetLivingEntityEvent event) {
         try {
-            if (event.getEntity() instanceof Player player && event.getDamager() instanceof LivingEntity damager) {
-                MinionAI.recordRecentDamager(player, damager);
+            if (tracker == null) return;
+            if (!(event.getEntity() instanceof Mob mob)) return;
+            if (tracker.isSummoned(mob.getUniqueId())) return;
+            if (event.getTarget() instanceof Player player) {
+                if (!tracker.getActiveMinions(player.getUniqueId()).isEmpty()) {
+                    ensureEngagedTargetGoal(mob, player.getUniqueId());
+                }
             }
         } catch (Throwable t) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "[Summon] Error in onEntityDamageByEntity (suppressed to avoid kick)", t);
+            plugin.getLogger().log(Level.WARNING, "[Summon] Error in onEntityTarget (suppressed)", t);
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityDeath(EntityDeathEvent event) {
+        try {
+            if (tracker == null) return;
+            LivingEntity entity = event.getEntity();
+            if (tracker.isSummoned(entity.getUniqueId())) {
+                UUID owner = tracker.getOwner(entity.getUniqueId());
+                tracker.despawn(entity.getUniqueId());
+                GlovedPlugin.logDebug("[Summon] Minion died and was cleaned up: " + entity.getUniqueId());
+            }
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.WARNING, "[Summon] Error in onEntityDeath (suppressed)", t);
+        }
+    }
+
+    private void ensureEngagedTargetGoal(Mob mob, UUID ownerId) {
+        if (mob == null || ownerId == null || tracker == null) return;
+        try {
+            Player owner = Bukkit.getPlayer(ownerId);
+            if (owner == null || !owner.isOnline()) return;
+            if (tracker.isSummoned(mob.getUniqueId())) return;
+            if (tracker.getActiveMinions(ownerId).isEmpty()) return;
+            MobGoals goals = plugin.getServer().getMobGoals();
+            if (goals == null) return;
+            // Avoid duplicate registration by checking existing goals' key name
+            for (var g : goals.getAllGoals(mob)) {
+                try {
+                    if (g != null && g.getKey() != null && g.getKey().getNamespacedKey() != null
+                            && "engaged_target".equals(g.getKey().getNamespacedKey().getKey())) {
+                        return;
+                    }
+                } catch (Throwable ignored) {}
+            }
+            goals.addGoal(mob, 2, new EngagedOwnerTargetGoal(plugin, tracker, mob, ownerId));
+            GlovedPlugin.logDebug("[Summon] Added engaged target goal to " + mob.getType() + " for owner " + ownerId);
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Failed to add engaged target goal: " + t);
+        }
+    }
+
+    private static LivingEntity resolveDamager(org.bukkit.entity.Entity damager) {
+        if (damager instanceof LivingEntity le) return le;
+        if (damager instanceof Projectile proj && proj.getShooter() instanceof LivingEntity le) return le;
+        return null;
     }
 }

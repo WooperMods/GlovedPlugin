@@ -6,9 +6,10 @@ public record OwnerCombatStats(
         double critChancePercentPoints,   // AuraSkills crit_chance stat level (1 point ~= 1%)
         double critDamageTrait,           // effective crit_damage trait/bonus (percent points, base 0 typical)
         double attackDamageTrait,         // effective attack-damage trait from Strength (for minion damage bonus)
-        double strengthStatLevel
+        double strengthStatLevel,         // AuraSkills strength stat level
+        double healthStatLevel            // AuraSkills health stat level (max-health bonus for minions)
 ) {
     public static OwnerCombatStats unavailable() {
-        return new OwnerCombatStats(false, 0, 0, 0, 0);
+        return new OwnerCombatStats(false, 0, 0, 0, 0, 0);
     }
 }

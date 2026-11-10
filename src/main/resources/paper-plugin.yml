@@ -25,6 +25,14 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    EliteMobs:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    FancyHolograms:
+      load: BEFORE
+      required: false
+      join-classpath: true
     FreeMinecraftModels:
       load: BEFORE
       required: false

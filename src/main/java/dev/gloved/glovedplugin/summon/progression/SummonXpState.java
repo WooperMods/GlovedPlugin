@@ -35,6 +35,8 @@ final class SummonXpState {
     private final Map<String, Long> lastHitXpTickByOwnerTarget = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<XpSample>> hitXpWindowByOwner = new ConcurrentHashMap<>();
     private final Map<UUID, Deque<XpSample>> killXpWindowByOwner = new ConcurrentHashMap<>();
+    private final Map<UUID, Deque<XpSample>> captureXpWindowByOwner = new ConcurrentHashMap<>();
+    private final Map<UUID, Deque<XpSample>> castXpWindowByOwner = new ConcurrentHashMap<>();
     private final Map<UUID, KillCredit> recentKillCredit = new ConcurrentHashMap<>();
 
     void clear() {
@@ -42,6 +44,8 @@ final class SummonXpState {
         lastHitXpTickByOwnerTarget.clear();
         hitXpWindowByOwner.clear();
         killXpWindowByOwner.clear();
+        captureXpWindowByOwner.clear();
+        castXpWindowByOwner.clear();
         recentKillCredit.clear();
     }
 
@@ -50,6 +54,8 @@ final class SummonXpState {
         lastHitXpTickByOwner.remove(ownerId);
         hitXpWindowByOwner.remove(ownerId);
         killXpWindowByOwner.remove(ownerId);
+        captureXpWindowByOwner.remove(ownerId);
+        castXpWindowByOwner.remove(ownerId);
         String prefix = ownerId + ":";
         lastHitXpTickByOwnerTarget.keySet().removeIf(k -> k.startsWith(prefix));
         // kill credits are keyed by victim; stale entries expire naturally on consume checks
@@ -73,6 +79,18 @@ final class SummonXpState {
         double amount = cfg.getProgressionKillXpAmount();
         if (amount <= 0) return false;
         return consumeWindow(killXpWindowByOwner, ownerId, amount, cfg.getProgressionKillMaxPerMinute(), nowTick);
+    }
+
+    boolean tryConsumeCaptureXp(UUID ownerId, SummonConfig cfg, long nowTick) {
+        double amount = cfg.getProgressionCaptureXpAmount();
+        if (amount <= 0) return false;
+        return consumeWindow(captureXpWindowByOwner, ownerId, amount, cfg.getProgressionCaptureXpMaxPerMinute(), nowTick);
+    }
+
+    boolean tryConsumeCastXp(UUID ownerId, SummonConfig cfg, long nowTick) {
+        double amount = cfg.getProgressionCastXpAmount();
+        if (amount <= 0) return false;
+        return consumeWindow(castXpWindowByOwner, ownerId, amount, cfg.getProgressionCastXpMaxPerMinute(), nowTick);
     }
 
     void recordKillCredit(UUID victimId, UUID ownerId, String profileName, long nowTick) {

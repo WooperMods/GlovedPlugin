@@ -119,6 +119,36 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
         }
     }
 
+    @Override
+    public void onSoulCaptured(Player owner, LivingEntity victim, String familyKey) {
+        try {
+            SummonConfig cfg = config;
+            if (owner == null || cfg == null || !cfg.isProgressionEnabled() || !cfg.isProgressionCaptureXpEnabled() || !active()) return;
+            if (cfg.getProgressionCaptureXpAmount() <= 0) return;
+            long nowTick = currentTick();
+            if (!state.tryConsumeCaptureXp(owner.getUniqueId(), cfg, nowTick)) return;
+            GlovedPlugin.logDebug("[SummonXP] Capture XP " + cfg.getProgressionCaptureXpAmount() + " -> " + owner.getName() + " family=" + familyKey);
+            grantXp(owner.getUniqueId(), cfg.getProgressionCaptureXpAmount());
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[SummonXP] Capture hook error: " + t);
+        }
+    }
+
+    @Override
+    public void onSoulCast(Player owner, String familyKey) {
+        try {
+            SummonConfig cfg = config;
+            if (owner == null || cfg == null || !cfg.isProgressionEnabled() || !cfg.isProgressionCastXpEnabled() || !active()) return;
+            if (cfg.getProgressionCastXpAmount() <= 0) return;
+            long nowTick = currentTick();
+            if (!state.tryConsumeCastXp(owner.getUniqueId(), cfg, nowTick)) return;
+            GlovedPlugin.logDebug("[SummonXP] Cast XP " + cfg.getProgressionCastXpAmount() + " -> " + owner.getName() + " family=" + familyKey);
+            grantXp(owner.getUniqueId(), cfg.getProgressionCastXpAmount());
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[SummonXP] Cast hook error: " + t);
+        }
+    }
+
     protected static long currentTick() {
         try {
             return Bukkit.getCurrentTick();

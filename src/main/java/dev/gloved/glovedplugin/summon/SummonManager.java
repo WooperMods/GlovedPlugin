@@ -2,7 +2,8 @@ package dev.gloved.glovedplugin.summon;
 
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
+import dev.gloved.glovedplugin.summon.soul.SoulConfig;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
@@ -27,6 +28,8 @@ public class SummonManager {
     private final SummonInstanceTracker tracker;
     private final MinionAI minionAI;
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
+    // Soul cast cooldowns (per-player), ms timestamps
+    private final Map<UUID, Long> soulCastCooldowns = new ConcurrentHashMap<>();
 
     public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, MinionAI minionAI) {
         this.plugin = plugin;
@@ -35,22 +38,44 @@ public class SummonManager {
         this.minionAI = minionAI;
     }
 
+    public long getSoulCastCooldownRemainingMs(UUID playerId) {
+        if (playerId == null) return 0;
+        Long until = soulCastCooldowns.get(playerId);
+        if (until == null) return 0;
+        long rem = until - System.currentTimeMillis();
+        return Math.max(0, rem);
+    }
+
+    public void setSoulCastCooldown(UUID playerId, long cooldownMs) {
+        if (playerId == null) return;
+        soulCastCooldowns.put(playerId, System.currentTimeMillis() + Math.max(0, cooldownMs));
+    }
+
     public boolean canSummon(Player player, SummonProfile profile, SummonTrigger trigger) {
-        if (!config.isEnabled()) return false;
+        if (!config.isEnabled() || player == null || profile == null) return false;
         long now = System.currentTimeMillis();
         Map<String, Long> playerCooldowns = cooldowns.getOrDefault(player.getUniqueId(), Collections.emptyMap());
         String key = trigger.name() + ":" + profile.name;
         Long last = playerCooldowns.get(key);
         long required = SummonProfile.COOLDOWN_TICKS * 50L;
         if (last != null && now - last < required) return false;
-        // max-active is a shared pool across triggers (counted per profile)
         EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
-        int count = tracker.getActiveCount(player.getUniqueId(), profile.name);
-        if (count >= stats.maxActive) return false;
+        int typeCount = tracker.getActiveCount(player.getUniqueId(), profile.name);
+        if (typeCount >= stats.maxActive) return false;
+        // Global cap (dynamic soul system)
+        SoulConfig sc = config.getSoulConfig();
+        if (sc != null) {
+            int level = 0;
+            try { if (plugin.getSummonProgression() != null) level = Math.max(0, plugin.getSummonProgression().getSummoningLevel(player.getUniqueId())); } catch (Throwable ignored) {}
+            int globalMax = sc.computeGlobalMaxActive(level);
+            int globalCount = tracker.getActiveMinions(player.getUniqueId()).size();
+            if (globalCount >= globalMax) return false;
+        }
         return true;
     }
 
     public void setCooldown(Player player, SummonProfile profile, SummonTrigger trigger) {
+        if (player == null || profile == null) return;
         String key = trigger.name() + ":" + profile.name;
         cooldowns.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
                 .put(key, System.currentTimeMillis());
@@ -58,31 +83,72 @@ public class SummonManager {
 
     /** @return number of minions spawned (0 if blocked/capped/mana insufficient). */
     public int spawn(Player player, SummonProfile profile, LivingEntity target) {
-        Location spawnLoc = resolveSpawnLocation(player, target);
-        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
-        // Never exceed the per-profile cap, even when a batch is larger than the remaining slots.
-        int active = tracker.getActiveCount(player.getUniqueId(), profile.name);
-        int toSpawn = Math.min(stats.minionsPerHit, Math.max(0, stats.maxActive - active));
-        if (toSpawn <= 0) return 0;
+        if (player == null || profile == null) return 0;
+        // preserve existing behavior: consume trigger mana before spawning
         if (!tryConsumeSummonMana(player)) {
             GlovedPlugin.logDebug("[Summon] Mana blocked summon for " + player.getName() + " profile " + profile.name);
             return 0;
         }
-        GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + stats.minionsPerHit + " (base " + profile.minionsPerHit + ") x " + profile.mobType
-                + " for " + player.getName() + " at " + spawnLoc + " (active " + active + "/" + stats.maxActive + ", base " + profile.maxActive + ", lvl " + stats.summoningLevel + ")");
+        return spawnFromSoul(player, profile, null, target);
+    }
+
+    /** Spawn from dynamic soul/profile template; tags summon_soul_id/summon_family when soul provided. */
+    public int spawnFromSoul(Player player, SummonProfile profile, dev.gloved.glovedplugin.summon.soul.SoulInstance soul, LivingEntity target) {
+        return spawnFromSoul(player, profile, soul, target, false);
+    }
+
+    public int spawnFromSoul(Player player, SummonProfile profile, dev.gloved.glovedplugin.summon.soul.SoulInstance soul, LivingEntity target, boolean allowReplace) {
+        if (player == null || profile == null) return 0;
+        Location spawnLoc = resolveSpawnLocation(player, target);
+        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
+        int activeType = tracker.getActiveCount(player.getUniqueId(), profile.name);
+        int toSpawn = Math.min(stats.minionsPerHit, Math.max(0, stats.maxActive - activeType));
+        // Apply global cap
+        SoulConfig sc = config.getSoulConfig();
+        int level = 0;
+        int globalMax = Integer.MAX_VALUE;
+        int globalCount = 0;
+        if (sc != null) {
+            try { if (plugin.getSummonProgression() != null) level = Math.max(0, plugin.getSummonProgression().getSummoningLevel(player.getUniqueId())); } catch (Throwable ignored) {}
+            globalMax = sc.computeGlobalMaxActive(level);
+            globalCount = tracker.getActiveMinions(player.getUniqueId()).size();
+            toSpawn = Math.min(toSpawn, Math.max(0, globalMax - globalCount));
+        }
+        if (toSpawn <= 0 && allowReplace) {
+            boolean freed = false;
+            if (sc != null && globalCount >= globalMax) {
+                freed = tryFreeOneForReplace(player, profile.name, true);
+            } else if (activeType >= stats.maxActive) {
+                freed = tryFreeOneForReplace(player, profile.name, false);
+            }
+            if (freed) {
+                activeType = tracker.getActiveCount(player.getUniqueId(), profile.name);
+                toSpawn = Math.min(stats.minionsPerHit, Math.max(0, stats.maxActive - activeType));
+                if (sc != null) {
+                    globalCount = tracker.getActiveMinions(player.getUniqueId()).size();
+                    toSpawn = Math.min(toSpawn, Math.max(0, globalMax - globalCount));
+                }
+            }
+        }
+        if (toSpawn <= 0) return 0;
+        GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + stats.minionsPerHit + " x " + profile.mobType
+                + " for " + player.getName() + " at " + spawnLoc + " (typeActive " + activeType + "/" + stats.maxActive + ", lvl " + stats.summoningLevel + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
         List<UUID> spawned = new ArrayList<>();
         for (int i = 0; i < toSpawn; i++) {
             EntityType type = profile.resolveEntityType();
-            if (type == null || !type.isSpawnable()) {
-                GlovedPlugin.logDebug("[Summon] Invalid entity type: " + profile.mobType);
+            if (type == null || !type.isSpawnable() || !type.isAlive()) {
+                GlovedPlugin.logDebug("[Summon] Invalid/non-spawnable entity type: " + profile.mobType);
                 continue;
             }
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
-            LivingEntity mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
+            LivingEntity mob;
+            try {
+                mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[Summon] Failed to spawn " + type + ": " + t);
+                continue;
+            }
             if (mob == null) continue;
-            // Enable AI but selectively strip quirk/target-selector vanilla goals. Keep core
-            // movement/navigation goals so vanilla pathfinding can run; use pathfinder.moveTo
-            // (navigation intent) for follow, never direct velocity steering.
             try {
                 mob.setAI(true);
                 mob.setCanPickupItems(false);
@@ -92,67 +158,218 @@ public class SummonManager {
                     var toRemove = new java.util.ArrayList<com.destroystokyo.paper.entity.ai.Goal<?>>();
                     for (var g : all) {
                         boolean remove = shouldRemoveVanillaGoal(g);
-                        GlovedPlugin.logDebug("[Summon] Goal " + mob.getType() + " " + describeGoal(g) + " -> " + (remove ? "remove" : "keep"));
                         if (remove) toRemove.add(g);
                     }
                     for (var g : toRemove) {
-                        try {
-                            goals.removeGoal(m, (com.destroystokyo.paper.entity.ai.Goal) g);
-                        } catch (Exception ignored) {}
+                        try { goals.removeGoal(m, (com.destroystokyo.paper.entity.ai.Goal) g); } catch (Exception ignored) {}
                     }
                     goals.addGoal(m, 0, new SummonMoveGoal(plugin, tracker, m));
                     m.setTarget(null);
-                    GlovedPlugin.logDebug("[Summon] Minion " + mob.getUniqueId() + " goals kept=" + goals.getAllGoals(m).size() + " removed=" + toRemove.size());
                 }
             } catch (Exception ignored) {}
-            // Any tameable minion is always tamed and owned by the summoner
             if (mob instanceof Tameable t) {
-                t.setTamed(true);
-                t.setOwner(player);
-                t.setAdult();
+                try { t.setTamed(true); t.setOwner(player); t.setAdult(); } catch (Throwable ignored) {}
             }
-            PhasingMob.applySpawnSettings(mob);
-            // Use config nametag
             String displayName = profile.getNametag(player, type);
-            mob.setCustomName(displayName);
-            mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE);
-            // Store mob type/profile/owner in PDC (owner enables orphan cleanup after restarts)
+            try { mob.setCustomName(displayName); mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE); } catch (Throwable ignored) {}
+
             var pdc = mob.getPersistentDataContainer();
-            NamespacedKey mobTypeKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_mobtype");
+            NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
             pdc.set(mobTypeKey, PersistentDataType.STRING, type.name());
-            NamespacedKey profileKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_profile");
+            NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
             pdc.set(profileKey, PersistentDataType.STRING, profile.name);
-            NamespacedKey ownerKey = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_owner");
+            NamespacedKey familyKey = new NamespacedKey(plugin, "summon_family");
+            pdc.set(familyKey, PersistentDataType.STRING, profile.name);
+            NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
             pdc.set(ownerKey, PersistentDataType.STRING, player.getUniqueId().toString());
-            // Summoned minions are always invulnerable
-            if (SummonProfile.INVULNERABLE) {
-                mob.setInvulnerable(true);
-                if (mob.getAttribute(Attribute.MAX_HEALTH) != null) {
-                    mob.getAttribute(Attribute.MAX_HEALTH).setBaseValue(1e9);
-                }
+            if (soul != null) {
+                NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
+                pdc.set(soulKey, PersistentDataType.STRING, soul.getSoulId().toString());
             }
-            // Force initial target
+
+            // Minions are damageable; apply soul stat snapshot (spawn-time attributes)
+            if (soul != null) {
+                try { applySoulSnapshotToMinion(mob, soul); } catch (Throwable t) { GlovedPlugin.logDebug("[Summon] Failed to apply soul snapshot: " + t); }
+            } else {
+                try {
+                    var hp = mob.getAttribute(Attribute.MAX_HEALTH);
+                    if (hp != null) {
+                        mob.setHealth(Math.max(1.0, hp.getValue()));
+                    }
+                } catch (Throwable ignored) {}
+            }
+
             if (target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
-                m2.setTarget(target);
+                try { m2.setTarget(target); } catch (Throwable ignored) {}
             }
-            // Register tracker
             tracker.track(player.getUniqueId(), mob, SummonProfile.LIFETIME_TICKS);
             spawned.add(mob.getUniqueId());
-            // Start AI monitoring
             minionAI.monitorMinion(mob, player, profile);
         }
         if (!spawned.isEmpty()) {
             playSummonEffects(player, spawnLoc, spawned.size());
-            GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName());
+            GlovedPlugin.logDebug("[Summon] Spawned " + spawned.size() + " minions for " + player.getName() + " (soul-cast=" + (soul != null) + ")");
         }
         return spawned.size();
     }
 
-    /** Consumes AuraSkills mana per summon trigger (batch). Returns true if allowed/consumed. */
+    /**
+     * Try to free one active minion slot for replace-policy casts.
+     * @param preferGlobal if true, prefer freeing any minion (global cap pressure), else prefer same family/profile.
+     */
+    private boolean tryFreeOneForReplace(Player player, String familyKey, boolean preferGlobal) {
+        try {
+            if (player == null || tracker == null) return false;
+            java.util.List<LivingEntity> mins = tracker.getActiveMinions(player.getUniqueId());
+            if (mins == null || mins.isEmpty()) return false;
+            LivingEntity victim = null;
+            NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
+            NamespacedKey familyPdc = new NamespacedKey(plugin, "summon_family");
+            // Prefer same family/profile if per-type pressure or as first pass
+            if (familyKey != null) {
+                for (LivingEntity le : mins) {
+                    if (le == null || le.isDead()) continue;
+                    String fam = le.getPersistentDataContainer().get(familyPdc, PersistentDataType.STRING);
+                    if (fam == null) fam = le.getPersistentDataContainer().get(profileKey, PersistentDataType.STRING);
+                    if (familyKey.equalsIgnoreCase(fam)) { victim = le; break; }
+                }
+            }
+            // If global pressure and no same-family found (or none preferred), take any
+            if (victim == null && preferGlobal) {
+                for (LivingEntity le : mins) {
+                    if (le != null && !le.isDead()) { victim = le; break; }
+                }
+            }
+            if (victim == null) return false;
+            tracker.despawn(victim.getUniqueId());
+            return true;
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Replace-policy despawn failed: " + t);
+            return false;
+        }
+    }
+
+    /** Mana consumption for explicit soul cast (uses soul cast base cost). */
+    public boolean tryConsumeSoulCastMana(Player player) {
+        double cost = 0.0;
+        if (config != null && config.getSoulConfig() != null) cost = Math.max(0.0, config.getSoulConfig().getCastBaseManaCost());
+        return tryConsumeSoulCastMana(player, cost);
+    }
+
+    /** Mana consumption for explicit soul cast with computed (soul-scaled) cost. */
+    public boolean tryConsumeSoulCastMana(Player player, double cost) {
+        try {
+            if (config == null) return true;
+            cost = Math.max(0.0, cost);
+            if (cost <= 0.0) return true;
+            if (!config.isManaEnabled()) return true;
+            if (player == null || !player.isOnline()) return false;
+            if (plugin.getServer().getPluginManager().getPlugin("AuraSkills") == null) {
+                return config.isManaAllowWhenAuraSkillsMissing();
+            }
+            Class<?> apiClass = Class.forName("dev.aurelium.auraskills.api.AuraSkillsApi");
+            Object api = apiClass.getMethod("get").invoke(null);
+            if (api == null) return config.isManaAllowWhenAuraSkillsMissing();
+            Object user = apiClass.getMethod("getUser", UUID.class).invoke(api, player.getUniqueId());
+            if (user == null) return config.isManaAllowWhenAuraSkillsMissing();
+            try {
+                Object loaded = user.getClass().getMethod("isLoaded").invoke(user);
+                if (loaded instanceof Boolean b && !b) return config.isManaAllowWhenAuraSkillsMissing();
+            } catch (Throwable ignored) {}
+            Object ok = user.getClass().getMethod("consumeMana", double.class).invoke(user, cost);
+            if (ok instanceof Boolean b) return b;
+            double mana = ((Number) user.getClass().getMethod("getMana").invoke(user)).doubleValue();
+            if (mana + 1.0e-9 < cost) return false;
+            user.getClass().getMethod("setMana", double.class).invoke(user, Math.max(0.0, mana - cost));
+            return true;
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Summon] Soul cast mana consume failed: " + t);
+            return config == null || config.isManaAllowWhenAuraSkillsMissing();
+        }
+    }
+
+    private void applySoulSnapshotToMinion(LivingEntity mob, dev.gloved.glovedplugin.summon.soul.SoulInstance soul) {
+        if (mob == null || soul == null) return;
+        var svc = plugin.getSoulService();
+        var snap = svc != null ? svc.getSnapshot(soul) : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.fromSoul(soul);
+        try {
+            var speed = mob.getAttribute(Attribute.MOVEMENT_SPEED);
+            if (speed != null) {
+                double base = speed.getBaseValue();
+                double mult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
+                speed.setBaseValue(base * mult);
+            }
+        } catch (Throwable ignored) {}
+        try {
+            var fly = mob.getAttribute(Attribute.FLYING_SPEED);
+            if (fly != null) {
+                double base = fly.getBaseValue();
+                double mult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
+                fly.setBaseValue(base * mult);
+            }
+        } catch (Throwable ignored) {}
+        try {
+            var atk = mob.getAttribute(Attribute.ATTACK_DAMAGE);
+            if (atk != null) {
+                double base = atk.getBaseValue();
+                double mult = Math.max(0.5, Math.min(3.0, snap.damageMultiplier()));
+                atk.setBaseValue(Math.max(0.1, base * mult));
+            }
+        } catch (Throwable ignored) {}
+        // Apply bounded health scaling for damageable minions.
+        // Base health = saved mob max HP (from soul) if available, else mob-type default.
+        // Then add owner's AuraSkills health stat (flat max-health bonus).
+        try {
+            var hp = mob.getAttribute(Attribute.MAX_HEALTH);
+            if (hp != null) {
+                double baseHealth;
+                if (soul != null && soul.getMaxHealth() > 0.0) {
+                    baseHealth = soul.getMaxHealth();
+                } else {
+                    baseHealth = hp.getBaseValue();
+                }
+                double healthMult = Math.max(0.5, Math.min(3.0, snap.healthMultiplier()));
+                double scaledBase = Math.max(1.0, baseHealth * healthMult);
+                // Owner's AuraSkills health stat: flat max-health bonus for the minion.
+                double ownerHealthBonus = 0.0;
+                try {
+                    UUID ownerId = tracker != null ? tracker.getOwner(mob.getUniqueId()) : null;
+                    if (ownerId != null) {
+                        var prog = plugin.getSummonProgression();
+                        if (prog != null) {
+                            Player owner = Bukkit.getPlayer(ownerId);
+                            if (owner != null && owner.isOnline()) {
+                                var stats = prog.resolveOwnerCombatStats(owner.getUniqueId());
+                                if (stats.available()) {
+                                    ownerHealthBonus = Math.max(0.0, stats.healthStatLevel());
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                double newMax = Math.max(1.0, scaledBase + ownerHealthBonus);
+                hp.setBaseValue(newMax);
+                mob.setHealth(newMax);
+            }
+        } catch (Throwable ignored) {}
+        // Slime/Magma size normalization (safety/generic rule)
+        try {
+            if (mob instanceof org.bukkit.entity.Slime slime) {
+                int size = slime.getSize();
+                if (size > 3) slime.setSize(2);
+                else if (size < 1) slime.setSize(1);
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private boolean tryConsumeSummonMana(Player player) {
         try {
             if (config == null || !config.isManaEnabled()) return true;
             double cost = Math.max(0.0, config.getManaCostPerTrigger());
+            // Use soul-config base mana if present (Phase 0 foundation); fall back to progression trigger cost.
+            if (config.getSoulConfig() != null) {
+                cost = Math.max(cost, config.getSoulConfig().getCastBaseManaCost());
+            }
             if (cost <= 0.0) return true;
             if (player == null || !player.isOnline()) return false;
             if (plugin.getServer().getPluginManager().getPlugin("AuraSkills") == null) {
@@ -169,7 +386,6 @@ public class SummonManager {
             } catch (Throwable ignored) {}
             Object ok = user.getClass().getMethod("consumeMana", double.class).invoke(user, cost);
             if (ok instanceof Boolean b) return b;
-            // Fallback: manual check+set
             double mana = ((Number) user.getClass().getMethod("getMana").invoke(user)).doubleValue();
             if (mana + 1.0e-9 < cost) return false;
             user.getClass().getMethod("setMana", double.class).invoke(user, Math.max(0.0, mana - cost));
@@ -183,9 +399,16 @@ public class SummonManager {
     private static boolean shouldRemoveVanillaGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {
         if (goal == null) return false;
         try {
-            var types = goal.getTypes();
-            if (types != null && types.contains(com.destroystokyo.paper.entity.ai.GoalType.TARGET)) {
-                return true; // plugin owns targeting
+            var key = goal.getKey();
+            if (key != null && key.getNamespacedKey() != null) {
+                String k = key.getNamespacedKey().getKey().toLowerCase(java.util.Locale.ROOT);
+                // Keep ranged-attack goals so ranged minions (skeleton, stray, bogged, pillager,
+                // drowned w/ trident, blaze, breeze, witch, etc.) can actually shoot/projectile-attack.
+                if (k.contains("ranged") || k.contains("bow") || k.contains("crossbow")
+                        || k.contains("trident") || k.contains("breeze") || k.contains("shoot")
+                        || k.contains("throw")) {
+                    return false;
+                }
             }
         } catch (Exception ignored) {}
         // SummonMoveGoal handles all movement (chase target + follow owner), so remove
@@ -198,10 +421,15 @@ public class SummonManager {
             }
         } catch (Exception ignored) {}
         try {
+            var types = goal.getTypes();
+            if (types != null && types.contains(com.destroystokyo.paper.entity.ai.GoalType.TARGET)) {
+                return true;
+            }
+        } catch (Exception ignored) {}
+        try {
             var key = goal.getKey();
             if (key != null && key.getNamespacedKey() != null) {
                 String k = key.getNamespacedKey().getKey().toLowerCase(java.util.Locale.ROOT);
-                // Quirks/behaviors we never want on minions
                 if (k.contains("pollinate") || k.contains("flower") || k.contains("hive")
                         || k.contains("breed") || k.contains("mate") || k.contains("love")
                         || k.contains("tempt") || k.contains("panic") || k.contains("flee_sun")
@@ -222,21 +450,6 @@ public class SummonManager {
         return false;
     }
 
-    private static String describeGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {
-        if (goal == null) return "null";
-        String key = "?";
-        String types = "?";
-        try {
-            if (goal.getKey() != null && goal.getKey().getNamespacedKey() != null) {
-                key = goal.getKey().getNamespacedKey().toString();
-            }
-        } catch (Exception ignored) {}
-        try {
-            types = String.valueOf(goal.getTypes());
-        } catch (Exception ignored) {}
-        return "key=" + key + " types=" + types;
-    }
-
     private Location resolveSpawnLocation(Player player, LivingEntity target) {
         if (target != null && !target.isDead()) {
             return target.getLocation().add(0, 1, 0);
@@ -254,7 +467,6 @@ public class SummonManager {
             dir = new Vector(0, 0, 1);
         }
         dir.normalize();
-        // Try visible/open spots in front of the player first
         double[] distances = {2.6, 2.0, 3.2, 1.6, 3.8};
         for (double d : distances) {
             Location cand = base.clone().add(dir.clone().multiply(d));
@@ -262,7 +474,6 @@ public class SummonManager {
             Location safe = findSafeSpawn(cand);
             if (safe != null) return safe;
         }
-        // Fallback: just in front of player, slightly raised
         Location fallback = base.clone().add(dir.multiply(1.8));
         fallback.setY(base.getY());
         return fallback.add(0, 0.1, 0);
@@ -272,7 +483,6 @@ public class SummonManager {
         if (loc == null || loc.getWorld() == null) return null;
         World world = loc.getWorld();
         int baseY = loc.getBlockY();
-        // Try same level, then one up/down to handle slabs/slight uneven ground
         int[] yOffsets = {0, 1, -1};
         for (int yo : yOffsets) {
             Location feetLoc = loc.clone();
@@ -303,7 +513,6 @@ public class SummonManager {
         try {
             World world = at.getWorld();
             Location fx = at.clone().add(0, 0.8, 0);
-            // Main burst - visible and "epic"
             world.spawnParticle(Particle.SOUL_FIRE_FLAME, fx, 28 + Math.min(count * 4, 40), 0.9, 0.7, 0.9, 0.02);
             world.spawnParticle(Particle.REVERSE_PORTAL, fx, 24 + Math.min(count * 3, 30), 0.8, 0.6, 0.8, 0.03);
             world.spawnParticle(Particle.WITCH, fx, 16 + Math.min(count * 2, 24), 0.7, 0.5, 0.7, 0.01);
@@ -320,6 +529,6 @@ public class SummonManager {
     }
 
     public void reload(SummonConfig newConfig) {
-        // No-op; config reference swapped externally
+        // config reference swapped externally
     }
 }

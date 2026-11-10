@@ -95,17 +95,7 @@ public final class EnchantBridge {
             } catch (Throwable ignored) {}
         }
 
-        // Summon profile enchant-name tokens
-        try {
-            GlovedPlugin plugin = GlovedPlugin.getPlugin(GlovedPlugin.class);
-            var cfg = plugin != null ? plugin.getSummonConfig() : null;
-            if (cfg != null && cfg.getProfiles() != null) {
-                for (var prof : cfg.getProfiles().values()) {
-                    if (prof.name != null) addIfMatch(out, prof.name, q);
-                    if (prof.enchantName != null) addIfMatch(out, normalizeToken(prof.enchantName), q);
-                }
-            }
-        } catch (Throwable ignored) {}
+        // Dynamic soul system: summon profile/enchant-name tokens are no longer used.
 
         ArrayList<String> list = new ArrayList<>(out);
         list.sort(String.CASE_INSENSITIVE_ORDER);

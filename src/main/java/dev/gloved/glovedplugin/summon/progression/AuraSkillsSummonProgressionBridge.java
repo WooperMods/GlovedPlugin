@@ -29,6 +29,9 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
     private volatile boolean warnedMissingSkill;
     private final Map<UUID, LevelCache> levelCache = new ConcurrentHashMap<>();
     private final SummonOwnerCombatStatsResolver statResolver;
+    private volatile org.bukkit.scheduler.BukkitTask activationRetryTask;
+    private volatile int activationAttempts;
+    private volatile boolean activationReadyLogged;
 
     private record LevelCache(int level, long expiresAtMs) {}
 
@@ -39,7 +42,7 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
 
     @Override
     public void onEnable() {
-        activate();
+        scheduleActivateRetry(true);
     }
 
     @Override
@@ -47,11 +50,14 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
         super.onReload(config);
         levelCache.clear();
         statResolver.clear();
-        activate();
+        activationAttempts = 0;
+        activationReadyLogged = false;
+        scheduleActivateRetry(true);
     }
 
     @Override
     public void onDisable() {
+        cancelActivationRetry();
         levelCache.clear();
         statResolver.clear();
         super.onDisable();
@@ -66,16 +72,73 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
         }
     }
 
-    private synchronized void activate() {
+    private void cancelActivationRetry() {
+        try {
+            org.bukkit.scheduler.BukkitTask t = activationRetryTask;
+            activationRetryTask = null;
+            if (t != null) t.cancel();
+        } catch (Throwable ignored) {}
+    }
+
+    private void scheduleActivateRetry(boolean immediate) {
+        cancelActivationRetry();
+        if (plugin == null) return;
+        if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) {
+            cachedSkill = null;
+            return;
+        }
+        if (immediate) {
+            try {
+                if (activate()) return;
+            } catch (Throwable ignored) {}
+        }
+        activationRetryTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            try {
+                if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) {
+                    cancelActivationRetry();
+                    return;
+                }
+                if (activate()) {
+                    cancelActivationRetry();
+                } else {
+                    activationAttempts++;
+                    // stop spamming retries forever; keep a long tail but bounded
+                    if (activationAttempts >= 60) { // ~5 minutes at 5s interval
+                        GlovedPlugin.logDebug("[SummonXP] AuraSkills activation still unavailable after retries; will remain inactive until reload/restart when API is ready.");
+                        cancelActivationRetry();
+                    }
+                }
+            } catch (Throwable t) {
+                activationAttempts++;
+                GlovedPlugin.logDebug("[SummonXP] AuraSkills activation retry error: " + t);
+                if (activationAttempts >= 60) cancelActivationRetry();
+            }
+        }, immediate ? 40L : 100L, 100L); // first retry in 2s if immediate failed, then every 5s
+    }
+
+    private synchronized boolean activate() {
         try {
             if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) {
                 cachedSkill = null;
-                return;
+                return true; // no integration needed
             }
-            AuraSkillsApi api = AuraSkillsApi.get();
+            AuraSkillsApi api;
+            try {
+                api = AuraSkillsApi.get();
+            } catch (Throwable t) {
+                // API not initialized yet (common when AuraSkills loads after us); retry later.
+                cachedSkill = null;
+                if (activationAttempts == 0) {
+                    GlovedPlugin.logDebug("[SummonXP] AuraSkills plugin present but API not initialized yet; will retry activation.");
+                }
+                return false;
+            }
             if (api == null) {
                 cachedSkill = null;
-                return;
+                if (activationAttempts == 0) {
+                    GlovedPlugin.logDebug("[SummonXP] AuraSkills API unavailable; will retry activation.");
+                }
+                return false;
             }
             String skillId = config != null ? config.getProgressionSkillId() : "summoning";
             if (skillId == null || skillId.isBlank()) skillId = "summoning";
@@ -149,39 +212,76 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
             }
             cachedSkill = existing;
             warnedMissingSkill = false;
+            if (!activationReadyLogged) {
+                activationReadyLogged = true;
+                GlovedPlugin.logDebug("[SummonXP] AuraSkills progression integration activated" + (activationAttempts > 0 ? " after retry" : "") + ".");
+            }
+            return cachedSkill != null || Bukkit.getPluginManager().getPlugin("AuraSkills") == null;
         } catch (Throwable t) {
             cachedSkill = null;
+            String msg = String.valueOf(t);
+            if (msg.contains("AuraSkillsApi is not initialized") || msg.contains("not initialized")) {
+                if (activationAttempts == 0) {
+                    GlovedPlugin.logDebug("[SummonXP] AuraSkills API not ready yet; will retry activation.");
+                }
+                return false;
+            }
             GlovedPlugin.logDebug("[SummonXP] AuraSkills activation failed: " + t);
+            return false;
         }
     }
 
     @Override
     protected boolean isReady() {
-        return cachedSkill != null && Bukkit.getPluginManager().getPlugin("AuraSkills") != null;
+        return Bukkit.getPluginManager().getPlugin("AuraSkills") != null;
+    }
+
+    private Skill resolveSkillForUse(AuraSkillsApi api) {
+        Skill skill = cachedSkill;
+        if (api == null) return skill;
+        try {
+            String skillId = config != null ? config.getProgressionSkillId() : "summoning";
+            if (skillId == null || skillId.isBlank()) skillId = "summoning";
+            NamespacedId id = NamespacedId.of("gloved", skillId.trim().toLowerCase());
+            Skill fresh = api.getGlobalRegistry().getSkill(id);
+            if (fresh != null) {
+                cachedSkill = fresh;
+                return fresh;
+            }
+        } catch (Throwable ignored) {}
+        return skill;
     }
 
     @Override
     protected void grantXp(UUID ownerId, double amount) {
         try {
             if (ownerId == null || amount <= 0) return;
-            AuraSkillsApi api = AuraSkillsApi.get();
-            Skill skill = cachedSkill;
-            if (api == null || skill == null) {
-                if (!warnedMissingSkill) {
-                    warnedMissingSkill = true;
-                    GlovedPlugin.logDebug("[SummonXP] XP grant skipped: AuraSkills skill/api unavailable");
-                }
-                return;
-            }
+            if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) return;
+            AuraSkillsApi api;
+            try { api = AuraSkillsApi.get(); } catch (Throwable t) { return; }
+            if (api == null) return;
             if (Bukkit.getPlayer(ownerId) == null) return;
             SkillsUser user = api.getUser(ownerId);
             if (user == null) return;
+            Skill skill = resolveSkillForUse(api);
+            if (skill == null) {
+                // try to (re)activate in background; skip this grant
+                try { scheduleActivateRetry(false); } catch (Throwable ignored) {}
+                return;
+            }
             if (config != null && !config.isProgressionApplyMultipliers()) {
                 user.addSkillXpRaw(skill, amount);
             } else {
                 user.addSkillXp(skill, amount);
             }
         } catch (Throwable t) {
+            String msg = String.valueOf(t);
+            if (msg.contains("is not loaded") || msg.contains("AuraSkillsApi is not initialized")) {
+                // Skill/API not fully ready yet; retry activation and skip this grant quietly
+                try { scheduleActivateRetry(false); } catch (Throwable ignored) {}
+                GlovedPlugin.logDebug("[SummonXP] XP grant deferred: " + msg);
+                return;
+            }
             GlovedPlugin.logDebug("[SummonXP] XP grant failed: " + t);
         }
     }

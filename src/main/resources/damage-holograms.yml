@@ -1,0 +1,39 @@
+# GlovedPlugin - AuraSkills-compatible damage holograms
+# Reads formatting/scaling/offset/color settings from AuraSkills config.yml (live)
+# but is always enabled here and excludes EliteMobs targets.
+# IMPORTANT: disable AuraSkills' own damage_holograms.enabled in plugins/AuraSkills/config.yml
+# to avoid duplicate holograms.
+
+# Module-specific settings
+exclude-elitemobs: true
+# auto | fancyholograms (currently only FancyHolograms is supported)
+provider: auto
+# Additional worlds to disable in this module (union with AuraSkills disabled_worlds when available)
+disabled-worlds: []
+
+# Fallbacks used if AuraSkills config/values are unavailable (normally read from AuraSkills)
+fallback:
+  scaling: false
+  min-damage: 0.0
+  decimal:
+    display-when-less-than: 100.0
+    max-amount: 2
+  offset:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    random:
+      enabled: false
+      x-min: -0.5
+      x-max: 0.5
+      y-min: 0.0
+      y-max: 0.5
+      z-min: -0.5
+      z-max: 0.5
+  colors:
+    default: GRAY
+    critical-digits:
+      - WHITE
+      - YELLOW
+      - GOLD
+      - RED

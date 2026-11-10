@@ -1,7 +1,6 @@
 package dev.gloved.glovedplugin.summon;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.phasing.PhasingMob;
 import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -25,10 +24,10 @@ public class ReachabilityService {
         // Kept for parity with the rest of the summon package.
     }
 
-    /** @deprecated use {@link PhasingMob#isPhasing(LivingEntity)} */
+    /** @deprecated legacy phasing check removed – phasing module disabled */
     @Deprecated(forRemoval = false)
     public static boolean phasesThroughBlocks(LivingEntity mob) {
-        return PhasingMob.isPhasing(mob);
+        return false;
     }
 
     public boolean canReach(Mob mob, Location target) {
@@ -38,9 +37,7 @@ public class ReachabilityService {
             if (mob.getLocation().distanceSquared(target) > MAX_SEARCH_DISTANCE_SQ) {
                 return true;
             }
-            if (PhasingMob.isPhasing(mob)) {
-                return true;
-            }
+            // Phasing no longer supported; always use Paper reachability
             return paperCanReach(mob, target);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[Summon] Reachability check failed, allowing optimistically: " + t);

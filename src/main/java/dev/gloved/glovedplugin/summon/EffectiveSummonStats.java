@@ -5,7 +5,11 @@ import org.bukkit.entity.Player;
 
 import java.util.UUID;
 
-/** Effective summon stats after progression scaling. Behavior-neutral at level 0/default config. */
+/**
+ * Effective summon stats after progression scaling. In dynamic soul/cast mode, "chance" is not
+ * used for triggering; minionsPerHit = cast batch size, maxActive = per-type cap (global cap
+ * enforced separately).
+ */
 public final class EffectiveSummonStats {
     public final double chance;
     public final int minionsPerHit;
@@ -33,12 +37,10 @@ public final class EffectiveSummonStats {
             return new EffectiveSummonStats(profile.chance, Math.max(1, profile.minionsPerHit),
                     Math.max(1, profile.maxActive), level);
         }
-        // Never shrink below profile base (preserves swarm profiles like fish_school).
+        // Never shrink below template base. Scaling may grow batch/per-type cap up to configured maxima.
         double chance = clamp(profile.chance + config.getScalingChancePerLevel() * level, 0.0,
                 Math.max(profile.chance, config.getScalingChanceMax()));
         int mph = (int) Math.round(profile.minionsPerHit + config.getScalingMinionsPerLevel() * level);
-        mph = clampInt(mph, Math.max(1, profile.minionsPerHit >= 1 ? 1 : 1), Math.max(profile.minionsPerHit, config.getScalingMinionsPerHitMax()));
-        // At minimum keep base behavior; scaling only grows.
         mph = Math.max(mph, profile.minionsPerHit);
         mph = Math.min(mph, Math.max(profile.minionsPerHit, config.getScalingMinionsPerHitMax()));
         int maxActive = (int) Math.round(profile.maxActive + config.getScalingMaxActivePerLevel() * level);
@@ -49,10 +51,6 @@ public final class EffectiveSummonStats {
 
     private static double clamp(double v, double min, double max) {
         if (Double.isNaN(v) || Double.isInfinite(v)) return min;
-        return Math.max(min, Math.min(max, v));
-    }
-
-    private static int clampInt(int v, int min, int max) {
         return Math.max(min, Math.min(max, v));
     }
 }

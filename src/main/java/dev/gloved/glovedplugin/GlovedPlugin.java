@@ -41,11 +41,14 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonConfig summonConfig;
     private dev.gloved.glovedplugin.summon.SummonManager summonManager;
     private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
-    private dev.gloved.glovedplugin.summon.SummonTargetCoordinator summonCoordinator;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
     private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge summonProgression;
     private dev.gloved.glovedplugin.summon.progression.SummonAbilityService summonAbilityService;
+    private dev.gloved.glovedplugin.summon.soul.db.SoulDatabase soulDatabase;
+    private dev.gloved.glovedplugin.summon.soul.SoulService soulService;
+    private dev.gloved.glovedplugin.summon.SummonAbilityIndicator summonAbilityIndicator;
+    private dev.gloved.glovedplugin.damagehologram.DamageHologramModule damageHologramModule;
 
     {
         logger = getLogger();
@@ -170,11 +173,26 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception ignored) {}
         FmmBridge.invalidate();
 
-        // Modular summon module
+        // Modular summon module (dynamic soul system)
         this.summonConfig = dev.gloved.glovedplugin.summon.SummonConfig.load(this);
+        this.soulDatabase = new dev.gloved.glovedplugin.summon.soul.db.SoulDatabase(this);
+        try {
+            this.soulDatabase.init();
+        } catch (Exception e) {
+            getLogger().severe("Failed to init soul database (souls.db): " + e);
+        }
+        this.soulService = new dev.gloved.glovedplugin.summon.soul.SoulService(this, this.soulDatabase);
+        // Backfill max_health for existing captured souls that predate this field.
+        try {
+            this.soulService.getRepository().backfillMissingMaxHealth();
+        } catch (Exception e) {
+            getLogger().warning("[Souls] Failed to backfill missing max_health: " + e);
+        }
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulCaptureListener(this, this.soulService), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulPickupListener(this), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulItemListener(this), this);
         this.summonTracker = new dev.gloved.glovedplugin.summon.SummonInstanceTracker(this);
-        this.summonCoordinator = new dev.gloved.glovedplugin.summon.SummonTargetCoordinator(this.summonTracker);
-        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker, this.summonCoordinator);
+        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker);
         this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
         this.minionAI.setSummon(this.summonConfig, this.summonManager);
         this.summonProgression = createSummonProgressionBridge();
@@ -182,9 +200,10 @@ public final class GlovedPlugin extends JavaPlugin {
         this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
         this.minionAI.setAbilityService(this.summonAbilityService);
         this.summonProgression.onEnable();
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker, this.summonCoordinator), this);
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig), this);
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker), this);
+        this.summonAbilityIndicator = new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig);
+        getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker, this.minionAI), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.progression.SummonKillAttributionListener(() -> this.summonProgression, () -> this.summonConfig), this);
         this.clumpNametagManager = new dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager(this, this.summonTracker);
         getServer().getPluginManager().registerEvents(this.clumpNametagManager, this);
@@ -198,7 +217,19 @@ public final class GlovedPlugin extends JavaPlugin {
             this.summonTracker.cleanupOrphans();
             this.clumpNametagManager.cleanupOrphanProxies();
         }, 20L * 60L, 20L * 60L);
-        logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled"));
+        // Give soul focus item to online players
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            try { dev.gloved.glovedplugin.summon.soul.SoulItem.give(player); } catch (Exception ignored) {}
+        }
+        logInfo("Modular summon module " + (this.summonConfig.isEnabled() ? "enabled" : "disabled") + " (dynamic souls)");
+
+        // AuraSkills-compatible damage holograms (FancyHolograms), excluding EliteMobs targets.
+        try {
+            this.damageHologramModule = new dev.gloved.glovedplugin.damagehologram.DamageHologramModule(this);
+            this.damageHologramModule.load();
+        } catch (Throwable t) {
+            logWarning("Failed to initialize damage hologram module: " + t);
+        }
 
         // Register menu command using Paper's registerCommand API
         Menu menuCommand = new Menu();
@@ -212,6 +243,7 @@ public final class GlovedPlugin extends JavaPlugin {
         // This also replaces stale items created before the color-code fix.
         for (Player player : Bukkit.getOnlinePlayers()) {
             MenuHandler.giveMenuOpener(player);
+            dev.gloved.glovedplugin.summon.soul.SoulItem.give(player);
         }
 
         logInfo("GlovedPlugin has been loaded!");
@@ -244,6 +276,13 @@ public final class GlovedPlugin extends JavaPlugin {
         if (this.clumpNametagManager != null) {
             this.clumpNametagManager.restart();
         }
+        if (this.damageHologramModule != null) {
+            try {
+                this.damageHologramModule.reload();
+            } catch (Throwable t) {
+                logWarning("Failed to reload damage hologram module: " + t);
+            }
+        }
         if (this.combatListener != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 this.combatListener.applyReach(player);
@@ -274,8 +313,20 @@ public final class GlovedPlugin extends JavaPlugin {
         return summonConfig;
     }
 
+    public dev.gloved.glovedplugin.summon.SummonManager getSummonManager() {
+        return summonManager;
+    }
+
     public dev.gloved.glovedplugin.summon.SummonInstanceTracker getSummonTracker() {
         return summonTracker;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.db.SoulDatabase getSoulDatabase() {
+        return soulDatabase;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.SoulService getSoulService() {
+        return soulService;
     }
 
     public dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge getSummonProgression() {
@@ -284,6 +335,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.summon.progression.SummonAbilityService getSummonAbilityService() {
         return summonAbilityService;
+    }
+
+    public dev.gloved.glovedplugin.damagehologram.DamageHologramModule getDamageHologramModule() {
+        return damageHologramModule;
     }
 
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge createSummonProgressionBridge() {
@@ -437,6 +492,9 @@ public final class GlovedPlugin extends JavaPlugin {
         if (summonProgression != null) {
             try { summonProgression.onDisable(); } catch (Exception ignored) {}
         }
+        if (summonAbilityIndicator != null) {
+            try { summonAbilityIndicator.stop(); } catch (Exception ignored) {}
+        }
         if (clumpNametagManager != null) {
             clumpNametagManager.stop();
         }
@@ -467,8 +525,14 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception e) {
             getLogger().warning("GlovedPlugin onDisable failed: " + e);
         }
+        if (damageHologramModule != null) {
+            try { damageHologramModule.shutdown(); } catch (Exception ignored) {}
+        }
         if (lootrManager != null) {
             lootrManager.shutdown();
+        }
+        if (soulDatabase != null) {
+            try { soulDatabase.close(); } catch (Exception ignored) {}
         }
         logInfo("GlovedPlugin has been disabled!");
     }

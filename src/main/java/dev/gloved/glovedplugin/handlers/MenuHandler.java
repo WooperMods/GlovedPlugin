@@ -41,6 +41,7 @@ import static dev.gloved.glovedplugin.GlovedPlugin.logInfo;
 public class MenuHandler implements Listener {
 
     private final GlovedPlugin plugin;
+    private final java.util.Map<java.util.UUID, Long> lastVaultAction = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Constructor for the MenuHandler class.
@@ -79,6 +80,10 @@ public class MenuHandler implements Listener {
             handleEditorClick(event, editor, player);
             return;
         }
+        if (event.getView().getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv vault) {
+            handleSoulVaultClick(event, vault, player);
+            return;
+        }
         MenuConfig config = plugin.getMenuConfig();
         if (config == null) return;
 
@@ -87,6 +92,170 @@ public class MenuHandler implements Listener {
             return;
         }
         handleOpenerClick(event, player, config);
+    }
+
+    private void handleSoulVaultClick(InventoryClickEvent event, dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv vault, Player player) {
+        event.setCancelled(true);
+        if (vault.getViewerId() != null && !vault.getViewerId().equals(player.getUniqueId())) {
+            player.closeInventory();
+            return;
+        }
+        int raw = event.getRawSlot();
+        if (raw < 0 || raw >= event.getView().getTopInventory().getSize()) return;
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir()) return;
+        var svc = plugin.getSoulService();
+        if (svc == null) return;
+
+        // nav/actions
+        String nav = null;
+        try {
+            var meta = clicked.getItemMeta();
+            if (meta != null) nav = meta.getPersistentDataContainer().get(dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv.navKey(plugin), org.bukkit.persistence.PersistentDataType.STRING);
+        } catch (Throwable ignored) {}
+        if (nav != null) {
+            switch (nav) {
+                case "prev" -> new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), Math.max(0, vault.getPage() - 1), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                case "next" -> new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage() + 1, vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                case "close" -> player.closeInventory();
+                case "sort" -> {
+                    String next = switch (vault.getSortMode().toLowerCase(java.util.Locale.ROOT)) {
+                        case "default" -> "quality";
+                        case "quality" -> "rarity";
+                        case "rarity" -> "type";
+                        case "type", "family" -> "recent";
+                        default -> "default";
+                    };
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), vault.getFilterRarity(), next).open(player);
+                }
+                case "rarity" -> {
+                    dev.gloved.glovedplugin.summon.soul.SoulRarity cur = vault.getFilterRarity();
+                    dev.gloved.glovedplugin.summon.soul.SoulRarity[] vals = dev.gloved.glovedplugin.summon.soul.SoulRarity.values();
+                    dev.gloved.glovedplugin.summon.soul.SoulRarity next = null;
+                    if (cur == null) next = vals[0];
+                    else {
+                        int i = (cur.ordinal() + 1) % (vals.length + 1);
+                        if (i < vals.length) next = vals[i];
+                    }
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), next, vault.getSortMode()).open(player);
+                }
+                case "filter" -> {
+                    // simple cycle: ALL -> player's recent families in page/list not tracked; fall back to ALL/ZOMBIE/SKELETON/CREEPER/SPIDER common examples by cycling a small set
+                    String[] presets = {null, "ZOMBIE", "SKELETON", "CREEPER", "SPIDER", "BEE", "IRON_GOLEM"};
+                    String cur = vault.getFilterType();
+                    int idx = 0;
+                    for (int i = 0; i < presets.length; i++) if (java.util.Objects.equals(cur, presets[i]) || (cur != null && cur.equalsIgnoreCase(presets[i] == null ? "" : presets[i]))) { idx = i; break; }
+                    String next = presets[(idx + 1) % presets.length];
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), 0, next, vault.getFilterRarity(), vault.getSortMode()).open(player);
+                }
+                default -> {}
+            }
+            return;
+        }
+
+        // soul item
+        String idStr = null;
+        try {
+            var meta = clicked.getItemMeta();
+            if (meta != null) idStr = meta.getPersistentDataContainer().get(dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv.soulIdKey(plugin), org.bukkit.persistence.PersistentDataType.STRING);
+        } catch (Throwable ignored) {}
+        if (idStr == null) return;
+        java.util.UUID soulId;
+        try { soulId = java.util.UUID.fromString(idStr); } catch (Exception e) { return; }
+
+        // debounce rapid clicks to prevent double salvage/extract races
+        long now = System.currentTimeMillis();
+        Long prev = lastVaultAction.get(player.getUniqueId());
+        if (prev != null && now - prev < 200L) return;
+        lastVaultAction.put(player.getUniqueId(), now);
+
+        dev.gloved.glovedplugin.summon.soul.SoulInstance soul = svc.getSoul(soulId);
+        if (soul == null || !player.getUniqueId().equals(soul.getOwnerId())) return;
+
+        if (event.isShiftClick() && event.isLeftClick()) {
+            boolean ok = svc.toggleFavorite(player.getUniqueId(), soul);
+            if (ok) player.sendMessage(Component.text("Soul " + dev.gloved.glovedplugin.summon.soul.SoulService.shortId(soul) + (soul.isFavorite() ? " favorited." : " unfavorited.")));
+            new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+            return;
+        }
+        if (event.isShiftClick() && event.isRightClick()) {
+            boolean ok = svc.toggleLock(player.getUniqueId(), soul);
+            if (ok) player.sendMessage(Component.text("Soul " + dev.gloved.glovedplugin.summon.soul.SoulService.shortId(soul) + (soul.isLocked() ? " locked." : " unlocked.")));
+            new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+            return;
+        }
+        switch (event.getClick()) {
+            case CONTROL_DROP -> {
+                var res = svc.salvage(player.getUniqueId(), soul);
+                if (res.ok()) player.sendMessage(Component.text("Salvaged " + dev.gloved.glovedplugin.summon.soul.SoulService.shortId(soul) + " for +" + res.essenceGained() + " essence."));
+                else player.sendMessage(Component.text("Cannot salvage: " + res.reason()));
+                new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                return;
+            }
+            case DROP -> {
+                // Validate we can create the physical item BEFORE deleting the soul from the vault.
+                // If item creation throws, we must not lose the soul.
+                org.bukkit.inventory.ItemStack item;
+                try {
+                    item = dev.gloved.glovedplugin.summon.soul.SoulDropItem.create(plugin, soul);
+                    if (item == null || item.getType() == org.bukkit.Material.AIR || !item.hasItemMeta()) {
+                        player.sendMessage(Component.text("Cannot extract soul: invalid item."));
+                        new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                        return;
+                    }
+                } catch (Throwable t) {
+                    player.sendMessage(Component.text("Cannot extract soul: item creation failed."));
+                    GlovedPlugin.logDebug("[Souls] Extract item creation failed for soul " + soul.getSoulId() + ": " + t);
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                    return;
+                }
+
+                var res = svc.extractForItem(player.getUniqueId(), soul);
+                if (!res.ok()) {
+                    player.sendMessage(Component.text("Cannot extract soul: " + res.reason()));
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                    return;
+                }
+                java.util.Map<Integer, org.bukkit.inventory.ItemStack> leftover = player.getInventory().addItem(item);
+                if (!leftover.isEmpty()) {
+                    for (org.bukkit.inventory.ItemStack it : leftover.values()) {
+                        if (it == null || it.getType().isAir()) continue;
+                        org.bukkit.entity.Item dropped = player.getWorld().dropItemNaturally(player.getLocation(), it);
+                        // tradeable: allow any player to pick up
+                        try { dropped.setPickupDelay(10); } catch (Throwable ignored) {}
+                        try { dropped.setGlowing(true); } catch (Throwable ignored) {}
+                        try {
+                            dropped.setCustomName(dev.gloved.glovedplugin.summon.soul.SoulDropItem.getDisplayName(soul));
+                            dropped.setCustomNameVisible(true);
+                        } catch (Throwable ignored) {}
+                    }
+                    player.sendMessage(Component.text("Extracted " + dev.gloved.glovedplugin.summon.soul.SoulService.describe(soul) + " as a soul item (dropped at your feet; inventory full)."));
+                } else {
+                    player.sendMessage(Component.text("Extracted " + dev.gloved.glovedplugin.summon.soul.SoulService.describe(soul) + " as a soul item."));
+                }
+                try { player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 0.8f, 1.1f); } catch (Throwable ignored) {}
+                new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                return;
+            }
+            case RIGHT -> {
+                for (String line : svc.inspect(soul).split("\n")) player.sendMessage(Component.text(line));
+                return;
+            }
+            case LEFT -> {
+                var st = svc.getState(player.getUniqueId());
+                int slot = st != null ? st.selectedSlot() : 0;
+                boolean ok = svc.equipSoul(player.getUniqueId(), slot, soul) && svc.selectSlot(player.getUniqueId(), slot);
+                if (ok) {
+                    player.sendMessage(Component.text("Equipped & selected " + dev.gloved.glovedplugin.summon.soul.SoulGenerator.describe(soul) + " in slot " + slot + "."));
+                    dev.gloved.glovedplugin.summon.soul.SoulItem.refresh(player, plugin);
+                } else {
+                    player.sendMessage(Component.text("Failed to equip/select soul."));
+                }
+                new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                return;
+            }
+            default -> {}
+        }
     }
 
     /**
@@ -373,7 +542,8 @@ public class MenuHandler implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         InventoryView view = event.getView();
         int topSize = view.getTopInventory().getSize();
-        if (view.getTopInventory().getHolder() instanceof MenuEditorInv) {
+        if (view.getTopInventory().getHolder() instanceof MenuEditorInv
+                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {
                     event.setCancelled(true);

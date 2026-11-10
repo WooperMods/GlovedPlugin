@@ -61,12 +61,13 @@ public final class SummonOwnerCombatStatsResolver {
             if (critDamage <= 0.0) critDamage = statLevel(user, "crit_damage", "CRIT_DAMAGE");
             double attackDamageTrait = effectiveTraitLevel(api, user, "attack_damage", "ATTACK_DAMAGE");
             double strength = statLevel(user, "strength", "STRENGTH");
+            double health = statLevel(user, "health", "HEALTH");
             if (attackDamageTrait <= 0.0 && strength > 0.0) {
                 // Fallback approximation: Strength stat contributes attack damage trait (default modifier 0.4 per point).
                 attackDamageTrait = strength * 0.4;
             }
             return new OwnerCombatStats(true,
-                    sanitize(critChance), sanitize(critDamage), sanitize(attackDamageTrait), sanitize(strength));
+                    sanitize(critChance), sanitize(critDamage), sanitize(attackDamageTrait), sanitize(strength), sanitize(health));
         } catch (Throwable t) {
             if (!warnedUnavailable) {
                 warnedUnavailable = true;
