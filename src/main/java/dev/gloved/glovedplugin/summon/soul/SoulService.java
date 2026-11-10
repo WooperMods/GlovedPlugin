@@ -560,7 +560,8 @@ public class SoulService {
         } catch (SQLException e) {
             return new SalvageResult(false, 0, "db-error");
         }
-        if (soul.isLocked()) return new SalvageResult(false, 0, "locked");
+        if (soul.isLocked()) return new SalvageResult(false, 0, "this soul is locked");
+        if (soul.isFavorite()) return new SalvageResult(false, 0, "this soul is favorited");
         try {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
             if (loadout.containsValue(soul.getSoulId())) return new SalvageResult(false, 0, "equipped");
@@ -594,7 +595,8 @@ public class SoulService {
         } catch (SQLException e) {
             return new ExtractResult(false, "db-error");
         }
-        if (soul.isLocked()) return new ExtractResult(false, "locked");
+        if (soul.isLocked()) return new ExtractResult(false, "this soul is locked");
+        if (soul.isFavorite()) return new ExtractResult(false, "this soul is favorited");
         try {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
             if (loadout.containsValue(soul.getSoulId())) return new ExtractResult(false, "equipped");
