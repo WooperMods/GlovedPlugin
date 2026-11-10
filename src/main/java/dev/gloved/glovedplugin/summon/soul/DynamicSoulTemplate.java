@@ -14,8 +14,8 @@ import java.util.Locale;
  */
 public final class DynamicSoulTemplate {
     public static final boolean INVULNERABLE = true;
-    public static final int COOLDOWN_TICKS = 5; // base internal cooldown; cast cooldown handled by soul system
-    public static final int LIFETIME_TICKS = 600;
+    public static final int COOLDOWN_TICKS = 1; // base internal cooldown; cast cooldown handled by soul system
+    public static final int LIFETIME_TICKS = 1200;
     public static final double FOLLOW_RANGE = 64.0;
     public static final String NAMETAG_FORMAT = "{player}'s {mob}";
     public static final boolean NAMETAG_VISIBLE = true;

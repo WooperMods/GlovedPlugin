@@ -187,7 +187,7 @@ public final class SoulConfig {
         ConfigurationSection cast = s.getConfigurationSection("cast");
         if (cast != null) {
             cfg.castSharedGcdTicks = Math.max(0, cast.getInt("shared-gcd-ticks", 40));
-            cfg.castBaseCooldownTicks = Math.max(0, cast.getInt("base-cooldown-ticks", 240));
+            cfg.castBaseCooldownTicks = Math.max(0, cast.getInt("base-cooldown-ticks", 120));
             cfg.castBaseManaCost = Math.max(0.0, cast.getDouble("base-mana-cost", 12.0));
             String rp = cast.getString("replace-policy", "BLOCK_IF_CAPPED");
             cfg.replaceIfCapped = rp != null && rp.toUpperCase(Locale.ROOT).contains("REPLACE");
@@ -242,8 +242,8 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.vault.loadout.base-slots", 1);
         setIfMissing(cfg, "souls.vault.loadout.levels-per-slot", 10);
         setIfMissing(cfg, "souls.vault.loadout.max-slots", 5);
-        setIfMissing(cfg, "souls.cast.shared-gcd-ticks", 40);
-        setIfMissing(cfg, "souls.cast.base-cooldown-ticks", 240);
+        setIfMissing(cfg, "souls.cast.shared-gcd-ticks", 10);
+        setIfMissing(cfg, "souls.cast.base-cooldown-ticks", 120);
         setIfMissing(cfg, "souls.cast.base-mana-cost", 12.0);
         setIfMissing(cfg, "souls.cast.replace-policy", "BLOCK_IF_CAPPED");
         setIfMissing(cfg, "souls.caps.global-max-active-base", 2);

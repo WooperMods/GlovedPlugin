@@ -18,8 +18,8 @@ import java.util.Locale;
  */
 public class SummonProfile {
     public static final boolean INVULNERABLE = false;
-    public static final int COOLDOWN_TICKS = 5;
-    public static final int LIFETIME_TICKS = 600;
+    public static final int COOLDOWN_TICKS = 1;
+    public static final int LIFETIME_TICKS = 1200;
     /** Unified radius: max distance minions may travel from owner / target scan range. */
     public static final double FOLLOW_RANGE = 64.0;
     public static final String NAMETAG_FORMAT = "{player}'s {mob}";

@@ -124,8 +124,8 @@ souls:
       max-slots: 5
 
   cast:
-    shared-gcd-ticks: 40
-    base-cooldown-ticks: 240
+    shared-gcd-ticks: 10
+    base-cooldown-ticks: 120
     base-mana-cost: 12.0
     replace-policy: BLOCK_IF_CAPPED
 
