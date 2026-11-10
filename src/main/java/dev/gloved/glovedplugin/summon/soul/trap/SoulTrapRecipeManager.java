@@ -67,11 +67,9 @@ public class SoulTrapRecipeManager {
         List<net.kyori.adventure.text.Component> lore = new ArrayList<>();
         lore.add(net.kyori.adventure.text.Component.empty());
         lore.add(net.kyori.adventure.text.Component.text(
-                String.format("§7Capture a mob's soul without killing it.")));
+                "§7Capture a mob's soul without killing it."));
         lore.add(net.kyori.adventure.text.Component.text(
-                String.format("§7Success: §f%%d%%", Math.round(tier.successChance * 100))));
-        lore.add(net.kyori.adventure.text.Component.text(
-                String.format("§7Rarity floor: §f%s", tier.rarityFloor)));
+                String.format("§7Success: §f%.0f%%", Math.round(tier.successChance * 100))));
         lore.add(net.kyori.adventure.text.Component.empty());
         lore.add(net.kyori.adventure.text.Component.text(
                 "§7Right-click a living mob to attempt capture."));
