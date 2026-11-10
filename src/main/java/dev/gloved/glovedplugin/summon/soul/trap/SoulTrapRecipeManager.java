@@ -67,6 +67,7 @@ public class SoulTrapRecipeManager implements Listener {
     private void registerTierRecipe(SoulTrapTier tier) {
         NamespacedKey key = new NamespacedKey(plugin, "soul_trap_" + tier.id);
         ItemStack result = buildTrapItem(tier);
+        result.setAmount(4);
 
         if ("snare".equals(tier.id)) {
             ShapelessRecipe recipe = new ShapelessRecipe(key, result);
