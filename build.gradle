@@ -37,6 +37,10 @@ repositories {
         name = "fancyinnovations"
         url = "https://repo.fancyinnovations.com/releases"
     }
+    maven {
+        name = "enginehub"
+        url = "https://maven.enginehub.org/repo/"
+    }
 }
 
 dependencies {
@@ -46,6 +50,7 @@ dependencies {
     compileOnly "net.luckperms:api:5.4"
     compileOnly "dev.aurelium:auraskills-api-bukkit:2.4.0"
     compileOnly "de.oliver:FancyHolograms:2.8.0"
+    compileOnly "com.sk89q.worldguard:worldguard-bukkit:7.0.10"
 }
 
 

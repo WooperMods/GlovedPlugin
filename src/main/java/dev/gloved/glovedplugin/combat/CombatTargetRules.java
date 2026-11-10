@@ -1,6 +1,7 @@
 package dev.gloved.glovedplugin.combat;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Tameable;
@@ -38,7 +39,39 @@ public final class CombatTargetRules {
             } catch (Throwable ignored) {
                 return true;
             }
+            if (isWorldGuardPvpDenied(owner, targetPlayer, target.getLocation())) {
+                return true;
+            }
+        }
+
+        // Protect other players' summoned minions using the same PvP toggle and region rules.
+        try {
+            var tracker = plugin.getSummonTracker();
+            if (tracker != null && tracker.isSummoned(target.getUniqueId())) {
+                java.util.UUID targetOwnerId = tracker.getOwner(target.getUniqueId());
+                if (targetOwnerId != null && !targetOwnerId.equals(owner.getUniqueId())) {
+                    org.bukkit.entity.Player targetOwner = org.bukkit.Bukkit.getPlayer(targetOwnerId);
+                    if (targetOwner == null || plugin.isPvpDisabled(owner) || plugin.isPvpDisabled(targetOwner)) {
+                        return true;
+                    }
+                    if (isWorldGuardPvpDenied(owner, targetOwner, target.getLocation())) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+            return true;
         }
         return false;
+    }
+
+    private static boolean isWorldGuardPvpDenied(Player owner, Player other, org.bukkit.Location location) {
+        try {
+            if (!Bukkit.getPluginManager().isPluginEnabled("WorldGuard")) return false;
+            return WorldGuardPvP.isPvpDenied(owner, other, location);
+        } catch (Throwable t) {
+            // Fail closed for PvP-related checks when integration errors.
+            return true;
+        }
     }
 }

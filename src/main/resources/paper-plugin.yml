@@ -33,6 +33,10 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    WorldGuard:
+      load: BEFORE
+      required: false
+      join-classpath: true
     FreeMinecraftModels:
       load: BEFORE
       required: false
