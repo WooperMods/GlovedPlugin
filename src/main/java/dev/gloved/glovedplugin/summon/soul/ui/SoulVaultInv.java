@@ -176,11 +176,12 @@ public class SoulVaultInv implements InventoryHolder {
         if (meta != null) {
             String q = SoulQuality.format(soul);
             String mobName = prettyMobName(soul.getFamilyKey());
-            net.kyori.adventure.text.format.TextColor baseColor = soul.getRarity() == SoulRarity.MYTHIC
-                    ? net.kyori.adventure.text.format.TextColor.color(0xFF69B4)
-                    : soul.getRarity().getColor();
-            Component name = soul.getRarity().coloredNameComponent()
-                    .append(Component.text(" " + mobName + " Soul ", baseColor))
+            Component rarityName = soul.getRarity().coloredNameComponent();
+            Component rest = (soul.getRarity() == SoulRarity.MYTHIC)
+                    ? Component.text(" " + mobName + " Soul ", net.kyori.adventure.text.format.NamedTextColor.RED)
+                    : Component.text(" " + mobName + " Soul ", soul.getRarity().getColor());
+            Component name = rarityName
+                    .append(rest)
                     .append(Component.text("(" + q + ")", net.kyori.adventure.text.format.NamedTextColor.GRAY))
                     .decoration(TextDecoration.ITALIC, false);
             meta.displayName(name);
@@ -247,7 +248,7 @@ public class SoulVaultInv implements InventoryHolder {
             case RARE -> "§9";
             case EPIC -> "§5";
             case LEGENDARY -> "§6";
-            case MYTHIC -> "§x§F§F§6§9§B§4"; // kept for compatibility; prefer coloredNameComponent()
+            case MYTHIC -> "§c"; // kept for compatibility; prefer coloredNameComponent()
         };
     }
 

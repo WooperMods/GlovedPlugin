@@ -116,7 +116,7 @@ public final class SoulTrapTier {
         List<MaterialIngredient> extra = List.of(
                 new MaterialIngredient(Material.DRAGON_BREATH, 1)
         );
-        return new SoulTrapTier("prism", "&x&F&F&6&9&B&4Soul Prism", ingredients, extra,
+        return new SoulTrapTier("prism", "&c&lSoul Prism", ingredients, extra,
                 1.00, SoulRarity.MYTHIC, 5,
                 PotionEffectType.WITHER, 1, 3600, 5.0);
     }

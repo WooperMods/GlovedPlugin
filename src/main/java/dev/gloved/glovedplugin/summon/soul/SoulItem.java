@@ -60,7 +60,8 @@ public final class SoulItem {
             SoulInstance soul = gp.getSoulService().getSelectedSoul(player.getUniqueId());
             if (soul == null) return "§7None";
             String q = SoulQuality.format(soul);
-            return soul.getRarity().coloredNameLegacy() + " " + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
+            String sep = soul.getRarity() == SoulRarity.MYTHIC ? " §r§c" : " ";
+            return soul.getRarity().coloredNameLegacy() + sep + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
         } catch (Throwable ignored) {
             return "§7None";
         }

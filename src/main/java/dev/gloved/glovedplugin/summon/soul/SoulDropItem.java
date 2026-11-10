@@ -40,7 +40,8 @@ public final class SoulDropItem {
     public static String getDisplayName(SoulInstance soul) {
         if (soul == null) return "Soul";
         String mobName = prettyName(soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey());
-        return soul.getRarity().coloredNameLegacy() + " " + mobName + " Soul";
+        String sep = soul.getRarity() == SoulRarity.MYTHIC ? " §r§c" : " ";
+        return soul.getRarity().coloredNameLegacy() + sep + mobName + " Soul";
     }
 
     public static ItemStack create(GlovedPlugin plugin, SoulInstance soul) {
@@ -72,7 +73,8 @@ public final class SoulDropItem {
         String mobName = prettyName(soul != null ? (soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey()) : "Unknown");
         SoulRarity rarity = soul != null ? soul.getRarity() : SoulRarity.COMMON;
         String q = soul != null ? SoulQuality.format(soul) : "0%";
-        String display = rarity.coloredNameLegacy() + " " + mobName + " Soul §7(" + q + ")";
+        String sep = rarity == SoulRarity.MYTHIC ? " §r§c" : " ";
+        String display = rarity.coloredNameLegacy() + sep + mobName + " Soul §7(" + q + ")";
         meta.displayName(LegacyComponentSerializer.legacySection().deserialize(display).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
         if (soul != null && !soul.getTraits().isEmpty()) {
