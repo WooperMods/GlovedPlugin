@@ -674,7 +674,10 @@ public class SoulService {
             SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
             if (cd != null) mult *= Math.max(0.5, Math.min(3.0, cd.costMult()));
             SoulStatSnapshot snap = getSnapshot(soul);
-            mult *= Math.max(0.5, Math.min(1.5, snap.costEfficiency()));
+            // Dampen cost-efficiency impact so it can't swing cooldown as wildly.
+            // 1.5x -> 1.25x, 0.5x -> 0.75x; centered on 1.0.
+            double eff = snap.costEfficiency();
+            mult *= 1.0 + (eff - 1.0) * 0.5;
         }
         int computed = (int) Math.max(20, Math.round(base * mult));
         // Enforce shared GCD floor
