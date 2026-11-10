@@ -70,7 +70,7 @@ public class SummonAbilityIndicator implements Listener {
                         } catch (Throwable ignored) {}
                     }
                 } catch (Throwable ignored) {}
-            }, 40L, 40L);
+            }, 2L, 2L);
         } catch (Throwable ignored) {}
     }
 
