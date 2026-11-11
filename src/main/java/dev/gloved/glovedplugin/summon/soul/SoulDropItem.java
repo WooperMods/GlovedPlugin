@@ -77,28 +77,14 @@ public final class SoulDropItem {
         String display = rarity.coloredNameLegacy() + sep + mobName + " Soul §7(" + q + ")";
         meta.displayName(LegacyComponentSerializer.legacySection().deserialize(display).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
-        if (soul != null && !soul.getTraits().isEmpty()) {
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----§r§7<§5§lTraits§r§7>§7§l§m-----").decoration(TextDecoration.ITALIC, false));
-            for (SoulTrait t : soul.getTraits()) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§d" + prettyName(t.name())).decoration(TextDecoration.ITALIC, false));
-            }
-        }
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----§r§7<§lStats§r§7>§7§l§m-----").decoration(TextDecoration.ITALIC, false));
         if (soul != null) {
-            SoulService svc = plugin.getSoulService();
-            double spawnedHp = svc != null ? svc.computeSpawnedMaxHealth(null, soul) : 0.0;
-            if (spawnedHp > 0.0) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§e" + (int) spawnedHp + "HP").decoration(TextDecoration.ITALIC, false));
-            }
-        }
-        if (soul == null || soul.getAffixes().isEmpty()) {
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7- None").decoration(TextDecoration.ITALIC, false));
+            lore.addAll(SoulLoreBuilder.traitsSection(soul));
+            lore.addAll(SoulLoreBuilder.statsSection(plugin, soul));
         } else {
-            for (SoulAffixRoll affix : soul.getAffixes()) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§a" + SoulAffixType.format(affix)).decoration(TextDecoration.ITALIC, false));
-            }
+            lore.add(SoulLoreBuilder.header("Stats"));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7- None").decoration(TextDecoration.ITALIC, false));
+            lore.add(SoulLoreBuilder.separator());
         }
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----------------").decoration(TextDecoration.ITALIC, false));
         lore.add(Component.empty());
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§aRight-click§7: add to Soul Vault").decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
@@ -213,6 +199,8 @@ public final class SoulDropItem {
         dto.createdAt = soul.getCreatedAt();
         dto.favorite = soul.isFavorite();
         dto.maxHealth = soul.getMaxHealth();
+        dto.enhanceLevel = soul.getEnhanceLevel();
+        dto.baseStats = soul.getBaseStats() != null ? soul.getBaseStats().toJson() : null;
         dto.affixes = new ArrayList<>();
         for (SoulAffixRoll r : soul.getAffixes()) {
             if (r != null) dto.affixes.add(new AffixDto(r.type().name(), r.value()));
@@ -248,13 +236,23 @@ public final class SoulDropItem {
             }
         }
         return new SoulInstance(soulId, ownerId, et, dto.familyKey, cat, rarity, dto.quality, affixes, traits,
-                dto.createdAt, dto.maxHealth, dto.favorite);
+                dto.createdAt, dto.maxHealth, dto.favorite,
+                baseStatsOrFallback(dto.baseStats, et, dto.familyKey), dto.enhanceLevel);
+    }
+
+    private static SoulBaseStats baseStatsOrFallback(String json, EntityType type, String familyKey) {
+        SoulBaseStats parsed = SoulBaseStats.fromJson(json);
+        if (parsed != null) return parsed;
+        if (type != null) return SoulBaseStats.defaults(type);
+        // Legacy item with an unresolvable entity type: neutral defaults.
+        return SoulBaseStats.defaults(null);
     }
 
     private static class SoulDto {
-        String soulId, ownerId, entityType, familyKey, category, rarity, trait;
+        String soulId, ownerId, entityType, familyKey, category, rarity, trait, baseStats;
         List<String> traits;
         double quality; long createdAt; double maxHealth; boolean favorite;
+        int enhanceLevel;
         List<AffixDto> affixes;
     }
     private static class AffixDto {

@@ -136,6 +136,8 @@ public class SummonConfig {
 
     // Dynamic soul config
     private SoulConfig soulConfig = new SoulConfig();
+    private final dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig soulTableConfig =
+            new dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig();
 
     private SummonConfig(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -157,6 +159,7 @@ public class SummonConfig {
         backfill(yaml);
         // Soul config backfill + load
         SoulConfig.backfill(yaml);
+        dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig.backfill(yaml);
         try { yaml.save(file); } catch (Exception ignored) {}
 
         enabled = yaml.getBoolean("enabled", true);
@@ -281,6 +284,8 @@ public class SummonConfig {
         abilityLifestealMaxHealPerMinute = safeNonNegative(yaml.getDouble("progression.abilities.lifesteal.max-heal-per-minute", 40.0));
 
         this.soulConfig = SoulConfig.load(yaml);
+        // Reloaded in place: managers/listeners keep their SoulTableConfig reference.
+        this.soulTableConfig.reload(yaml);
 
         if (yaml.isConfigurationSection("profiles")) {
             GlovedPlugin.logInfo("[Summon] Fully-dynamic soul system active: static 'profiles:' catalog is ignored (entity-type souls are resolved dynamically).");
@@ -444,6 +449,9 @@ public class SummonConfig {
     }
 
     public SoulConfig getSoulConfig() { return soulConfig; }
+
+    /** Soul Table + soul stat config (same instance across reloads). */
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig getSoulTableConfig() { return soulTableConfig; }
 
     private static SummonProfile toProfile(DynamicSoulTemplate t) {
         return new SummonProfile(t.name, t.entityType != null ? t.entityType.name() : t.name,

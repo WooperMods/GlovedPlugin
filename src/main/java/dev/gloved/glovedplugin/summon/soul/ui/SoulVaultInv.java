@@ -188,28 +188,8 @@ public class SoulVaultInv implements InventoryHolder {
                     .decoration(TextDecoration.ITALIC, false);
             meta.displayName(name);
             List<Component> lore = new ArrayList<>();
-            if (soul.getTrait() != null || !soul.getTraits().isEmpty()) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----§r§7<§5§lTraits§r§7>§7§l§m-----").decoration(TextDecoration.ITALIC, false));
-                List<SoulTrait> traits = soul.getTraits();
-                if (traits.isEmpty() && soul.getTrait() != null) traits = List.of(soul.getTrait());
-                for (SoulTrait t : traits) {
-                    lore.add(LegacyComponentSerializer.legacySection().deserialize("§d" + prettyMobName(t.name())).decoration(TextDecoration.ITALIC, false));
-                }
-            }
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----§r§7<§lStats§r§7>§7§l§m-----").decoration(TextDecoration.ITALIC, false));
-            SoulService svc = plugin.getSoulService();
-            double spawnedHp = svc != null ? svc.computeSpawnedMaxHealth(viewerId, soul) : 0.0;
-            if (spawnedHp > 0.0) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§e" + (int) spawnedHp + "HP").decoration(TextDecoration.ITALIC, false));
-            }
-            if (soul.getAffixes().isEmpty()) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7- None").decoration(TextDecoration.ITALIC, false));
-            } else {
-                for (SoulAffixRoll affix : soul.getAffixes()) {
-                    lore.add(LegacyComponentSerializer.legacySection().deserialize("§a" + SoulAffixType.format(affix)).decoration(TextDecoration.ITALIC, false));
-                }
-            }
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7§l§m-----------------").decoration(TextDecoration.ITALIC, false));
+            lore.addAll(SoulLoreBuilder.traitsSection(soul));
+            lore.addAll(SoulLoreBuilder.statsSection(plugin, soul, viewerId));
             String flags = (soul.isFavorite() ? "§e★ Fav " : "");
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());

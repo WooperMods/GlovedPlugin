@@ -294,48 +294,45 @@ public class SummonManager {
         }
     }
 
+    /**
+     * Applies rolled soul base stats (enhanced) plus affix multipliers to a freshly spawned minion.
+     *
+     * <p>Never touches {@code Attribute.FOLLOW_RANGE}: follow/target range is a fixed
+     * {@link SummonProfile#FOLLOW_RANGE} AI limit and is intentionally not a soul stat.</p>
+     */
     private void applySoulSnapshotToMinion(LivingEntity mob, dev.gloved.glovedplugin.summon.soul.SoulInstance soul) {
         if (mob == null || soul == null) return;
         var svc = plugin.getSoulService();
         var snap = svc != null ? svc.getSnapshot(soul) : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.fromSoul(soul);
-        try {
-            var speed = mob.getAttribute(Attribute.MOVEMENT_SPEED);
-            if (speed != null) {
-                double base = speed.getBaseValue();
-                double mult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
-                speed.setBaseValue(base * mult);
-            }
-        } catch (Throwable ignored) {}
+        dev.gloved.glovedplugin.summon.soul.SoulBaseStats base = svc != null
+                ? svc.effectiveBaseStats(soul)
+                : (soul.getBaseStats() != null
+                        ? soul.getBaseStats()
+                        : dev.gloved.glovedplugin.summon.soul.SoulBaseStats.defaults(soul.getEntityType()));
+
+        double speedMult = clamp(snap.speedMultiplier(), 0.5, 1.6);
+        // Movement: rolled absolute speed scaled by the SWIFT affix.
+        setBase(mob, Attribute.MOVEMENT_SPEED, clamp(base.movementSpeed() * speedMult, 0.01, 1.0));
+        // Flying speed is not a captured soul stat: keep the mob's own base, scaled by the same multiplier.
         try {
             var fly = mob.getAttribute(Attribute.FLYING_SPEED);
-            if (fly != null) {
-                double base = fly.getBaseValue();
-                double mult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
-                fly.setBaseValue(base * mult);
-            }
+            if (fly != null) fly.setBaseValue(clamp(fly.getBaseValue() * speedMult, 0.01, 1.0));
         } catch (Throwable ignored) {}
-        try {
-            var atk = mob.getAttribute(Attribute.ATTACK_DAMAGE);
-            if (atk != null) {
-                double base = atk.getBaseValue();
-                double mult = Math.max(0.5, Math.min(3.0, snap.damageMultiplier()));
-                atk.setBaseValue(Math.max(0.1, base * mult));
-            }
-        } catch (Throwable ignored) {}
+        // Offense / defense stats: absolute rolled values (affix multipliers where they exist).
+        setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)));
+        setBase(mob, Attribute.ARMOR, base.armor());
+        setBase(mob, Attribute.ARMOR_TOUGHNESS, base.armorToughness());
+        setBase(mob, Attribute.KNOCKBACK_RESISTANCE, Math.min(1.0, base.knockbackResistance()));
+        setBase(mob, Attribute.ATTACK_KNOCKBACK, base.attackKnockback());
+        setBase(mob, Attribute.ATTACK_SPEED, base.attackSpeed());
+
         // Apply bounded health scaling for damageable minions.
-        // Base health = saved mob max HP (from soul) if available, else mob-type default.
-        // Then add owner's AuraSkills health stat (flat max-health bonus).
+        // Health = rolled (enhanced) base * VIGOROUS affix + owner's AuraSkills health stat (flat bonus).
         try {
             var hp = mob.getAttribute(Attribute.MAX_HEALTH);
             if (hp != null) {
-                double baseHealth;
-                if (soul != null && soul.getMaxHealth() > 0.0) {
-                    baseHealth = soul.getMaxHealth();
-                } else {
-                    baseHealth = hp.getBaseValue();
-                }
                 double healthMult = Math.max(0.5, Math.min(3.0, snap.healthMultiplier()));
-                double scaledBase = Math.max(1.0, baseHealth * healthMult);
+                double scaledBase = Math.max(1.0, base.health() * healthMult);
                 // Owner's AuraSkills health stat: flat max-health bonus for the minion.
                 double ownerHealthBonus = 0.0;
                 try {
@@ -366,6 +363,18 @@ public class SummonManager {
                 else if (size < 1) slime.setSize(1);
             }
         } catch (Throwable ignored) {}
+    }
+
+    private static void setBase(LivingEntity mob, Attribute attribute, double value) {
+        try {
+            var instance = mob.getAttribute(attribute);
+            if (instance != null && Double.isFinite(value)) instance.setBaseValue(Math.max(0.0, value));
+        } catch (Throwable ignored) {}
+    }
+
+    private static double clamp(double value, double min, double max) {
+        if (!Double.isFinite(value)) return min;
+        return Math.max(min, Math.min(max, value));
     }
 
     private static boolean shouldRemoveVanillaGoal(com.destroystokyo.paper.entity.ai.Goal<?> goal) {

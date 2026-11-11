@@ -4,6 +4,9 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -51,6 +54,10 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.damagehologram.DamageHologramModule damageHologramModule;
     private dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager trapRecipeManager;
     private dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener trapListener;
+    private dev.gloved.glovedplugin.summon.soul.table.SoulTableManager soulTableManager;
+    private dev.gloved.glovedplugin.summon.soul.table.SoulTableService soulTableService;
+    private dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService soulTablePackService;
+    private dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager soulTableRecipeManager;
 
     {
         logger = getLogger();
@@ -190,6 +197,35 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception e) {
             getLogger().warning("[Souls] Failed to backfill missing max_health: " + e);
         }
+        // Soul Table station (block registry, overlay entities, GUI, pack, recipe) + stat backfill.
+        this.soulTableManager = new dev.gloved.glovedplugin.summon.soul.table.SoulTableManager(this, this.soulDatabase);
+        this.soulTableService = new dev.gloved.glovedplugin.summon.soul.table.SoulTableService(this, this.soulDatabase, this.soulService);
+        getServer().getPluginManager().registerEvents(
+                new dev.gloved.glovedplugin.summon.soul.table.SoulTableListener(this, this.soulTableManager), this);
+        this.soulTableRecipeManager = new dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager(this);
+        this.soulTableRecipeManager.registerRecipes();
+        getServer().getPluginManager().registerEvents(this.soulTableRecipeManager, this);
+        this.soulTablePackService = new dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService(this);
+        // Write the pack immediately so ResourcePackManager (which enables after GlovedPlugin) picks it
+        // up during its own startup merge. The ServerLoadEvent pass below re-deploys and runs `rspm reload`
+        // for the case where ResourcePackManager enabled first (e.g. /reload confirm).
+        try {
+            this.soulTablePackService.generateAndDeploy();
+        } catch (Throwable t) {
+            getLogger().warning("[SoulTable] Resource pack deployment failed: " + t.getMessage());
+        }
+        try {
+            var tableCfg = this.summonConfig.getSoulTableConfig();
+            if (tableCfg.isStatsEnabled() && tableCfg.isBackfillLegacy()) {
+                int updated = this.soulService.getRepository().backfillLegacyBaseStats(tableCfg.getStatConfig());
+                if (updated > 0) logInfo("Backfilled base stats for " + updated + " legacy soul(s)");
+            }
+        } catch (Exception e) {
+            getLogger().warning("[Souls] Failed to backfill legacy base stats: " + e);
+        }
+        // Worlds/entities are ready once the server has finished loading all plugins; rehydrate tables
+        // and refresh the resource pack then (ResourcePackManager may enable after GlovedPlugin).
+        getServer().getPluginManager().registerEvents(new StartupListener(), this);
         // Initialize soul trap system (recipes + listener)
         this.trapRecipeManager = new dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager(this);
         this.trapRecipeManager.registerRecipes();
@@ -287,6 +323,17 @@ public final class GlovedPlugin extends JavaPlugin {
             // Reload in place so listeners/managers that hold this reference see the new values.
             this.summonConfig.reload();
         }
+        if (this.soulTableRecipeManager != null) {
+            this.soulTableRecipeManager.registerRecipes();
+        }
+        if (this.soulTablePackService != null) {
+            try {
+                var packResult = this.soulTablePackService.generateAndDeploy();
+                if (!packResult.ok()) logWarning("[SoulTable] " + packResult.message());
+            } catch (Throwable t) {
+                logWarning("[SoulTable] Resource pack deployment failed: " + t);
+            }
+        }
         if (this.summonProgression != null) {
             this.summonProgression = refreshSummonProgressionBridge(this.summonProgression);
             if (this.minionAI != null) this.minionAI.setProgression(this.summonProgression);
@@ -348,6 +395,22 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.summon.soul.SoulService getSoulService() {
         return soulService;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTableManager getSoulTableManager() {
+        return soulTableManager;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTableService getSoulTableService() {
+        return soulTableService;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService getSoulTablePackService() {
+        return soulTablePackService;
+    }
+
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager getSoulTableRecipeManager() {
+        return soulTableRecipeManager;
     }
 
     public dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge getSummonProgression() {
@@ -558,5 +621,25 @@ public final class GlovedPlugin extends JavaPlugin {
         logInfo("GlovedPlugin has been disabled!");
     }
 
-
+    /**
+     * Post-startup pass. {@link ServerLoadEvent} fires after every plugin is enabled and the worlds
+     * are loaded, which is the earliest point where ResourcePackManager can accept `rspm reload` and
+     * where Soul Table overlays can be rehydrated safely.
+     */
+    private final class StartupListener implements Listener {
+        @EventHandler
+        public void onServerLoad(ServerLoadEvent event) {
+            if (soulTablePackService != null) {
+                try {
+                    var result = soulTablePackService.generateAndDeploy();
+                    if (!result.ok()) logWarning("[SoulTable] " + result.message());
+                } catch (Throwable t) {
+                    getLogger().warning("[SoulTable] Resource pack deployment failed: " + t.getMessage());
+                }
+            }
+            if (soulTableManager != null) {
+                soulTableManager.loadAll();
+            }
+        }
+    }
 }

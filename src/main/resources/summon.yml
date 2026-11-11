@@ -142,6 +142,76 @@ souls:
 
   debug-telemetry: true
 
+  table:
+    enabled: true
+    base-block: SMITHING_TABLE
+    use-public: true
+    break-owner-only: true
+    costs:
+      combine:
+        UNCOMMON: 10
+        RARE: 25
+        EPIC: 75
+        LEGENDARY: 200
+        MYTHIC: 500
+      enhance:
+        base: 10
+        exponent: 2
+        max-level: 10
+        per-level-bonus: 0.025
+      reforge:
+        COMMON: 20
+        UNCOMMON: 40
+        RARE: 80
+        EPIC: 160
+        LEGENDARY: 320
+        MYTHIC: 640
+      salvage:
+        confirmation-seconds: 5
+    recipe:
+      enabled: true
+      pattern:
+        - "SSS"
+        - "PLP"
+        - "ONO"
+      ingredients:
+        S: SOUL_SAND
+        P: POLISHED_BLACKSTONE
+        L: SOUL_LANTERN
+        O: OBSIDIAN
+        N: NETHERITE_SCRAP
+
+  # Rolled soul base stats. Follow/target range is intentionally absent: it is a fixed
+  # SummonProfile AI limit, never a soul stat.
+  stats:
+    enabled: true
+    backfill-legacy: true
+    rarity-multipliers:
+      COMMON: 1.00
+      UNCOMMON: 1.05
+      RARE: 1.12
+      EPIC: 1.20
+      LEGENDARY: 1.30
+      MYTHIC: 1.45
+    variance:
+      health: 0.10
+      attack-damage: 0.10
+      movement-speed: 0.05
+      armor: 0.15
+      armor-toughness: 0.15
+      knockback-resistance: 0.10
+      attack-knockback: 0.10
+      attack-speed: 0.10
+    caps:
+      health: 200.0
+      attack-damage: 30.0
+      movement-speed: 0.5
+      armor: 30.0
+      armor-toughness: 20.0
+      knockback-resistance: 1.0
+      attack-knockback: 5.0
+      attack-speed: 8.0
+
 progression:
   enabled: true
   auraskills:

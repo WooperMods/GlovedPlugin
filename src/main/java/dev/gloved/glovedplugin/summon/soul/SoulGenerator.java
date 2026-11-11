@@ -2,11 +2,16 @@ package dev.gloved.glovedplugin.summon.soul;
 
 import org.bukkit.entity.EntityType;
 
+import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
+
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 /** Generates random soul instances (rarity, affixes, trait, quality) with bounded rolls. */
 public final class SoulGenerator {
+
+    private static final SoulTableConfig.SoulStatConfig DEFAULT_STAT_CONFIG =
+            new SoulTableConfig.SoulStatConfig();
 
     private SoulGenerator() {}
 
@@ -24,6 +29,18 @@ public final class SoulGenerator {
 
     public static SoulInstance generate(UUID owner, EntityType type, SoulConfig cfg, SoulRarity forcedRarity,
                                         int summoningLevel, int pityRare, int pityEpic, double maxHealth) {
+        return generate(owner, type, cfg, forcedRarity, summoningLevel, pityRare, pityEpic, maxHealth, null, null);
+    }
+
+    /**
+     * Full generator entry point: rolls rarity/affixes/traits/quality and the rolled base-stat block.
+     *
+     * @param source   live captured stats (null = use the entity type's default attribute map)
+     * @param tableCfg stat config source (null = built-in defaults)
+     */
+    public static SoulInstance generate(UUID owner, EntityType type, SoulConfig cfg, SoulRarity forcedRarity,
+                                        int summoningLevel, int pityRare, int pityEpic, double maxHealth,
+                                        SoulBaseStats source, SoulTableConfig tableCfg) {
         EntityCategory cat = EntityCategory.of(type);
         SoulRarity rarity = forcedRarity != null ? forcedRarity : rollRarity(cfg, summoningLevel, pityRare, pityEpic);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
@@ -31,8 +48,27 @@ public final class SoulGenerator {
         List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng);
         List<SoulTrait> traits = rollTraits(rarity, rng);
         double quality = SoulQuality.percent(rarity, affixes);
+        SoulBaseStats baseStats = rollBaseStats(type, rarity, source, tableCfg);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
-                System.currentTimeMillis(), maxHealth, false);
+                System.currentTimeMillis(), maxHealth, false, baseStats, 0);
+    }
+
+    /** Rolls the captured base-stat block (rarity multiplier + variance + caps). */
+    public static SoulBaseStats rollBaseStats(EntityType type, SoulRarity rarity, SoulBaseStats source,
+                                              SoulTableConfig tableCfg) {
+        SoulBaseStats statSource = source != null ? source : SoulBaseStats.defaults(type);
+        if (tableCfg != null && !tableCfg.isStatsEnabled()) return statSource;
+        SoulTableConfig.SoulStatConfig statCfg =
+                tableCfg != null ? tableCfg.getStatConfig() : DEFAULT_STAT_CONFIG;
+        return statSource.withVariance(ThreadLocalRandom.current(), rarity, statCfg).capped(statCfg);
+    }
+
+    /** Rerolls the affix list for a rarity (used by the Soul Table reforge). */
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity) {
+        if (rarity == null) return List.of();
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
+        return rollAffixes(rarity, affixCount, rng);
     }
 
     public static SoulRarity rollRarity(SoulConfig cfg) {

@@ -400,6 +400,7 @@ public class GlovedCommand implements BasicCommand {
             case "cast", "summon" -> handleSoulCast(source, svc);
             case "codex" -> handleSoulCodex(source, args, svc);
             case "trap", "traps" -> handleSoulTrapGive(source, args);
+            case "table" -> handleSoulTable(source, args);
             case "help" -> handleSoulHelp(source);
             default -> handleSoulHelp(source);
         }
@@ -828,14 +829,123 @@ public class GlovedCommand implements BasicCommand {
         source.getSender().sendMessage(Component.text("Gave " + amount + "x " + tier.displayName.replace("&", "§") + " §ato " + target.getName(), net.kyori.adventure.text.format.NamedTextColor.GREEN));
     }
 
+    private void handleSoulTable(@NotNull CommandSourceStack source, @NotNull String[] args) {
+        var sender = source.getSender();
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("/gloved soul table give [player] [amount]", net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("/gloved soul table list [page]", net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("/gloved soul table reload", net.kyori.adventure.text.format.NamedTextColor.GRAY));
+            return;
+        }
+        String action = args[2].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "give" -> {
+                if (!sender.hasPermission("gloved.soul.table.give")) {
+                    sender.sendMessage(Component.text("You don't have permission to do that.", net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+                Player target = sender instanceof Player p ? p : null;
+                int index = 3;
+                if (args.length > index) {
+                    Player named = Bukkit.getPlayerExact(args[index]);
+                    if (named == null) named = Bukkit.getPlayer(args[index]);
+                    if (named != null) {
+                        target = named;
+                        index++;
+                    }
+                }
+                if (target == null) {
+                    sender.sendMessage(Component.text("Console must specify a player: /gloved soul table give <player> [amount]", net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+                int amount = 1;
+                if (args.length > index) {
+                    try {
+                        amount = Integer.parseInt(args[index]);
+                    } catch (NumberFormatException ignored) {
+                        amount = 1;
+                    }
+                }
+                amount = Math.max(1, Math.min(64, amount));
+                var item = dev.gloved.glovedplugin.summon.soul.table.SoulTableItem.create(plugin);
+                item.setAmount(amount);
+                var leftover = target.getInventory().addItem(item);
+                for (var drop : leftover.values()) {
+                    target.getWorld().dropItemNaturally(target.getLocation(), drop);
+                }
+                sender.sendMessage(Component.text("Gave " + amount + "x Soul Table to " + target.getName(),
+                        net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            }
+            case "list" -> {
+                if (!sender.hasPermission("gloved.soul.table.give")) {
+                    sender.sendMessage(Component.text("You don't have permission to do that.", net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+                var manager = plugin.getSoulTableManager();
+                if (manager == null) {
+                    sender.sendMessage(Component.text("Soul Table system is not initialized.", net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+                int page = 0;
+                if (args.length > 3) {
+                    try { page = Math.max(0, Integer.parseInt(args[3]) - 1); } catch (NumberFormatException ignored) {}
+                }
+                var rows = manager.listAll();
+                int perPage = 10;
+                int pages = Math.max(1, (rows.size() + perPage - 1) / perPage);
+                if (page >= pages) page = pages - 1;
+                int from = page * perPage;
+                int to = Math.min(rows.size(), from + perPage);
+                sender.sendMessage(Component.text("=== Soul Tables (" + (page + 1) + "/" + pages + ", " + rows.size() + ") ===",
+                        net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
+                if (rows.isEmpty()) {
+                    sender.sendMessage(Component.text("No placed Soul Tables.", net.kyori.adventure.text.format.NamedTextColor.GRAY));
+                    return;
+                }
+                for (int i = from; i < to; i++) {
+                    var row = rows.get(i);
+                    String owner;
+                    Player online = Bukkit.getPlayer(row.ownerId());
+                    if (online != null) owner = online.getName();
+                    else {
+                        try { owner = Bukkit.getOfflinePlayer(row.ownerId()).getName(); } catch (Throwable ignored) { owner = null; }
+                        if (owner == null) owner = row.ownerId().toString().substring(0, 8);
+                    }
+                    sender.sendMessage(Component.text("#" + (i + 1) + " " + row.world() + " " + row.x() + "," + row.y() + "," + row.z()
+                            + " owner=" + owner, net.kyori.adventure.text.format.NamedTextColor.GRAY));
+                }
+            }
+            case "reload" -> {
+                if (!sender.hasPermission("gloved.reload") && !sender.hasPermission("gloved.soul.table.give")) {
+                    sender.sendMessage(Component.text("You don't have permission to do that.", net.kyori.adventure.text.format.NamedTextColor.RED));
+                    return;
+                }
+                if (plugin.getSummonConfig() != null) plugin.getSummonConfig().reload();
+                var recipes = plugin.getSoulTableRecipeManager();
+                if (recipes != null) recipes.registerRecipes();
+                var pack = plugin.getSoulTablePackService();
+                if (pack != null) {
+                    var result = pack.generateAndDeploy();
+                    sender.sendMessage(Component.text("[SoulTable] " + result.message(),
+                            result.ok() ? net.kyori.adventure.text.format.NamedTextColor.GREEN
+                                    : net.kyori.adventure.text.format.NamedTextColor.RED));
+                }
+                sender.sendMessage(Component.text("Soul Table config reloaded.", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            }
+            default -> sender.sendMessage(Component.text("Unknown subcommand. Use give, list or reload.",
+                    net.kyori.adventure.text.format.NamedTextColor.RED));
+        }
+    }
+
     private void handleSoulHelp(CommandSourceStack source) {
         source.getSender().sendMessage(Component.text("=== Gloved Soul Commands ===", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
         source.getSender().sendMessage(Component.text("/gloved soul menu|cast|list|info|codex|loadout|select <slot>|equip <slot> <id>|unequip <slot>", net.kyori.adventure.text.format.NamedTextColor.GRAY));
         source.getSender().sendMessage(Component.text("/gloved soul inspect <id> | compare <idA> <idB> | lock <id> | favorite <id> | salvage <id>", net.kyori.adventure.text.format.NamedTextColor.GRAY));
         source.getSender().sendMessage(Component.text("/gloved soul give <player> <ENTITY_TYPE> [rarity] | simulate <ENTITY_TYPE> [rarity] [count]", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         source.getSender().sendMessage(Component.text("/gloved soul trap <tier> [amount] [player] - give a soul trap item", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+        source.getSender().sendMessage(Component.text("/gloved soul table give [player] [amount] | list [page] | reload", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         source.getSender().sendMessage(Component.text("Soul Focus (hotbar slot 9): Right-click = Vault, Left-click = Cast selected soul", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
-        source.getSender().sendMessage(Component.text("Permission: gloved.soul", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
+        source.getSender().sendMessage(Component.text("Permission: gloved.soul, gloved.soul.table.give, gloved.soul.table.break", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
     }
 
     private java.util.Collection<String> suggestSoul(@NotNull CommandSourceStack source, @NotNull String[] args) {
@@ -843,7 +953,7 @@ public class GlovedCommand implements BasicCommand {
         java.util.function.Predicate<String> match = s -> q.isEmpty() || s.toLowerCase(Locale.ROOT).startsWith(q);
         if (args.length == 2) {
             java.util.List<String> subs = new ArrayList<>();
-            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare", "trap")) {
+            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare", "trap", "table")) {
                 if (match.test(s)) subs.add(s);
             }
             return subs;
@@ -859,6 +969,11 @@ public class GlovedCommand implements BasicCommand {
             if (sub.equals("trap") || sub.equals("traps")) {
                 java.util.List<String> out = new ArrayList<>();
                 for (String t : List.of("snare", "trap", "cage", "chalice", "relic", "prism")) if (match.test(t)) out.add(t);
+                return out;
+            }
+            if (sub.equals("table")) {
+                List<String> out = new ArrayList<>();
+                for (String s : List.of("give", "list", "reload")) if (match.test(s)) out.add(s);
                 return out;
             }
             if (sub.equals("list")) {
@@ -890,6 +1005,16 @@ public class GlovedCommand implements BasicCommand {
             return out;
         }
         if (args.length == 4) {
+            if (sub.equals("table")) {
+                String action = args[2] == null ? "" : args[2].toLowerCase(Locale.ROOT);
+                List<String> out = new ArrayList<>();
+                if (action.equals("give")) {
+                    for (Player p : Bukkit.getOnlinePlayers()) if (match.test(p.getName())) out.add(p.getName());
+                } else if (action.equals("list")) {
+                    for (String n : List.of("1", "2", "3", "4", "5")) if (match.test(n)) out.add(n);
+                }
+                return out;
+            }
             if (sub.equals("give")) return suggestEntityTypes(q);
             if (sub.equals("equip")) return suggestOwnedSoulPrefixes(source, q);
             if (sub.equals("compare")) return suggestOwnedSoulPrefixes(source, q);
@@ -912,6 +1037,11 @@ public class GlovedCommand implements BasicCommand {
             }
         }
         if (args.length == 5) {
+            if (sub.equals("table") && args[2] != null && args[2].equalsIgnoreCase("give")) {
+                List<String> out = new ArrayList<>();
+                for (String n : List.of("1", "2", "4", "8", "16")) if (match.test(n)) out.add(n);
+                return out;
+            }
             if (sub.equals("give")) return suggestRarities(q);
             if (sub.equals("simulate") || sub.equals("sim")) {
                 List<String> out = new ArrayList<>();

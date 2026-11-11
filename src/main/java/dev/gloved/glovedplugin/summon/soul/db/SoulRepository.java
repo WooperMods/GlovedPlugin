@@ -29,11 +29,12 @@ public class SoulRepository {
         this.database = database;
     }
 
-    private Connection conn() { return database.getConnection(); }
+    private Connection conn() { return database.connection(); }
 
     public synchronized void insertSoul(SoulInstance soul) throws SQLException {
         String sql = "INSERT INTO souls (soul_id, owner_uuid, entity_type, family_key, category, rarity, quality, " +
-                "affixes_json, trait, favorite, state, origin_context, created_at, max_health) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                "affixes_json, trait, favorite, state, origin_context, created_at, max_health, base_stats_json, enhance_level) " +
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (PreparedStatement ps = conn().prepareStatement(sql)) {
             ps.setString(1, soul.getSoulId().toString());
             ps.setString(2, soul.getOwnerId().toString());
@@ -49,6 +50,8 @@ public class SoulRepository {
             ps.setString(12, null);
             ps.setLong(13, soul.getCreatedAt());
             ps.setDouble(14, soul.getMaxHealth());
+            ps.setString(15, soul.getBaseStats() != null ? soul.getBaseStats().toJson() : null);
+            ps.setInt(16, Math.max(0, soul.getEnhanceLevel()));
             ps.executeUpdate();
         }
     }
@@ -162,6 +165,56 @@ public class SoulRepository {
             ps.setInt(1, Math.max(0, amount));
             ps.setLong(2, System.currentTimeMillis());
             ps.setString(3, owner.toString());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized int getEssence(UUID owner, int defaultCapacity) throws SQLException {
+        return getOrCreatePlayerState(owner, defaultCapacity).essence();
+    }
+
+    /**
+     * Atomically deducts essence. Returns false (and changes nothing) when the balance is too low.
+     */
+    public synchronized boolean spendEssence(UUID owner, int amount, int defaultCapacity) throws SQLException {
+        int cost = Math.max(0, amount);
+        if (cost == 0) return true;
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String upd = "UPDATE soul_player_state SET essence = essence - ?, updated_at = ? " +
+                "WHERE owner_uuid = ? AND essence >= ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setInt(1, cost);
+            ps.setLong(2, System.currentTimeMillis());
+            ps.setString(3, owner.toString());
+            ps.setInt(4, cost);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public synchronized void updateSoulEnhanceLevel(UUID soulId, int enhanceLevel) throws SQLException {
+        String sql = "UPDATE souls SET enhance_level = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setInt(1, Math.max(0, enhanceLevel));
+            ps.setString(2, soulId.toString());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized void updateSoulAffixes(UUID soulId, List<SoulAffixRoll> affixes, double quality) throws SQLException {
+        String sql = "UPDATE souls SET affixes_json = ?, quality = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, serializeAffixes(affixes));
+            ps.setDouble(2, quality);
+            ps.setString(3, soulId.toString());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized void updateSoulBaseStats(UUID soulId, SoulBaseStats stats) throws SQLException {
+        String sql = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, stats != null ? stats.toJson() : null);
+            ps.setString(2, soulId.toString());
             ps.executeUpdate();
         }
     }
@@ -323,8 +376,69 @@ public class SoulRepository {
         }
     }
 
-    public double resolveDefaultMaxHealth(String typeName) {
-        EntityType type;
+    /**
+     * Backfills {@code base_stats_json} for souls captured before the stat system existed.
+     *
+     * <p>Idempotent: only rows with a null/blank payload are touched. Stored {@code max_health} is
+     * the health source (elite mobs already inflate it), so health gets variance only — no rarity
+     * multiplier — while every other stat uses the entity type default with rarity + variance.
+     * All values are capped.</p>
+     *
+     * @return number of backfilled rows
+     */
+    public synchronized int backfillLegacyBaseStats(dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig.SoulStatConfig statCfg)
+            throws SQLException {
+        String sel = "SELECT soul_id, entity_type, rarity, max_health FROM souls " +
+                "WHERE base_stats_json IS NULL OR base_stats_json = ''";
+        List<String[]> rows = new ArrayList<>();
+        try (PreparedStatement ps = conn().prepareStatement(sel);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new String[]{
+                        rs.getString("soul_id"),
+                        rs.getString("entity_type"),
+                        rs.getString("rarity"),
+                        String.valueOf(rs.getDouble("max_health"))
+                });
+            }
+        }
+        if (rows.isEmpty()) return 0;
+
+        int updated = 0;
+        String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ? AND " +
+                "(base_stats_json IS NULL OR base_stats_json = '')";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            for (String[] row : rows) {
+                UUID soulId;
+                try { soulId = UUID.fromString(row[0]); } catch (Exception ignored) { continue; }
+                SoulRarity rarity = SoulRarity.fromString(row[2], SoulRarity.COMMON);
+                EntityType type = null;
+                try { type = EntityType.valueOf(row[1]); } catch (Exception ignored) {}
+                SoulBaseStats def = type != null ? SoulBaseStats.defaults(type) : SoulBaseStats.NEUTRAL;
+                double storedHealth = 0.0;
+                try { storedHealth = Double.parseDouble(row[3]); } catch (Exception ignored) {}
+                double healthSource = storedHealth > 0.0 ? storedHealth : def.health();
+
+                SoulBaseStats source = new SoulBaseStats(
+                        healthSource, def.attackDamage(), def.movementSpeed(), def.armor(),
+                        def.armorToughness(), def.knockbackResistance(), def.attackKnockback(),
+                        def.attackSpeed());
+                SoulBaseStats rolled = source
+                        .withVariance(new Random(soulId.hashCode() * 31L), rarity, statCfg, false)
+                        .capped(statCfg);
+
+                ps.setString(1, rolled.toJson());
+                ps.setString(2, soulId.toString());
+                updated += ps.executeUpdate();
+            }
+        }
+        if (updated > 0) {
+            GlovedPlugin.logDebug("[Souls] Backfilled base_stats_json for " + updated + " legacy souls");
+        }
+        return updated;
+    }
+
+    public double resolveDefaultMaxHealth(String typeName) {        EntityType type;
         try {
             type = EntityType.valueOf(typeName);
         } catch (Exception ignored) {
@@ -407,7 +521,15 @@ public class SoulRepository {
         long createdAt = rs.getLong("created_at");
         double maxHealth = rs.getDouble("max_health");
         boolean favorite = rs.getInt("favorite") != 0;
-        return new SoulInstance(soulId, owner, et, family, cat, rarity, quality, affixes, traits, createdAt, maxHealth, favorite);
+        SoulBaseStats baseStats = SoulBaseStats.fromJson(rs.getString("base_stats_json"));
+        if (baseStats == null) {
+            // Legacy row read before the backfill pass ran: use the type's defaults (no variance).
+            baseStats = SoulBaseStats.defaults(et);
+        }
+        int enhanceLevel = 0;
+        try { enhanceLevel = Math.max(0, rs.getInt("enhance_level")); } catch (SQLException ignored) {}
+        return new SoulInstance(soulId, owner, et, family, cat, rarity, quality, affixes, traits, createdAt,
+                maxHealth, favorite, baseStats, enhanceLevel);
     }
 
     private static String serializeTraits(List<SoulTrait> traits) {

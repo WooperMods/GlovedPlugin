@@ -65,3 +65,9 @@ permissions:
   gloved.rankglyphs:
     description: Generate/apply LuckPerms rank glyph prefixes via ResourcePackManager
     default: op
+  gloved.soul.table.give:
+    description: Give Soul Table station items and list placed tables
+    default: op
+  gloved.soul.table.break:
+    description: Break Soul Tables owned by other players
+    default: op

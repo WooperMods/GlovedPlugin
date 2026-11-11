@@ -84,6 +84,11 @@ public class MenuHandler implements Listener {
             handleSoulVaultClick(event, vault, player);
             return;
         }
+        if (event.getView().getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv table) {
+            event.setCancelled(true);
+            table.handleClick(player, event.getRawSlot(), event.getClick());
+            return;
+        }
         MenuConfig config = plugin.getMenuConfig();
         if (config == null) return;
 
@@ -570,7 +575,8 @@ public class MenuHandler implements Listener {
         InventoryView view = event.getView();
         int topSize = view.getTopInventory().getSize();
         if (view.getTopInventory().getHolder() instanceof MenuEditorInv
-                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv) {
+                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv
+                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {
                     event.setCancelled(true);

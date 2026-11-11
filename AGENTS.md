@@ -21,6 +21,9 @@
 - `/gloved reset` – restore default config
 - `/gloved edit` – in-game menu editor, requires `gloved.edit`
 - `/gloved debug [on|off]` – toggles file logging to `plugins/GlovedPlugin/debug.log`
+- `/gloved soul table give [player] [amount]` – give a Soul Table station item (`gloved.soul.table.give`)
+- `/gloved soul table list [page]` – list placed Soul Tables + owner/coords
+- `/gloved soul table reload` – reload `souls.table`/`souls.stats`, re-register recipe, regenerate + redeploy the resource pack
 - `/lootr generate [normal|elite|blank]` – place + register chest; `elite` forces elite, `blank` registers with empty loot table (no vanilla fill)
 
 ## Debug logging
@@ -59,6 +62,23 @@
 - Damage proxy redirects melee and projectile damage to player-credited damage for enchants/loot. `forceFullAttackStrength` sets attack cooldown to full.
 - Minions cleaned up on plugin disable via `SummonInstanceTracker.removeAll()`.
 - No code change needed to add new summons; add profile to `summon.yml` and EliteMobs enchant with matching lore.
+
+## Soul Table quirks
+- A Soul Table is a real `SMITHING_TABLE` block plus a persistent full-block `ItemDisplay` overlay; only positions in `soul_tables` get the overlay/GUI. Ordinary Smithing Tables keep vanilla behaviour.
+- Overlay uses `ItemDisplayTransform.NONE`, scale `1.002`, at the block centre (`SoulTableManager.COVER_SCALE`) so the `minecraft:block/cube_all` model covers the block without z-fighting. The overlay PDC key `gloved:soul_table_overlay` stores the table UUID for orphan/duplicate sweeps.
+- `soul_tables` uses a unique `(world,x,y,z)` index. `SoulTableManager.register` deletes a stale row at the same position first, then inserts. Break = delete DB row first, then remove overlay; if the delete fails the break is cancelled. `BlockBreakEvent#setDropItems(false)` suppresses the vanilla Smithing Table drop and a tagged `SoulTableItem` is dropped instead.
+- Access: use is public (`souls.table.use-public`); breaking is owner-only when `souls.table.break-owner-only` is true, unless the player has `gloved.soul.table.break`.
+- `SoulTableInv` (54 slots) holds its own `Inventory` and rebuilds it in place on every refresh, so tab/page/selection state survives clicks. It is routed from `MenuHandler` alongside `SoulVaultInv`; drags into the top inventory are cancelled.
+- GUI actions: Combine (exactly 3 same-family + same-rarity, next rarity only; Mythic rejected), Enhance (1 soul, max level 10), Reforge (1 soul, rerolls affixes at its rarity, preserves family/rarity/base stats/level), Bulk Salvage (any number, no favourite/equipped filter; first Confirm arms for `costs.salvage.confirmation-seconds`, second converts).
+- Costs live in `souls.table.costs.*` (medium profile): combine 10/25/75/200/500; enhance `base * (L+1)^exponent` (10/2 → L9→10 = 1000); reforge 20/40/80/160/320/640; salvage free.
+- All mutations run inside `SoulDatabase.transaction(...)`: ownership, family/rarity, level and Essence are re-validated there, and a failure rolls back both souls and Essence. `SoulTableService` is the only writer; never trust the GUI.
+- Soul stats are a `SoulBaseStats` record (health, attack damage, movement speed, armor, armor toughness, knockback resistance, attack knockback, attack speed). Capture reads live attribute base values, then applies `souls.stats.rarity-multipliers`, per-stat `variance` and `caps`. `Attribute.FOLLOW_RANGE` is **never** captured, rolled, enhanced, reforged, displayed or written — follow range stays the fixed `SummonProfile.FOLLOW_RANGE = 16` AI limit.
+- Enhancement adds `+2.5%` per level to every base stat (config `costs.enhance.per-level-bonus`) and only applies on the next summon; live minions are not refreshed. `SummonManager.applySoulSnapshotToMinion` applies enhanced base stats × affix multipliers; `computeSpawnedMaxHealth` mirrors it for lore previews.
+- Legacy souls are backfilled idempotently on enable / first load: health uses the stored `max_health` (variance only, no rarity multiplier to avoid double-dipping elite inflation); every other stat uses `EntityType#getDefaultAttributes()` with rarity + variance; then caps. The pass only touches rows where `base_stats_json` is null/blank.
+- `SoulDropItem` round-trips `base_stats` + `enhance_level` in PDC; legacy items fall back to entity defaults.
+- Resource pack is generated procedurally (deterministic seed) to `plugins/GlovedPlugin/soultable/SoulTable.zip`, copied to `plugins/ResourcePackManager/mixer/SoulTable.zip` when RSPM exists, then `rspm reload` runs. Pack format matches `RankGlyphService` (`min_format [97,1]`, `max_format 97`). Without RSPM/players without the pack, the station still works but looks like a vanilla Smithing Table.
+- Recipe is shaped (`SSS/PLP/ONO` by default) and keyed `gloved:soul_table`; `Bukkit.removeRecipe` runs before every registration so `/gloved reload` cannot duplicate it.
+- Before deploying schema/backfill changes, back up `plugins/GlovedPlugin/souls.db` (+ `-wal`/`-shm`). `base_stats_json`, `enhance_level` and `soul_tables` are additive migrations.
 
 ## EliteMobs Custom Items – quick guide for summon enchants
 - Custom items live in `/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/plugins/EliteMobs/customitems/`. Subfolders are allowed; filename including `.yml` must be unique. Relative path is `plugins/EliteMobs/customitems/`.

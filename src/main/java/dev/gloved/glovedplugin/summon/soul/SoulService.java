@@ -91,6 +91,36 @@ public class SoulService {
 
     public SoulRepository getRepository() { return repository; }
 
+    /** Essence balance for an owner (0 when the database is unavailable). */
+    public int getEssence(UUID owner) {
+        if (owner == null) return 0;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            return repository.getEssence(owner, cap);
+        } catch (SQLException e) {
+            return 0;
+        }
+    }
+
+    /** Atomically spends essence. Returns false when the balance is too low. */
+    public boolean spendEssence(UUID owner, int amount) {
+        if (owner == null) return false;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            return repository.spendEssence(owner, amount, cap);
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    /** Public cache invalidation used by Soul Table operations that mutate rows directly. */
+    public void invalidateSoul(UUID soulId, UUID ownerId) {
+        invalidateSoulCache(soulId);
+        invalidateSelectedCache(ownerId);
+    }
+
     public SoulConfig soulConfig() {
         try {
             var sc = plugin.getSummonConfig();
@@ -98,6 +128,31 @@ public class SoulService {
         } catch (Throwable t) {
             return new SoulConfig();
         }
+    }
+
+    /** Soul Table / stat config (may be null before the summon module initialises). */
+    public dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig tableConfig() {
+        try {
+            var sc = plugin.getSummonConfig();
+            return sc != null ? sc.getSoulTableConfig() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Rolled base stats for a soul, falling back to the entity type defaults for legacy souls. */
+    public SoulBaseStats baseStatsOf(SoulInstance soul) {
+        if (soul == null) return SoulBaseStats.NEUTRAL;
+        SoulBaseStats base = soul.getBaseStats();
+        return base != null ? base : SoulBaseStats.defaults(soul.getEntityType());
+    }
+
+    /** Base stats with the Soul Table enhancement applied. Affix multipliers are applied separately. */
+    public SoulBaseStats effectiveBaseStats(SoulInstance soul) {
+        if (soul == null) return SoulBaseStats.NEUTRAL;
+        var cfg = tableConfig();
+        double perLevel = cfg != null ? cfg.getEnhancePerLevelBonus() : 0.025;
+        return baseStatsOf(soul).enhanced(soul.getEnhanceLevel(), perLevel);
     }
 
     public int getSummoningLevel(UUID owner) {
@@ -160,8 +215,9 @@ public class SoulService {
         SoulRarity forced = forcedRarityFromPity(cfg, pity);
         double capturedMaxHealth = victim.getAttribute(Attribute.MAX_HEALTH) != null
                 ? victim.getAttribute(Attribute.MAX_HEALTH).getBaseValue() : 0.0;
+        SoulBaseStats capturedStats = SoulBaseStats.fromEntity(victim);
         SoulInstance soul = SoulGenerator.generate(killer.getUniqueId(), type, cfg, forced, level, pity.rare, pity.epic,
-                capturedMaxHealth);
+                capturedMaxHealth, capturedStats, tableConfig());
 
         // Capture-time side effects
         updatePityOnResult(killer.getUniqueId(), cfg, soul.getRarity(), true);
@@ -194,7 +250,8 @@ public class SoulService {
         if (owner == null || type == null) return new CaptureResult(false, null, "invalid", false);
         SoulConfig cfg = soulConfig();
         int level = getSummoningLevel(owner.getUniqueId());
-        SoulInstance soul = SoulGenerator.generate(owner.getUniqueId(), type, cfg, forcedRarity, level, 0, 0);
+        SoulInstance soul = SoulGenerator.generate(owner.getUniqueId(), type, cfg, forcedRarity, level, 0, 0,
+                0.0, SoulBaseStats.defaults(type), tableConfig());
         return storeCapturedSoulDirect(owner, soul, cfg);
     }
 
@@ -202,7 +259,8 @@ public class SoulService {
     public SoulInstance simulate(EntityType type, SoulRarity forcedRarity) {
         SoulConfig cfg = soulConfig();
         UUID fake = new UUID(0, 0);
-        return SoulGenerator.generate(fake, type, cfg, forcedRarity, 0, 0, 0);
+        return SoulGenerator.generate(fake, type, cfg, forcedRarity, 0, 0, 0, 0.0,
+                SoulBaseStats.defaults(type), tableConfig());
     }
 
     /** Direct store to vault (admin/give path). Handles capacity, codex, DR, and feedback. */
@@ -284,7 +342,9 @@ public class SoulService {
                     new java.util.ArrayList<>(soul.getTraits()),
                     System.currentTimeMillis(),
                     soul.getMaxHealth(),
-                    false
+                    false,
+                    soul.getBaseStats(),
+                    soul.getEnhanceLevel()
             );
         }
         SoulConfig cfg = soulConfig();
@@ -691,18 +751,19 @@ public class SoulService {
     /**
      * Compute the effective max health a minion would spawn with for this soul,
      * mirroring SummonManager.applySoulSnapshotToMinion:
-     * base = saved mob max HP (or mob-type default if not saved)
-     * scaledBase = base * soul health multiplier (VIGOROUS affix)
+     * base = rolled capture stats (enhanced) or saved/type default max HP for legacy souls
+     * scaledBase = base * soul health multiplier (VIGOROUS affix) * enhancement
      * final = scaledBase + owner's AuraSkills health stat bonus
      */
     public double computeSpawnedMaxHealth(UUID ownerId, SoulInstance soul) {
         if (soul == null) return 0.0;
-        double baseHealth;
-        if (soul.getMaxHealth() > 0.0) {
-            baseHealth = soul.getMaxHealth();
-        } else {
-            baseHealth = repository.resolveDefaultMaxHealth(
-                    soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey());
+        SoulBaseStats base = effectiveBaseStats(soul);
+        double baseHealth = base.health();
+        if (baseHealth <= 0.0) {
+            baseHealth = soul.getMaxHealth() > 0.0
+                    ? soul.getMaxHealth()
+                    : repository.resolveDefaultMaxHealth(
+                            soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey());
         }
         SoulStatSnapshot snap = getSnapshot(soul);
         double healthMult = Math.max(0.5, Math.min(3.0, snap.healthMultiplier()));
