@@ -743,4 +743,35 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
             return 0;
         }
     }
+
+    /** Auto-reload AuraSkills a few times if the skill is missing from the menu after first join. */
+    public void ensureSkillPresentAndReload() {
+        if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) return;
+        try {
+            AuraSkillsApi api = AuraSkillsApi.get();
+            if (api == null) return;
+            NamespacedId summonId = NamespacedId.of("gloved", "summoning");
+            Skill skill = null;
+            try { skill = api.getGlobalRegistry().getSkill(summonId); } catch (Throwable ignored) {}
+            if (skill != null) {
+                GlovedPlugin.logDebug("[SummonXP] AuraSkills summoning skill present on join check, no reload needed.");
+                return;
+            }
+        } catch (Throwable ignored) {}
+        // Skill missing – attempt reloads
+        GlovedPlugin.logDebug("[SummonXP] Summoning skill not seen in AuraSkills registry after join, attempting auto-reload.");
+        for (int i = 1; i <= 3; i++) {
+            final int attempt = i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                try {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skills reload");
+                    GlovedPlugin.logDebug("[SummonXP] Auto-reloaded AuraSkills skills, attempt " + attempt);
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[SummonXP] Auto-reload failed: " + t);
+                }
+            }, 20L * (i * 5));
+        }
+        // Re-activate bridge after a short delay to re-register
+        Bukkit.getScheduler().runTaskLater(plugin, () -> scheduleActivateRetry(false), 20L * 6);
+    }
 }

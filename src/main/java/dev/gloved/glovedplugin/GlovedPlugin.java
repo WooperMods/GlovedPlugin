@@ -208,6 +208,19 @@ public final class GlovedPlugin extends JavaPlugin {
         this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
         this.minionAI.setAbilityService(this.summonAbilityService);
         this.summonProgression.onEnable();
+        // Auto-reload AuraSkills skill into menu after first player joins if it is missing
+        if (this.summonProgression instanceof dev.gloved.glovedplugin.summon.progression.AuraSkillsSummonProgressionBridge auraBridge) {
+            getServer().getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+                private boolean firstJoinHandled = false;
+                @org.bukkit.event.EventHandler
+                public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
+                    if (firstJoinHandled) return;
+                    firstJoinHandled = true;
+                    // give a tick for AuraSkills to finish loading user data
+                    getServer().getScheduler().runTaskLater(GlovedPlugin.this, auraBridge::ensureSkillPresentAndReload, 20L);
+                }
+            }, this);
+        }
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker), this);
         this.summonAbilityIndicator = new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig);
         getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
