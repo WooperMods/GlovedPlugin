@@ -160,8 +160,23 @@ public class SummonManager {
             if (mob instanceof Tameable t) {
                 try { t.setTamed(true); t.setOwner(player); t.setAdult(); } catch (Throwable ignored) {}
             }
-            String displayName = profile.getNametag(player, type);
+            String ownerName = player != null ? player.getName() : "Owner";
+            var rarity = soul != null ? soul.getRarity() : null;
+            String displayName = MinionNametag.format(profile, player, ownerName, mob, rarity);
             try { mob.setCustomName(displayName); mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE); } catch (Throwable ignored) {}
+            // Prevent sun-sensitive minions (e.g. zombies, skeletons) from burning in daylight.
+            try {
+                mob.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                        org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE,
+                        org.bukkit.potion.PotionEffect.INFINITE_DURATION,
+                        0, false, false, false));
+            } catch (Throwable ignored) {
+                try {
+                    mob.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                            org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE,
+                            Integer.MAX_VALUE, 0, false, false, false));
+                } catch (Throwable ignored2) {}
+            }
 
             var pdc = mob.getPersistentDataContainer();
             NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
@@ -172,6 +187,8 @@ public class SummonManager {
             pdc.set(familyKey, PersistentDataType.STRING, profile.name);
             NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
             pdc.set(ownerKey, PersistentDataType.STRING, player.getUniqueId().toString());
+            // Simple marker for external integrations (e.g. LevelledMobs exclusion rules).
+            pdc.set(new NamespacedKey(plugin, "summon_minion"), PersistentDataType.BYTE, (byte) 1);
             if (soul != null) {
                 NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
                 pdc.set(soulKey, PersistentDataType.STRING, soul.getSoulId().toString());
@@ -180,6 +197,7 @@ public class SummonManager {
             // Minions are damageable; apply soul stat snapshot (spawn-time attributes)
             if (soul != null) {
                 try { applySoulSnapshotToMinion(mob, soul); } catch (Throwable t) { GlovedPlugin.logDebug("[Summon] Failed to apply soul snapshot: " + t); }
+                scheduleSoulSnapshotReassert(mob, soul);
             } else {
                 try {
                     var hp = mob.getAttribute(Attribute.MAX_HEALTH);
@@ -192,7 +210,17 @@ public class SummonManager {
             if (target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
                 try { m2.setTarget(target); } catch (Throwable ignored) {}
             }
-            tracker.track(player.getUniqueId(), mob, SummonProfile.LIFETIME_TICKS);
+            int lifetimeTicks = SummonProfile.LIFETIME_TICKS;
+            if (soul != null) {
+                try {
+                    var svc = plugin.getSoulService();
+                    var snap = svc != null ? svc.getSnapshot(soul)
+                            : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.fromSoul(soul);
+                    double enduranceBonus = Math.max(0.0, Math.min(1.0, snap.enduranceBonus()));
+                    lifetimeTicks = (int) Math.max(20L, Math.round(SummonProfile.LIFETIME_TICKS * (1.0 + enduranceBonus)));
+                } catch (Throwable ignored) {}
+            }
+            tracker.track(player.getUniqueId(), mob, lifetimeTicks);
             spawned.add(mob.getUniqueId());
             minionAI.monitorMinion(mob, player, profile);
         }
@@ -295,6 +323,27 @@ public class SummonManager {
     }
 
     /**
+     * Re-applies soul stats shortly after spawn so external spawn-time modifiers (e.g. LevelledMobs,
+     * if misconfigured) cannot leave a minion with the wrong health/attributes.
+     */
+    private void scheduleSoulSnapshotReassert(LivingEntity mob, dev.gloved.glovedplugin.summon.soul.SoulInstance soul) {
+        if (mob == null || soul == null) return;
+        final UUID mobId = mob.getUniqueId();
+        final dev.gloved.glovedplugin.summon.soul.SoulInstance soulRef = soul;
+        for (long delay : new long[]{1L, 10L, 40L, 100L, 200L}) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Entity ent = Bukkit.getEntity(mobId);
+                if (!(ent instanceof LivingEntity living) || living.isDead() || !living.isValid()) return;
+                try {
+                    applySoulSnapshotToMinion(living, soulRef);
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[Summon] Failed to reassert soul snapshot: " + t);
+                }
+            }, delay);
+        }
+    }
+
+    /**
      * Applies rolled soul base stats (enhanced) plus affix multipliers to a freshly spawned minion.
      *
      * <p>Never touches {@code Attribute.FOLLOW_RANGE}: follow/target range is a fixed
@@ -311,20 +360,51 @@ public class SummonManager {
                         : dev.gloved.glovedplugin.summon.soul.SoulBaseStats.defaults(soul.getEntityType()));
 
         double speedMult = clamp(snap.speedMultiplier(), 0.5, 1.6);
-        // Movement: rolled absolute speed scaled by the SWIFT affix.
-        setBase(mob, Attribute.MOVEMENT_SPEED, clamp(base.movementSpeed() * speedMult, 0.01, 1.0));
+        // Movement: base scaled by SWIFT with diminishing returns near the cap (higher speed => less affix impact).
+        double maxMove = 14.0 / 43.17; // ~14 bps global cap
+        double moveFloor = 1.0 / 43.17; // ~1 bps floor
+        double baseMove = base.movementSpeed();
+        if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
+        baseMove = clamp(baseMove, moveFloor, maxMove);
+        double appliedMove;
+        if (speedMult >= 1.0) {
+            double bonus = speedMult - 1.0;
+            double effectiveness = (maxMove - baseMove) / maxMove;
+            appliedMove = baseMove + baseMove * bonus * effectiveness;
+        } else {
+            double penalty = 1.0 - speedMult;
+            double effectiveness = (baseMove - moveFloor) / maxMove;
+            appliedMove = baseMove - baseMove * penalty * effectiveness;
+        }
+        appliedMove = clamp(appliedMove, moveFloor, maxMove);
+        double desiredBps = appliedMove * 43.17;
+        try {
+            mob.getPersistentDataContainer().set(new NamespacedKey(plugin, "summon_move_bps"), PersistentDataType.DOUBLE, desiredBps);
+        } catch (Throwable ignored) {}
+        // Set attribute to desired speed; pathfinder runs at ~1.0x (intent-adjusted) in SummonMoveGoal.
+        setBase(mob, Attribute.MOVEMENT_SPEED, appliedMove);
         // Flying speed is not a captured soul stat: keep the mob's own base, scaled by the same multiplier.
         try {
             var fly = mob.getAttribute(Attribute.FLYING_SPEED);
-            if (fly != null) fly.setBaseValue(clamp(fly.getBaseValue() * speedMult, 0.01, 1.0));
+            if (fly != null) {
+                double flyBase = fly.getBaseValue();
+                double flyCap = Math.min(1.0, Math.max(flyBase * 1.6, 0.4));
+                fly.setBaseValue(clamp(flyBase * speedMult, 0.05, flyCap));
+            }
         } catch (Throwable ignored) {}
         // Offense / defense stats: absolute rolled values (affix multipliers where they exist).
         setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)));
-        setBase(mob, Attribute.ARMOR, base.armor());
-        setBase(mob, Attribute.ARMOR_TOUGHNESS, base.armorToughness());
-        setBase(mob, Attribute.KNOCKBACK_RESISTANCE, Math.min(1.0, base.knockbackResistance()));
-        setBase(mob, Attribute.ATTACK_KNOCKBACK, base.attackKnockback());
         setBase(mob, Attribute.ATTACK_SPEED, base.attackSpeed());
+
+        // Slime/Magma size normalization (safety/generic rule) must happen before final health is set,
+        // because changing size resets a slime's max health to its size-based vanilla value.
+        try {
+            if (mob instanceof org.bukkit.entity.Slime slime) {
+                int size = slime.getSize();
+                if (size > 3) slime.setSize(2);
+                else if (size < 1) slime.setSize(1);
+            }
+        } catch (Throwable ignored) {}
 
         // Apply bounded health scaling for damageable minions.
         // Health = rolled (enhanced) base * VIGOROUS affix + owner's AuraSkills health stat (flat bonus).
@@ -353,14 +433,6 @@ public class SummonManager {
                 double newMax = Math.max(1.0, scaledBase + ownerHealthBonus);
                 hp.setBaseValue(newMax);
                 mob.setHealth(newMax);
-            }
-        } catch (Throwable ignored) {}
-        // Slime/Magma size normalization (safety/generic rule)
-        try {
-            if (mob instanceof org.bukkit.entity.Slime slime) {
-                int size = slime.getSize();
-                if (size > 3) slime.setSize(2);
-                else if (size < 1) slime.setSize(1);
             }
         } catch (Throwable ignored) {}
     }

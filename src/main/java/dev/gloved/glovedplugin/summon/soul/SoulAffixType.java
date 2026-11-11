@@ -37,4 +37,15 @@ public enum SoulAffixType {
                 : String.format(Locale.ROOT, "%.1f", pct);
         return "+" + num + "% " + roll.type().friendlyName();
     }
+
+    /** Player-friendly display for an affix roll including per-affix roll strength for the soul's rarity. */
+    public static String format(SoulRarity rarity, SoulAffixRoll roll) {
+        String base = format(roll);
+        if (roll == null || roll.type() == null) return base;
+        double qualityPct = SoulQuality.affixRollPercent(rarity, roll);
+        int q = (int) Math.round(qualityPct);
+        if (q < 0) q = 0;
+        if (q > 100) q = 100;
+        return base + " §7[" + q + "%]";
+    }
 }

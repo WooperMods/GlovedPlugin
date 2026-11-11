@@ -188,29 +188,21 @@ souls:
     backfill-legacy: true
     rarity-multipliers:
       COMMON: 1.00
-      UNCOMMON: 1.05
-      RARE: 1.12
-      EPIC: 1.20
-      LEGENDARY: 1.30
-      MYTHIC: 1.45
+      UNCOMMON: 1.10
+      RARE: 1.25
+      EPIC: 1.50
+      LEGENDARY: 1.85
+      MYTHIC: 2.30
     variance:
       health: 0.10
       attack-damage: 0.10
       movement-speed: 0.05
-      armor: 0.15
-      armor-toughness: 0.15
-      knockback-resistance: 0.10
-      attack-knockback: 0.10
       attack-speed: 0.10
     caps:
       health: 200.0
       attack-damage: 30.0
-      movement-speed: 0.5
-      armor: 30.0
-      armor-toughness: 20.0
-      knockback-resistance: 1.0
-      attack-knockback: 5.0
-      attack-speed: 8.0
+      movement-speed: 0.32436
+      attack-speed: 1.20
 
 progression:
   enabled: true

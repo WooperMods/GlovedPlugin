@@ -666,7 +666,6 @@ public class SoulService {
         sb.append("§dCompare§7: ").append(shortId(a)).append(" vs ").append(shortId(b)).append("\n");
         sb.append("§7Type: §f").append(a.getFamilyKey()).append(" §7vs §f").append(b.getFamilyKey()).append("\n");
         sb.append("§7Rarity: §f").append(a.getRarity()).append(" §7vs §f").append(b.getRarity()).append("\n");
-        sb.append("§7Quality: §f").append(SoulQuality.format(a)).append(" §7vs §f").append(SoulQuality.format(b)).append("\n");
         sb.append("§7Trait: §f").append(a.getTrait() != null ? a.getTrait() : "-").append(" §7vs §f").append(b.getTrait() != null ? b.getTrait() : "-").append("\n");
         sb.append("§7Affixes A: §f").append(affixSummary(a)).append("\n");
         sb.append("§7Affixes B: §f").append(affixSummary(b));
@@ -678,9 +677,17 @@ public class SoulService {
         StringBuilder sb = new StringBuilder();
         sb.append("§dSoul ").append(shortId(s)).append(" §7(").append(s.getSoulId()).append(")\n");
         sb.append("§7Family: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
-        sb.append("§7Rarity: §f").append(s.getRarity()).append(" §7Quality: §f").append(SoulQuality.format(s)).append("\n");
+        sb.append("§7Rarity: §f").append(s.getRarity()).append("\n");
         sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-").append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
-        sb.append("§7Affixes: §f").append(affixSummary(s));
+        if (s.getAffixes().isEmpty()) {
+            sb.append("§7Affixes: §f-");
+        } else {
+            sb.append("§7Affixes:\n");
+            for (var a : s.getAffixes()) {
+                sb.append("  §f- ").append(SoulAffixType.format(s.getRarity(), a)).append("\n");
+            }
+            if (sb.charAt(sb.length() - 1) == '\n') sb.setLength(sb.length() - 1);
+        }
         return sb.toString();
     }
 
@@ -749,14 +756,116 @@ public class SoulService {
     }
 
     /**
-     * Compute the effective max health a minion would spawn with for this soul,
-     * mirroring SummonManager.applySoulSnapshotToMinion:
-     * base = rolled capture stats (enhanced) or saved/type default max HP for legacy souls
-     * scaledBase = base * soul health multiplier (VIGOROUS affix) * enhancement
-     * final = scaledBase + owner's AuraSkills health stat bonus
+     * Compute the movement speed attribute value a minion would spawn with for this soul,
+     * mirroring SummonManager.applySoulSnapshotToMinion (capped relative to mob default).
      */
-    public double computeSpawnedMaxHealth(UUID ownerId, SoulInstance soul) {
+    public double computeSpawnedMovementSpeed(SoulInstance soul) {
         if (soul == null) return 0.0;
+        SoulStatSnapshot snap = getSnapshot(soul);
+        double speedMult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
+        return computeSpawnedMovementSpeed(soul, speedMult);
+    }
+
+    /** Compute spawned movement speed using an explicit speed multiplier (for breakdowns). */
+    public double computeSpawnedMovementSpeed(SoulInstance soul, double speedMult) {
+        if (soul == null) return 0.0;
+        SoulBaseStats base = effectiveBaseStats(soul);
+        if (!Double.isFinite(speedMult)) speedMult = 1.0;
+        speedMult = Math.max(0.5, Math.min(1.6, speedMult));
+        double maxMove = 14.0 / 43.17; // ~14 bps global cap
+        double moveFloor = 1.0 / 43.17; // ~1 bps floor
+        double baseMove = base.movementSpeed();
+        if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
+        if (baseMove < moveFloor) baseMove = moveFloor;
+        if (baseMove > maxMove) baseMove = maxMove;
+        // Diminishing returns: higher base speed => affixes affect it less.
+        double applied;
+        if (speedMult >= 1.0) {
+            double bonus = speedMult - 1.0;
+            double headroom = maxMove - baseMove;
+            double effectiveness = headroom / maxMove;
+            applied = baseMove + baseMove * bonus * effectiveness;
+        } else {
+            // Slowdown effects scale down less harshly near floor in reverse manner.
+            double penalty = 1.0 - speedMult;
+            double room = baseMove - moveFloor;
+            double effectiveness = room / maxMove;
+            applied = baseMove - baseMove * penalty * effectiveness;
+        }
+        if (applied < moveFloor) applied = moveFloor;
+        if (applied > maxMove) applied = maxMove;
+        return applied;
+    }
+
+    /** Effective spawned movement speed in blocks per second (matches actual pathfinder movement at base intent). */
+    public double computeSpawnedMovementBlocksPerSecond(SoulInstance soul) {
+        return computeSpawnedMovementSpeed(soul) * 43.17;
+    }
+
+    /**
+     * Estimate the average melee hit damage this soul's minion would deal (non-elite baseline),
+     * mirroring MinionAI.applyMinionHit/SummonAbilityService crit resolution as closely as
+     * possible without target-specific context. Packbound is omitted (ally-dependent).
+     */
+    public double estimateAverageHitDamage(UUID ownerId, SoulInstance soul) {
+        if (soul == null) return 0.0;
+        var summonCfg = plugin.getSummonConfig();
+
+        // Core base: soul's effective (enhanced) attack stat (raw soul attribute foundation).
+        double baseDamage = Math.max(0.5, effectiveBaseStats(soul).attackDamage());
+
+        // Owner strength bonus (AuraSkills attack damage trait)
+        try {
+            if (ownerId != null && summonCfg != null && summonCfg.isStrengthDamageEnabled() && plugin.getSummonProgression() != null) {
+                var st = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
+                if (st != null && st.available()) {
+                    double bonus = Math.max(0.0, st.attackDamageTrait()) * summonCfg.getStrengthDamagePerAttackDamageTrait();
+                    bonus = Math.min(bonus, Math.max(0.0, summonCfg.getStrengthDamageMaxBonus()));
+                    baseDamage += bonus;
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Soul damage multipliers/traits (packbound is situational, omitted)
+        SoulStatSnapshot snap = getSnapshot(soul);
+        double soulDamageMult = Math.max(0.25, Math.min(4.0, snap.damageMultiplier()));
+        if (soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.FRENZIED)) soulDamageMult *= 1.08;
+        if (soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.BULWARK)) soulDamageMult *= 0.97;
+        baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
+
+        // Expected crit multiplier (average per hit)
+        try {
+            if (summonCfg != null && summonCfg.isCritEnabled()) {
+                double chance = 0.0;
+                double multiplier = 1.0;
+                if (summonCfg.isCritSourceAuraSkills()) {
+                    if (ownerId != null && plugin.getSummonProgression() != null) {
+                        var st = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
+                        if (st != null && st.available()) {
+                            chance = Math.max(0.0, st.critChancePercentPoints() / 100.0);
+                            multiplier = 1.0 + (Math.max(0.0, st.critDamageTrait()) / 100.0);
+                        }
+                    }
+                } else {
+                    int level = ownerId != null ? getSummoningLevel(ownerId) : 0;
+                    chance = summonCfg.getCritLegacyBaseChance() + summonCfg.getCritLegacyPerLevel() * Math.max(0, level);
+                    multiplier = summonCfg.getCritLegacyDamageMultiplier();
+                }
+                chance += Math.max(0.0, snap.critChanceBonus());
+                multiplier += Math.max(0.0, snap.critDamageBonus());
+                if (soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.FRENZIED)) { chance += 0.03; multiplier += 0.08; }
+                chance = Math.max(0.0, Math.min(summonCfg.getCritMaxChance(), chance));
+                multiplier = Math.max(summonCfg.getCritMinDamageMultiplier(), Math.min(summonCfg.getCritMaxDamageMultiplier(), multiplier));
+                baseDamage *= (1.0 + chance * (Math.max(1.0, multiplier) - 1.0));
+            }
+        } catch (Throwable ignored) {}
+
+        return Math.max(0.0, baseDamage);
+    }
+
+    /** Breakdown of spawned max health: [baseIncludingOwner, affixBonus(VIGOROUS), ownerBonus, total]. */
+    public double[] computeSpawnedMaxHealthBreakdown(UUID ownerId, SoulInstance soul) {
+        if (soul == null) return new double[]{0, 0, 0, 0};
         SoulBaseStats base = effectiveBaseStats(soul);
         double baseHealth = base.health();
         if (baseHealth <= 0.0) {
@@ -767,7 +876,10 @@ public class SoulService {
         }
         SoulStatSnapshot snap = getSnapshot(soul);
         double healthMult = Math.max(0.5, Math.min(3.0, snap.healthMultiplier()));
-        double scaledBase = Math.max(1.0, baseHealth * healthMult);
+        double affixBonus = baseHealth * (healthMult - 1.0);
+        double scaledBase = Math.max(1.0, baseHealth + affixBonus);
+        // if clamped up by min 1.0, attribute difference to base+affix proportionally; keep simple
+        if (scaledBase > baseHealth + affixBonus) affixBonus = scaledBase - baseHealth;
         double ownerHealthBonus = 0.0;
         if (ownerId != null) {
             try {
@@ -780,7 +892,21 @@ public class SoulService {
                 }
             } catch (Throwable ignored) {}
         }
-        return Math.max(1.0, scaledBase + ownerHealthBonus);
+        double baseIncludingOwner = Math.max(0.0, baseHealth + ownerHealthBonus);
+        double total = Math.max(1.0, scaledBase + ownerHealthBonus);
+        return new double[]{baseIncludingOwner, affixBonus, ownerHealthBonus, total};
+    }
+
+    /**
+     * Compute the effective max health a minion would spawn with for this soul,
+     * mirroring SummonManager.applySoulSnapshotToMinion:
+     * base = rolled capture stats (enhanced) or saved/type default max HP for legacy souls
+     * scaledBase = base * soul health multiplier (VIGOROUS affix) * enhancement
+     * final = scaledBase + owner's AuraSkills health stat bonus
+     */
+    public double computeSpawnedMaxHealth(UUID ownerId, SoulInstance soul) {
+        double[] b = computeSpawnedMaxHealthBreakdown(ownerId, soul);
+        return b[3];
     }
 
     public CastAttempt castSelected(Player player) {
@@ -835,7 +961,7 @@ public class SoulService {
 
     public static String describe(SoulInstance s) {
         if (s == null) return "?";
-        return s.getRarity().name() + " " + prettyMobName(s.getEntityType() != null ? s.getEntityType().name() : s.getFamilyKey()) + " Soul (" + SoulQuality.format(s) + ")";
+        return s.getRarity().name() + " " + prettyMobName(s.getEntityType() != null ? s.getEntityType().name() : s.getFamilyKey()) + " Soul";
     }
 
     private static String prettyMobName(String key) {

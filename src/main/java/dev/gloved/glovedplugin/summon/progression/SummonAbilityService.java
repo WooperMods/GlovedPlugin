@@ -191,11 +191,34 @@ public class SummonAbilityService {
                     + " (x" + cr.multiplier + ", source=" + (cfg != null ? cfg.getCritSource() : "?") + ", soul=" + (soul != null) + ")");
         }
         try {
+            double healthBefore = target.isDead() ? 0.0 : target.getHealth();
+            // Clear hurt resistance so custom minion hits can apply reliably (e.g. rapid hits / special mobs).
+            try {
+                if (target.getNoDamageTicks() > 0) target.setNoDamageTicks(0);
+            } catch (Throwable ignored) {}
             DamageSource src = DamageSource.builder(DamageType.GENERIC)
                     .withDirectEntity(minion)
                     .withCausingEntity(owner)
                     .build();
             target.damage(cr.damage, src);
+            double healthAfter = target.isDead() ? 0.0 : target.getHealth();
+            if (!target.isDead() && healthAfter >= healthBefore - 1.0e-6) {
+                int ndt = -1;
+                boolean inv = false;
+                try { ndt = target.getNoDamageTicks(); } catch (Throwable ignored) {}
+                try { inv = target.isInvulnerable(); } catch (Throwable ignored) {}
+                GlovedPlugin.logDebug("[SummonAbility] Primary damage had no effect on " + target.getType() + "/" + target.getName()
+                        + " attempted=" + cr.damage + " healthBefore=" + healthBefore + " healthAfter=" + healthAfter
+                        + " noDamageTicks=" + ndt + " invulnerable=" + inv);
+                // One retry after forcing no-damage ticks clear in case event pipeline/state interfered.
+                try { target.setNoDamageTicks(0); } catch (Throwable ignored) {}
+                target.damage(cr.damage, src);
+                double retryAfter = target.isDead() ? 0.0 : target.getHealth();
+                if (!target.isDead() && retryAfter >= healthAfter - 1.0e-6) {
+                    GlovedPlugin.logDebug("[SummonAbility] Primary damage retry still had no effect on " + target.getType() + "/" + target.getName()
+                            + " attempted=" + cr.damage + " retryHealthAfter=" + retryAfter);
+                }
+            }
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonAbility] Primary damage failed: " + t);
         }
@@ -259,6 +282,7 @@ public class SummonAbilityService {
                             continue;
                         }
                         try {
+                            try { if (victim.getNoDamageTicks() > 0) victim.setNoDamageTicks(0); } catch (Throwable ignored) {}
                             DamageSource src = DamageSource.builder(DamageType.GENERIC)
                                     .withDirectEntity(minion)
                                     .withCausingEntity(owner)

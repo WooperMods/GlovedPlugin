@@ -450,12 +450,10 @@ public final class SoulTableInv implements InventoryHolder {
         if (meta == null) return item;
 
         String mobName = SoulLoreBuilder.pretty(soul.getFamilyKey());
-        Component rest = Component.text(" " + mobName + " Soul ", soul.getRarity().getColor())
-                .decoration(TextDecoration.BOLD, false);
         meta.displayName(Component.empty()
                 .append(soul.getRarity().coloredNameComponent())
-                .append(rest)
-                .append(Component.text("(" + SoulQuality.format(soul) + ")", NamedTextColor.GRAY))
+                .append(Component.text(" " + mobName + " Soul", soul.getRarity().getColor())
+                        .decoration(TextDecoration.BOLD, false))
                 .decoration(TextDecoration.ITALIC, false));
 
         List<Component> lore = new ArrayList<>();

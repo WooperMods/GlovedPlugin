@@ -59,9 +59,8 @@ public final class SoulItem {
             if (player == null || gp == null || gp.getSoulService() == null) return "§7None";
             SoulInstance soul = gp.getSoulService().getSelectedSoul(player.getUniqueId());
             if (soul == null) return "§7None";
-            String q = SoulQuality.format(soul);
             String sep = soul.getRarity() == SoulRarity.MYTHIC ? " §r§c" : " ";
-            return soul.getRarity().coloredNameLegacy() + sep + prettyMobName(soul.getFamilyKey()) + " Soul §7(" + q + ")";
+            return soul.getRarity().coloredNameLegacy() + sep + prettyMobName(soul.getFamilyKey()) + " Soul";
         } catch (Throwable ignored) {
             return "§7None";
         }

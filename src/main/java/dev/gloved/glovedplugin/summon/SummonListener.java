@@ -91,23 +91,44 @@ public class SummonListener implements Listener {
                 }
             }
 
-            // Toughness-based damage reduction for summoned minions (owner's AuraSkills Toughness stat)
+            // Damage reduction for summoned minions: owner's toughness + soul TENACIOUS affix
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
-                    && tracker.isSummoned(victim.getUniqueId())
-                    && config.isToughnessDamageReductionEnabled()) {
-                UUID ownerId = tracker.getOwner(victim.getUniqueId());
-                if (ownerId != null) {
-                    var stats = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
-                    if (stats.available() && stats.toughnessStatLevel() > 0.0) {
-                        double reduction = Math.min(
-                                stats.toughnessStatLevel() * config.getToughnessDamageReductionPerPoint(),
-                                config.getToughnessDamageReductionMaxBonus()
-                        );
-                        if (reduction > 0.0) {
-                            double newDamage = event.getDamage() * (1.0 - reduction);
-                            event.setDamage(newDamage);
+                    && tracker.isSummoned(victim.getUniqueId())) {
+                double totalReduction = 0.0;
+
+                // Owner's AuraSkills Toughness stat
+                if (config.isToughnessDamageReductionEnabled()) {
+                    UUID ownerId = tracker.getOwner(victim.getUniqueId());
+                    if (ownerId != null) {
+                        var stats = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
+                        if (stats.available() && stats.toughnessStatLevel() > 0.0) {
+                            double reduction = Math.min(
+                                    stats.toughnessStatLevel() * config.getToughnessDamageReductionPerPoint(),
+                                    config.getToughnessDamageReductionMaxBonus()
+                            );
+                            if (reduction > 0.0) totalReduction += reduction;
                         }
                     }
+                }
+
+                // TENACIOUS soul affix (damage reduction/defense)
+                try {
+                    String soulIdStr = victim.getPersistentDataContainer()
+                            .get(new org.bukkit.NamespacedKey(plugin, "summon_soul_id"),
+                                    org.bukkit.persistence.PersistentDataType.STRING);
+                    if (soulIdStr != null && !soulIdStr.isBlank()) {
+                        UUID soulId = UUID.fromString(soulIdStr);
+                        var soulService = plugin.getSoulService();
+                        if (soulService != null) {
+                            double tenacity = Math.max(0.0, Math.min(0.6, soulService.getSnapshot(soulId).tenacityBonus()));
+                            if (tenacity > 0.0) totalReduction += tenacity;
+                        }
+                    }
+                } catch (Throwable ignored) {}
+
+                if (totalReduction > 0.0) {
+                    double cappedReduction = Math.max(0.0, Math.min(0.8, totalReduction));
+                    event.setDamage(event.getDamage() * (1.0 - cappedReduction));
                 }
             }
 

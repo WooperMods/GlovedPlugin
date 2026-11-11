@@ -19,11 +19,6 @@ import java.util.*;
 public class SummonConfig {
     private final JavaPlugin plugin;
     private boolean enabled;
-    private boolean clumpedNametagsEnabled = true;
-    private int clumpedNametagsMinCount = 4;
-    private double clumpedNametagsRadius = 2.0;
-    private int clumpedNametagsUpdateTicks = 10;
-    private String clumpedNametagsFormat = "{nametag} x{count}";
 
     // Progression XP via AuraSkills.
     private boolean progressionEnabled = true;
@@ -163,14 +158,6 @@ public class SummonConfig {
         try { yaml.save(file); } catch (Exception ignored) {}
 
         enabled = yaml.getBoolean("enabled", true);
-        clumpedNametagsEnabled = yaml.getBoolean("clumped-nametags.enabled", true);
-        clumpedNametagsMinCount = Math.max(2, yaml.getInt("clumped-nametags.min-count", 4));
-        clumpedNametagsRadius = Math.max(0.5, yaml.getDouble("clumped-nametags.radius", 2.0));
-        clumpedNametagsUpdateTicks = Math.max(1, yaml.getInt("clumped-nametags.update-ticks", 10));
-        clumpedNametagsFormat = yaml.getString("clumped-nametags.format", "{nametag} x{count}");
-        if ("&e{player}'s Minions x{count}".equals(clumpedNametagsFormat)) {
-            clumpedNametagsFormat = "{nametag} x{count}";
-        }
 
         progressionEnabled = yaml.getBoolean("progression.enabled", true);
         progressionAuraSkillsEnabled = yaml.getBoolean("progression.auraskills.enabled", true);
@@ -294,14 +281,6 @@ public class SummonConfig {
 
     private static void backfill(FileConfiguration cfg) {
         if (!cfg.isSet("enabled")) cfg.set("enabled", true);
-        setIfMissing(cfg, "clumped-nametags.enabled", true);
-        setIfMissing(cfg, "clumped-nametags.min-count", 4);
-        setIfMissing(cfg, "clumped-nametags.radius", 2.0);
-        setIfMissing(cfg, "clumped-nametags.update-ticks", 10);
-        setIfMissing(cfg, "clumped-nametags.format", "{nametag} x{count}");
-        if ("&e{player}'s Minions x{count}".equals(cfg.getString("clumped-nametags.format"))) {
-            cfg.set("clumped-nametags.format", "{nametag} x{count}");
-        }
         // Progression / AuraSkills
         setIfMissing(cfg, "progression.enabled", true);
         setIfMissing(cfg, "progression.auraskills.enabled", true);
@@ -461,11 +440,6 @@ public class SummonConfig {
     // --- Existing getters (preserved) ---
 
     public boolean isEnabled() { return enabled; }
-    public boolean isClumpedNametagsEnabled() { return clumpedNametagsEnabled; }
-    public int getClumpedNametagsMinCount() { return clumpedNametagsMinCount; }
-    public double getClumpedNametagsRadius() { return clumpedNametagsRadius; }
-    public int getClumpedNametagsUpdateTicks() { return clumpedNametagsUpdateTicks; }
-    public String getClumpedNametagsFormat() { return clumpedNametagsFormat; }
 
     public boolean isProgressionEnabled() { return progressionEnabled; }
     public boolean isProgressionAuraSkillsEnabled() { return progressionAuraSkillsEnabled; }

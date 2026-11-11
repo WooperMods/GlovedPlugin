@@ -72,9 +72,8 @@ public final class SoulDropItem {
         if (meta == null) return false;
         String mobName = prettyName(soul != null ? (soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey()) : "Unknown");
         SoulRarity rarity = soul != null ? soul.getRarity() : SoulRarity.COMMON;
-        String q = soul != null ? SoulQuality.format(soul) : "0%";
         String sep = rarity == SoulRarity.MYTHIC ? " §r§c" : " ";
-        String display = rarity.coloredNameLegacy() + sep + mobName + " Soul §7(" + q + ")";
+        String display = rarity.coloredNameLegacy() + sep + mobName + " Soul";
         meta.displayName(LegacyComponentSerializer.legacySection().deserialize(display).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
         if (soul != null) {

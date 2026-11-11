@@ -420,8 +420,7 @@ public class SoulRepository {
                 double healthSource = storedHealth > 0.0 ? storedHealth : def.health();
 
                 SoulBaseStats source = new SoulBaseStats(
-                        healthSource, def.attackDamage(), def.movementSpeed(), def.armor(),
-                        def.armorToughness(), def.knockbackResistance(), def.attackKnockback(),
+                        healthSource, def.attackDamage(), def.movementSpeed(),
                         def.attackSpeed());
                 SoulBaseStats rolled = source
                         .withVariance(new Random(soulId.hashCode() * 31L), rarity, statCfg, false)
@@ -434,6 +433,43 @@ public class SoulRepository {
         }
         if (updated > 0) {
             GlovedPlugin.logDebug("[Souls] Backfilled base_stats_json for " + updated + " legacy souls");
+        }
+        return updated;
+    }
+
+    /**
+     * Rewrites {@code base_stats_json} rows that still carry stat fields retired from the soul
+     * system (armor, armor toughness, knockback resistance, attack knockback). Idempotent: only
+     * rows whose JSON still mentions a removed key are touched.
+     */
+    public synchronized int stripRemovedBaseStats() throws SQLException {
+        String sel = "SELECT soul_id, base_stats_json FROM souls WHERE " +
+                "base_stats_json LIKE '%\"armor\"%' OR " +
+                "base_stats_json LIKE '%\"armorToughness\"%' OR " +
+                "base_stats_json LIKE '%\"knockbackResistance\"%' OR " +
+                "base_stats_json LIKE '%\"attackKnockback\"%'";
+        List<String[]> rows = new ArrayList<>();
+        try (PreparedStatement ps = conn().prepareStatement(sel);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new String[]{rs.getString("soul_id"), rs.getString("base_stats_json")});
+            }
+        }
+        if (rows.isEmpty()) return 0;
+
+        int updated = 0;
+        String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            for (String[] row : rows) {
+                SoulBaseStats stats = SoulBaseStats.fromJson(row[1]);
+                if (stats == null) continue;
+                ps.setString(1, stats.toJson());
+                ps.setString(2, row[0]);
+                updated += ps.executeUpdate();
+            }
+        }
+        if (updated > 0) {
+            GlovedPlugin.logDebug("[Souls] Stripped retired stat fields from " + updated + " soul(s)");
         }
         return updated;
     }

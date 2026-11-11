@@ -30,29 +30,21 @@ public final class SoulTableConfig {
 
         public SoulStatConfig() {
             rarityMultipliers.put(SoulRarity.COMMON, 1.00);
-            rarityMultipliers.put(SoulRarity.UNCOMMON, 1.05);
-            rarityMultipliers.put(SoulRarity.RARE, 1.12);
-            rarityMultipliers.put(SoulRarity.EPIC, 1.20);
-            rarityMultipliers.put(SoulRarity.LEGENDARY, 1.30);
-            rarityMultipliers.put(SoulRarity.MYTHIC, 1.45);
+            rarityMultipliers.put(SoulRarity.UNCOMMON, 1.10);
+            rarityMultipliers.put(SoulRarity.RARE, 1.25);
+            rarityMultipliers.put(SoulRarity.EPIC, 1.50);
+            rarityMultipliers.put(SoulRarity.LEGENDARY, 1.85);
+            rarityMultipliers.put(SoulRarity.MYTHIC, 2.30);
 
             variance.put(SoulBaseStats.KEY_HEALTH, 0.10);
             variance.put(SoulBaseStats.KEY_ATTACK_DAMAGE, 0.10);
             variance.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 0.05);
-            variance.put(SoulBaseStats.KEY_ARMOR, 0.15);
-            variance.put(SoulBaseStats.KEY_ARMOR_TOUGHNESS, 0.15);
-            variance.put(SoulBaseStats.KEY_KNOCKBACK_RESISTANCE, 0.10);
-            variance.put(SoulBaseStats.KEY_ATTACK_KNOCKBACK, 0.10);
             variance.put(SoulBaseStats.KEY_ATTACK_SPEED, 0.10);
 
             caps.put(SoulBaseStats.KEY_HEALTH, 200.0);
             caps.put(SoulBaseStats.KEY_ATTACK_DAMAGE, 30.0);
-            caps.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 0.5);
-            caps.put(SoulBaseStats.KEY_ARMOR, 30.0);
-            caps.put(SoulBaseStats.KEY_ARMOR_TOUGHNESS, 20.0);
-            caps.put(SoulBaseStats.KEY_KNOCKBACK_RESISTANCE, 1.0);
-            caps.put(SoulBaseStats.KEY_ATTACK_KNOCKBACK, 5.0);
-            caps.put(SoulBaseStats.KEY_ATTACK_SPEED, 8.0);
+            caps.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 14.0 / 43.17);
+            caps.put(SoulBaseStats.KEY_ATTACK_SPEED, SoulBaseStats.MAX_ATTACK_SPEED_APS);
         }
 
         public double rarityMultiplier(SoulRarity rarity) {
@@ -82,7 +74,11 @@ public final class SoulTableConfig {
         private void loadCaps(ConfigurationSection sec) {
             if (sec == null) return;
             for (String key : new ArrayList<>(caps.keySet())) {
-                caps.put(key, Math.max(0.0, sec.getDouble(key, caps.getOrDefault(key, 0.0))));
+                double val = Math.max(0.0, sec.getDouble(key, caps.getOrDefault(key, 0.0)));
+                if (SoulBaseStats.KEY_ATTACK_SPEED.equals(key)) {
+                    val = Math.min(val, SoulBaseStats.MAX_ATTACK_SPEED_APS);
+                }
+                caps.put(key, val);
             }
         }
 
@@ -226,6 +222,25 @@ public final class SoulTableConfig {
             cfg.set("souls.table.recipe.pattern", List.of("SSS", "PLP", "ONO"));
         }
         set(cfg, "souls.table.recipe.ingredients.S", "SOUL_SAND");
+        set(cfg, "souls.table.recipe.ingredients.P", "POLISHED_BLACKSTONE");
+        set(cfg, "souls.table.recipe.ingredients.L", "SOUL_LANTERN");
+        set(cfg, "souls.table.recipe.ingredients.O", "OBSIDIAN");
+        set(cfg, "souls.table.recipe.ingredients.N", "NETHERITE_SCRAP");
+
+        set(cfg, "souls.stats.enabled", true);
+        set(cfg, "souls.stats.backfill-legacy", true);
+        set(cfg, "souls.stats.rarity-multipliers.COMMON", 1.00);
+        set(cfg, "souls.stats.rarity-multipliers.UNCOMMON", 1.10);
+        set(cfg, "souls.stats.rarity-multipliers.RARE", 1.25);
+        set(cfg, "souls.stats.rarity-multipliers.EPIC", 1.50);
+        set(cfg, "souls.stats.rarity-multipliers.LEGENDARY", 1.85);
+        set(cfg, "souls.stats.rarity-multipliers.MYTHIC", 2.30);
+        set(cfg, "souls.stats.variance.health", 0.10);
+        set(cfg, "souls.stats.variance.attack-damage", 0.10);
+        set(cfg, "souls.stats.variance.movement-speed", 0.05);
+        set(cfg, "souls.stats.variance.attack-speed", 0.10);
+        set(cfg, "souls.stats.caps.health", 200.0);
+        set(cfg, "souls.stats.caps.attack-damage", 30.0);
         set(cfg, "souls.table.recipe.ingredients.P", "POLISHED_BLACKSTONE");
         set(cfg, "souls.table.recipe.ingredients.L", "SOUL_LANTERN");
         set(cfg, "souls.table.recipe.ingredients.O", "OBSIDIAN");

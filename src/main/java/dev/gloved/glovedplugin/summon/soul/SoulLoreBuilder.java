@@ -68,15 +68,84 @@ public final class SoulLoreBuilder {
                 ? service.effectiveBaseStats(soul)
                 : (soul.getBaseStats() != null ? soul.getBaseStats() : SoulBaseStats.defaults(soul.getEntityType()));
 
-        double spawnedHp = service != null ? service.computeSpawnedMaxHealth(viewerId, soul) : base.health();
-        out.add(line("§e" + fmt(spawnedHp, 0) + " HP §7(max health)"));
-        out.add(line("§c" + fmt(base.attackDamage(), 2) + " §7attack damage"));
-        out.add(line("§b" + fmt(base.movementSpeed(), 3) + " §7movement speed"));
-        out.add(line("§9" + fmt(base.armor(), 2) + " §7armor"));
-        out.add(line("§8" + fmt(base.armorToughness(), 2) + " §7armor toughness"));
-        out.add(line("§7" + fmt(base.knockbackResistance(), 3) + " §7knockback resistance"));
-        out.add(line("§6" + fmt(base.attackKnockback(), 2) + " §7attack knockback"));
-        out.add(line("§a" + fmt(base.attackSpeed(), 2) + " §7attack speed"));
+        // HP breakdown: base (soul base + owner bonus) + VIGOROUS affix (only when affix applies)
+        String hpLine;
+        if (service != null) {
+            double[] hb = service.computeSpawnedMaxHealthBreakdown(viewerId, soul);
+            double vigorous = soul != null ? soul.affixValue(SoulAffixType.VIGOROUS) : 0.0;
+            if (Math.abs(hb[1]) >= 0.05 && Math.abs(vigorous) >= 0.00005) {
+                StringBuilder parts = new StringBuilder();
+                parts.append(fmt(hb[0], 2));
+                parts.append("+").append(fmtPercent(vigorous * 100.0));
+                hpLine = "§e" + fmt(hb[3], 2) + " §7HP §8(" + parts + ")";
+            } else {
+                hpLine = "§e" + fmt(hb[3], 2) + " §7HP";
+            }
+        } else {
+            hpLine = "§e" + fmt(base.health(), 2) + " §7HP";
+        }
+
+        // ATK DMG: show base attack (soul base + owner strength bonus) and BRUTAL multiplier contribution
+        double avgDmg = service != null ? service.estimateAverageHitDamage(viewerId, soul) : base.attackDamage();
+        SoulStatSnapshot snap = service != null ? service.getSnapshot(soul) : SoulStatSnapshot.fromSoul(soul);
+        double baseAtk = base.attackDamage();
+        double ownerStrengthBonus = 0.0;
+        try {
+            var summonCfg = plugin != null ? plugin.getSummonConfig() : null;
+            if (viewerId != null && summonCfg != null && summonCfg.isStrengthDamageEnabled()
+                    && plugin != null && plugin.getSummonProgression() != null) {
+                var st = plugin.getSummonProgression().resolveOwnerCombatStats(viewerId);
+                if (st != null && st.available()) {
+                    ownerStrengthBonus = Math.max(0.0, st.attackDamageTrait()) * summonCfg.getStrengthDamagePerAttackDamageTrait();
+                    ownerStrengthBonus = Math.min(ownerStrengthBonus, Math.max(0.0, summonCfg.getStrengthDamageMaxBonus()));
+                }
+            }
+        } catch (Throwable ignored) {}
+        double baseWithOwner = baseAtk + ownerStrengthBonus;
+        double dmgMult = Math.max(0.5, Math.min(3.0, snap.damageMultiplier()));
+        String dmgLine;
+        if (Math.abs(dmgMult - 1.0) >= 0.0005) {
+            double brutal = soul != null ? soul.affixValue(SoulAffixType.BRUTAL) : 0.0;
+            if (Math.abs(brutal) >= 0.00005) {
+                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + fmt(baseWithOwner, 2) + "+" + fmtPercent(brutal * 100.0) + ")";
+            } else {
+                double atkFromAffix = baseWithOwner * (dmgMult - 1.0);
+                String sign = atkFromAffix >= 0 ? "+" : "";
+                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + fmt(baseWithOwner, 2) + sign + fmt(atkFromAffix, 2) + ")";
+            }
+        } else {
+            dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG";
+        }
+
+        // MV SPD: show base speed and SWIFT contribution (bps), final is spawned/clamped
+        double moveBps = service != null ? service.computeSpawnedMovementBlocksPerSecond(soul) : (base.movementSpeed() * 43.17);
+        double speedMult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
+        double baseMoveBps;
+        if (service != null) {
+            baseMoveBps = service.computeSpawnedMovementSpeed(soul, 1.0) * 43.17;
+        } else {
+            baseMoveBps = base.movementSpeed() * 43.17;
+        }
+        String moveLine;
+        if (Math.abs(speedMult - 1.0) >= 0.0005 && Math.abs(moveBps - baseMoveBps) >= 0.005) {
+            double swift = soul != null ? soul.affixValue(SoulAffixType.SWIFT) : 0.0;
+            if (Math.abs(swift) >= 0.00005) {
+                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + fmt(baseMoveBps, 2) + "+" + fmtPercent(swift * 100.0) + ")";
+            } else {
+                double affixMoveBps = moveBps - baseMoveBps;
+                String sign = affixMoveBps >= 0 ? "+" : "";
+                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + fmt(baseMoveBps, 2) + sign + fmt(affixMoveBps, 2) + ")";
+            }
+        } else {
+            moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD";
+        }
+
+        double atkSpdAps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS,
+                Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, base.attackSpeed()));
+        out.add(line(hpLine));
+        out.add(line(dmgLine));
+        out.add(line("§a" + fmt(atkSpdAps, 2) + " §7ATK SPD"));
+        out.add(line(moveLine));
 
         int level = soul.getEnhanceLevel();
         if (level > 0) {
@@ -107,6 +176,15 @@ public final class SoulLoreBuilder {
             if (s.endsWith(".")) s = s.substring(0, s.length() - 1);
         }
         return s;
+    }
+
+    /** Format a percentage value (e.g. 44.7 -> "44.7%") to match affix visuals. */
+    private static String fmtPercent(double pct) {
+        if (!Double.isFinite(pct)) return "0%";
+        String num = Math.abs(pct - Math.rint(pct)) < 0.005
+                ? String.format(Locale.ROOT, "%.0f", pct)
+                : String.format(Locale.ROOT, "%.1f", pct);
+        return num + "%";
     }
 
     public static String pretty(String key) {

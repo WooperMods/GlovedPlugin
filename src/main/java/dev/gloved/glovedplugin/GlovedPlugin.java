@@ -45,7 +45,6 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonManager summonManager;
     private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
     private dev.gloved.glovedplugin.summon.MinionAI minionAI;
-    private dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager clumpNametagManager;
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge summonProgression;
     private dev.gloved.glovedplugin.summon.progression.SummonAbilityService summonAbilityService;
     private dev.gloved.glovedplugin.summon.soul.db.SoulDatabase soulDatabase;
@@ -197,6 +196,13 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception e) {
             getLogger().warning("[Souls] Failed to backfill missing max_health: " + e);
         }
+        // Drop stat fields that are no longer part of the soul system from stored rows.
+        try {
+            int stripped = this.soulService.getRepository().stripRemovedBaseStats();
+            if (stripped > 0) logInfo("Removed retired stat fields from " + stripped + " soul(s)");
+        } catch (Exception e) {
+            getLogger().warning("[Souls] Failed to strip retired soul stats: " + e);
+        }
         // Soul Table station (block registry, overlay entities, GUI, pack, recipe) + stat backfill.
         this.soulTableManager = new dev.gloved.glovedplugin.summon.soul.table.SoulTableManager(this, this.soulDatabase);
         this.soulTableService = new dev.gloved.glovedplugin.summon.soul.table.SoulTableService(this, this.soulDatabase, this.soulService);
@@ -262,17 +268,12 @@ public final class GlovedPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker, this.minionAI), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.progression.SummonKillAttributionListener(() -> this.summonProgression, () -> this.summonConfig), this);
-        this.clumpNametagManager = new dev.gloved.glovedplugin.summon.nametag.ClumpNametagManager(this, this.summonTracker);
-        getServer().getPluginManager().registerEvents(this.clumpNametagManager, this);
-        this.clumpNametagManager.start();
-        // Clean up orphaned summon entities/proxies (e.g. leftover after restart/crash or owner logout edge cases)
+        // Clean up orphaned summon entities (e.g. leftover after restart/crash or owner logout edge cases)
         getServer().getScheduler().runTaskLater(this, () -> {
             this.summonTracker.cleanupOrphans();
-            this.clumpNametagManager.cleanupOrphanProxies();
         }, 40L);
         getServer().getScheduler().runTaskTimer(this, () -> {
             this.summonTracker.cleanupOrphans();
-            this.clumpNametagManager.cleanupOrphanProxies();
         }, 20L * 60L, 20L * 60L);
         // Give soul focus item to online players
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -340,9 +341,6 @@ public final class GlovedPlugin extends JavaPlugin {
             this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
             if (this.minionAI != null) this.minionAI.setAbilityService(this.summonAbilityService);
             this.summonProgression.onReload(this.summonConfig);
-        }
-        if (this.clumpNametagManager != null) {
-            this.clumpNametagManager.restart();
         }
         if (this.damageHologramModule != null) {
             try {
@@ -578,9 +576,6 @@ public final class GlovedPlugin extends JavaPlugin {
         }
         if (summonAbilityIndicator != null) {
             try { summonAbilityIndicator.stop(); } catch (Exception ignored) {}
-        }
-        if (clumpNametagManager != null) {
-            clumpNametagManager.stop();
         }
         // Cleanup summoned minions
         if (summonTracker != null) {

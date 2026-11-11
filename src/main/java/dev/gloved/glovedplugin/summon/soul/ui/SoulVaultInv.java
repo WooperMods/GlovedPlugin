@@ -28,10 +28,9 @@ import java.util.UUID;
  * Simple paginated vault GUI for dynamic souls.
  * Left-click: select soul into player's selected loadout slot (equip+select context)
  * Right-click: inspect in chat
- * Shift-left: toggle favorite
- * Shift-right: toggle lock
- * Drop/Q key: extract as physical soul item (tradeable)
- * Ctrl+Drop: salvage for essence (if allowed)
+ * Sneak + left click: toggle favorite
+ * Drop: extract as physical soul item (tradeable)
+ * Sprint + Drop: salvage for essence (if allowed)
  */
 public class SoulVaultInv implements InventoryHolder {
     public static final String TITLE_PREFIX = "Soul Vault";
@@ -124,12 +123,11 @@ public class SoulVaultInv implements InventoryHolder {
         if (hm != null) {
             hm.displayName(LegacyComponentSerializer.legacySection().deserialize("§dControls").decoration(TextDecoration.ITALIC, false));
             hm.lore(List.of(
-                    LegacyComponentSerializer.legacySection().deserialize("§7L-Click: Equip to selected slot").decoration(TextDecoration.ITALIC, false),
-                    LegacyComponentSerializer.legacySection().deserialize("§7R-Click: Inspect").decoration(TextDecoration.ITALIC, false),
-                    LegacyComponentSerializer.legacySection().deserialize("§7Shift-L: Toggle favorite").decoration(TextDecoration.ITALIC, false),
-                    LegacyComponentSerializer.legacySection().deserialize("§7Shift-R: Toggle lock").decoration(TextDecoration.ITALIC, false),
-                    LegacyComponentSerializer.legacySection().deserialize("§7Drop (Q): Extract as item").decoration(TextDecoration.ITALIC, false),
-                    LegacyComponentSerializer.legacySection().deserialize("§7Ctrl+Q: Salvage (if allowed)").decoration(TextDecoration.ITALIC, false)
+                    LegacyComponentSerializer.legacySection().deserialize("§7Left Click: Equip to selected slot").decoration(TextDecoration.ITALIC, false),
+                    LegacyComponentSerializer.legacySection().deserialize("§7Right Click: Inspect").decoration(TextDecoration.ITALIC, false),
+                    LegacyComponentSerializer.legacySection().deserialize("§7Sneak + Left Click: Toggle favorite").decoration(TextDecoration.ITALIC, false),
+                    LegacyComponentSerializer.legacySection().deserialize("§7Drop: Extract as item").decoration(TextDecoration.ITALIC, false),
+                    LegacyComponentSerializer.legacySection().deserialize("§7Sprint + Drop: Salvage (if allowed)").decoration(TextDecoration.ITALIC, false)
             ));
             help.setItemMeta(hm);
         }
@@ -174,17 +172,15 @@ public class SoulVaultInv implements InventoryHolder {
         ItemStack it = new ItemStack(mat);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            String q = SoulQuality.format(soul);
             String mobName = prettyMobName(soul.getFamilyKey());
             Component rarityName = soul.getRarity().coloredNameComponent();
             Component rest = (soul.getRarity() == SoulRarity.MYTHIC)
-                    ? Component.text(" " + mobName + " Soul ", net.kyori.adventure.text.format.NamedTextColor.RED)
+                    ? Component.text(" " + mobName + " Soul", net.kyori.adventure.text.format.NamedTextColor.RED)
                             .decoration(TextDecoration.BOLD, false)
-                    : Component.text(" " + mobName + " Soul ", soul.getRarity().getColor());
+                    : Component.text(" " + mobName + " Soul", soul.getRarity().getColor());
             Component name = Component.empty()
                     .append(rarityName)
                     .append(rest)
-                    .append(Component.text("(" + q + ")", net.kyori.adventure.text.format.NamedTextColor.GRAY))
                     .decoration(TextDecoration.ITALIC, false);
             meta.displayName(name);
             List<Component> lore = new ArrayList<>();
@@ -193,9 +189,9 @@ public class SoulVaultInv implements InventoryHolder {
             String flags = (soul.isFavorite() ? "§e★ Fav " : "");
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§aL-Click§7 Equip/Select  §bR-Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§eShift-L§7 Fav  §6Shift-R§7 Lock").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§bQ§7 Extract item  §cCtrl+Q§7 Salvage").decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Equip/Select  §bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§eSneak + Left Click§7 Toggle favorite").decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§bDrop§7 Extract item  §cSprint + Drop§7 Salvage").decoration(TextDecoration.ITALIC, false));
             meta.lore(lore);
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             meta.getPersistentDataContainer().set(soulIdKey(plugin), PersistentDataType.STRING, soul.getSoulId().toString());

@@ -47,7 +47,10 @@ public class DamageProxy implements Listener {
             if (source != null && source.getCausingEntity() instanceof Player causing
                     && causing.getUniqueId().equals(ownerId)) {
                 if (player != null) {
-                    GlovedPlugin.logDebug("[Summon] Player-credited minion hit allowed through for " + player.getName());
+                    GlovedPlugin.logDebug("[Summon] Player-credited minion hit allowed through for " + player.getName()
+                            + " damager=" + (damagerEntity != null ? damagerEntity.getType() : "null")
+                            + " target=" + (event.getEntity() != null ? event.getEntity().getType() : "null")
+                            + " damage=" + event.getDamage());
                 }
                 return;
             }
@@ -64,17 +67,23 @@ public class DamageProxy implements Listener {
             }
 
             // Minion projectile / ranged hit: convert to the same owner-credited scaled damage
-            // pipeline used by melee so arrows / breeze etc. actually deal damage.
+            // pipeline used by melee so arrows / breeze etc. actually deal damage, but rate-limit
+            // by the minion's attack speed (APS) so ranged minions can't hit faster than intended.
+            event.setCancelled(true);
             if (minionAI != null && player != null && player.isOnline() && target != null
                     && !CombatTargetRules.isProtected(GlovedPlugin.getPlugin(GlovedPlugin.class), player, target)) {
-                int ownerLevel = EliteMobsIntegration.getCombatLevel(player);
-                boolean isElite = MinionAI.isEliteMob(target);
-                double baseDamage = isElite ? 7.0 + ownerLevel * 0.4 : 7.0;
-                minionAI.applyMinionHit(damagerEntity, player, target, baseDamage, Bukkit.getCurrentTick(), null);
-            }
-            event.setCancelled(true);
-            if (player != null) {
-                GlovedPlugin.logDebug("[Summon] Converted ranged minion hit for " + player.getName()
+                long now = Bukkit.getCurrentTick();
+                if (minionAI.tryConsumeAttackCooldown(damagerEntity, player, now)) {
+                    // Damage base is derived from the soul's effective attack stat inside applyMinionHit.
+                    minionAI.applyMinionHit(damagerEntity, player, target, 0.0, now, null);
+                    GlovedPlugin.logDebug("[Summon] Converted ranged minion hit for " + player.getName()
+                            + " target=" + target.getName() + " (cooldown consumed)");
+                } else {
+                    GlovedPlugin.logDebug("[Summon] Ranged minion hit rate-limited for " + player.getName()
+                            + " damager=" + damagerEntity.getType() + " target=" + target.getName());
+                }
+            } else if (player != null) {
+                GlovedPlugin.logDebug("[Summon] Converted ranged minion hit ignored for " + player.getName()
                         + " target=" + (target != null ? target.getName() : "null"));
             }
         } catch (Throwable t) {

@@ -15,14 +15,14 @@ public final class SoulQuality {
     private SoulQuality() {}
 
     public static double baseMaxForRarity(SoulRarity rarity) {
-        if (rarity == null) return 0.05;
+        if (rarity == null) return 0.06;
         return switch (rarity) {
-            case COMMON -> 0.05;
-            case UNCOMMON -> 0.08;
-            case RARE -> 0.12;
-            case EPIC -> 0.16;
-            case LEGENDARY -> 0.22;
-            case MYTHIC -> 0.30;
+            case COMMON -> 0.06;
+            case UNCOMMON -> 0.10;
+            case RARE -> 0.16;
+            case EPIC -> 0.24;
+            case LEGENDARY -> 0.34;
+            case MYTHIC -> 0.45;
         };
     }
 
@@ -43,11 +43,29 @@ public final class SoulQuality {
     public static double maxFor(SoulRarity rarity, SoulAffixType type) {
         double baseMax = baseMaxForRarity(rarity);
         if (type == null) return baseMax;
+        double swiftCap = switch (rarity) {
+            case COMMON -> 0.08;
+            case UNCOMMON -> 0.12;
+            case RARE -> 0.16;
+            case EPIC -> 0.20;
+            case LEGENDARY -> 0.25;
+            case MYTHIC -> 0.30;
+            case null -> 0.08;
+        };
+        double commanderCap = switch (rarity) {
+            case COMMON -> 0.10;
+            case UNCOMMON -> 0.16;
+            case RARE -> 0.22;
+            case EPIC -> 0.30;
+            case LEGENDARY -> 0.38;
+            case MYTHIC -> 0.45;
+            case null -> 0.10;
+        };
         return switch (type) {
             case PRECISE -> baseMax * 0.5;
             case DEADLY, RESONANT -> baseMax * 0.8;
-            case SWIFT -> Math.min(baseMax, 0.12);
-            case COMMANDER -> Math.min(baseMax, 0.18);
+            case SWIFT -> Math.min(baseMax, swiftCap);
+            case COMMANDER -> Math.min(baseMax, commanderCap);
             default -> baseMax;
         };
     }
@@ -63,6 +81,15 @@ public final class SoulQuality {
             case LEGENDARY -> 15.0; // 80-95%
             case MYTHIC -> 10.0;   // 90-100%
         };
+    }
+
+    /** Roll strength (0..100) of a single affix compared to its max for the given rarity. */
+    public static double affixRollPercent(SoulRarity rarity, SoulAffixRoll roll) {
+        if (rarity == null || roll == null || roll.type() == null) return 0.0;
+        double max = maxFor(rarity, roll.type());
+        if (max <= 0.0) return 0.0;
+        double pct = (Math.max(0.0, roll.value()) / max) * 100.0;
+        return Math.max(0.0, Math.min(100.0, pct));
     }
 
     /** Average percentage (0..100) of all affix stats compared to their max for the soul's rarity.

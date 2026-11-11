@@ -150,7 +150,7 @@ public final class SoulTableService {
         }
     }
 
-    /** Rerolls affixes at the soul's current rarity, preserving everything else. */
+    /** Rerolls affixes and base stats at the soul's current rarity, preserving everything else. */
     public TableResult reforge(UUID owner, UUID soulId) {
         if (owner == null || soulId == null) return TableResult.fail("Invalid soul");
         try {
@@ -163,11 +163,14 @@ public final class SoulTableService {
 
                 List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(soul.getRarity());
                 double quality = SoulQuality.percent(soul.getRarity(), affixes);
+                dev.gloved.glovedplugin.summon.soul.SoulBaseStats baseStats =
+                        SoulGenerator.rollBaseStats(soul.getEntityType(), soul.getRarity(), null, config());
                 repository.updateSoulAffixes(soulId, affixes, quality);
-                return soul.withAffixes(affixes, quality);
+                repository.updateSoulBaseStats(soulId, baseStats);
+                return soul.withBaseStats(baseStats).withAffixes(affixes, quality);
             });
             soulService.invalidateSoul(soulId, owner);
-            return TableResult.ok("Reforged affixes", result);
+            return TableResult.ok("Reforged soul stats and affixes", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
         } catch (SQLException e) {

@@ -239,7 +239,7 @@ public class SoulTrapRecipeManager implements Listener {
             case "chalice" -> "§7Attuned to souls of great power.";
             case "relic" -> "§7Resonates with truly legendary souls.";
             case "prism" -> "§7Draws forth only the most mythic souls.";
-            default -> "§7Draws out souls of varying quality.";
+            default -> "§7Draws out souls of varying kinds.";
         };
     }
 }

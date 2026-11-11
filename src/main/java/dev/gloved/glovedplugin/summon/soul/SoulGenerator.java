@@ -117,23 +117,40 @@ public final class SoulGenerator {
         int n = Math.min(count, pool.size());
         List<SoulAffixRoll> out = new ArrayList<>(n);
         double baseMax = switch (rarity) {
-            case COMMON -> 0.05;
-            case UNCOMMON -> 0.08;
-            case RARE -> 0.12;
-            case EPIC -> 0.16;
-            case LEGENDARY -> 0.22;
-            case MYTHIC -> 0.30;
+            case COMMON -> 0.06;
+            case UNCOMMON -> 0.10;
+            case RARE -> 0.16;
+            case EPIC -> 0.24;
+            case LEGENDARY -> 0.34;
+            case MYTHIC -> 0.45;
         };
         double baseMin = baseMax * 0.35;
+        // Per-type caps scale with rarity so higher tiers can roll meaningfully stronger affixes.
+        double swiftCap = switch (rarity) {
+            case COMMON -> 0.08;
+            case UNCOMMON -> 0.12;
+            case RARE -> 0.16;
+            case EPIC -> 0.20;
+            case LEGENDARY -> 0.25;
+            case MYTHIC -> 0.30;
+        };
+        double commanderCap = switch (rarity) {
+            case COMMON -> 0.10;
+            case UNCOMMON -> 0.16;
+            case RARE -> 0.22;
+            case EPIC -> 0.30;
+            case LEGENDARY -> 0.38;
+            case MYTHIC -> 0.45;
+        };
         for (int i = 0; i < n; i++) {
             SoulAffixType t = pool.get(i);
             double val = baseMin + rng.nextDouble() * (baseMax - baseMin);
-            // Type-specific tuning (kept bounded)
+            // Type-specific tuning (kept bounded, caps scaled by rarity)
             val = switch (t) {
                 case PRECISE -> val * 0.5; // crit chance points fraction is smaller
                 case DEADLY, RESONANT -> val * 0.8;
-                case SWIFT -> Math.min(val, 0.12); // speed safety
-                case COMMANDER -> Math.min(val, 0.18); // cost/cd efficiency
+                case SWIFT -> Math.min(val, swiftCap); // speed safety
+                case COMMANDER -> Math.min(val, commanderCap); // cost/cd efficiency
                 default -> val;
             };
             out.add(new SoulAffixRoll(t, Math.round(val * 10000.0) / 10000.0));
@@ -143,49 +160,48 @@ public final class SoulGenerator {
 
     private static List<SoulTrait> rollTraits(SoulRarity rarity, ThreadLocalRandom rng) {
         List<SoulTrait> out = new ArrayList<>();
-        int guaranteed;
-        double extraChance;
+        SoulTrait[] vals = SoulTrait.values();
+        int target = 0;
+
         switch (rarity) {
             case COMMON:
-                if (rng.nextDouble() <= 0.10) guaranteed = 1; else guaranteed = 0;
-                extraChance = 0.0;
+                target = rng.nextDouble() <= 0.10 ? 1 : 0;
                 break;
             case UNCOMMON:
-                guaranteed = rng.nextDouble() <= 0.20 ? 1 : 0;
-                extraChance = 0.0;
+                target = rng.nextDouble() <= 0.20 ? 1 : 0;
                 break;
             case RARE:
-                guaranteed = 1;
-                extraChance = 0.50; // 50% chance for a 2nd trait
+                target = 1;
+                if (rng.nextDouble() <= 0.50) target++; // 50% chance for 2nd
+                if (rng.nextDouble() <= 0.05) target++; // 5% chance for 3rd (independent)
                 break;
             case EPIC:
-                guaranteed = 2;
-                extraChance = 0.0;
+                target = 2;
+                if (rng.nextDouble() <= 0.25) target++; // 25% chance for 3rd
                 break;
             case LEGENDARY:
-                guaranteed = 2;
-                extraChance = 0.50; // 50% chance for a 3rd trait
+                target = 2;
+                if (rng.nextDouble() <= 0.50) target++; // 50% chance for 3rd
+                if (rng.nextDouble() <= 0.05) target++; // 5% chance for 4th (independent)
                 break;
             case MYTHIC:
-                guaranteed = 3;
-                extraChance = 0.0;
+                target = 3;
+                if (rng.nextDouble() <= 0.25) target++; // 25% chance for 4th
+                if (rng.nextDouble() <= 0.05) target++; // 5% chance for 5th (independent)
                 break;
             default:
-                guaranteed = 0;
-                extraChance = 0.0;
+                target = 0;
                 break;
         }
-        SoulTrait[] vals = SoulTrait.values();
-        Set<SoulTrait> picked = new LinkedHashSet<>();
-        for (int i = 0; i < guaranteed; i++) {
-            SoulTrait t = vals[rng.nextInt(vals.length)];
-            if (!picked.contains(t)) picked.add(t);
+
+        target = Math.min(target, vals.length);
+        if (target <= 0) return out;
+
+        List<SoulTrait> pool = new ArrayList<>(Arrays.asList(vals));
+        Collections.shuffle(pool, new Random(rng.nextLong()));
+        for (int i = 0; i < target && i < pool.size(); i++) {
+            out.add(pool.get(i));
         }
-        if (rng.nextDouble() <= extraChance) {
-            SoulTrait t = vals[rng.nextInt(vals.length)];
-            if (!picked.contains(t)) picked.add(t);
-        }
-        out.addAll(picked);
         return out;
     }
 
@@ -196,7 +212,7 @@ public final class SoulGenerator {
         StringBuilder sb = new StringBuilder();
         sb.append(soul.getRarity().name()).append(" ")
           .append(prettyName(soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey()))
-          .append(" Soul (").append(SoulQuality.format(soul)).append(")");
+          .append(" Soul");
         if (!soul.getTraits().isEmpty()) {
             sb.append(" [");
             for (int i = 0; i < soul.getTraits().size(); i++) {

@@ -32,6 +32,11 @@ public class SummonMoveGoal implements Goal<Mob> {
     private final Mob mob;
     private final GoalKey<Mob> key;
 
+    private Location lastNavTarget = null;
+    private double lastNavSpeed = -1.0;
+    private long lastNavTick = -1000L;
+    private boolean lastNavWasOwner = false;
+
     public SummonMoveGoal(GlovedPlugin plugin, SummonInstanceTracker tracker, Mob mob) {
         this.plugin = plugin;
         this.tracker = tracker;
@@ -61,6 +66,10 @@ public class SummonMoveGoal implements Goal<Mob> {
 
     @Override
     public void start() {
+        lastNavTarget = null;
+        lastNavSpeed = -1.0;
+        lastNavTick = -1000L;
+        lastNavWasOwner = false;
     }
 
     @Override
@@ -68,6 +77,37 @@ public class SummonMoveGoal implements Goal<Mob> {
         try {
             var pf = mob.getPathfinder();
             if (pf != null) pf.stopPathfinding();
+        } catch (Exception ignored) {}
+        lastNavTarget = null;
+        lastNavSpeed = -1.0;
+        lastNavTick = -1000L;
+        lastNavWasOwner = false;
+    }
+
+    private void pathTo(com.destroystokyo.paper.entity.Pathfinder pf, Location dest, double speed, boolean ownerFollow) {
+        if (pf == null || dest == null) return;
+        long now = Bukkit.getCurrentTick();
+        boolean hasPath = false;
+        try { hasPath = pf.hasPath(); } catch (Exception ignored) {}
+        boolean need = !hasPath || lastNavTarget == null || lastNavWasOwner != ownerFollow;
+        if (!need && lastNavTarget.getWorld() != null && dest.getWorld() != null
+                && lastNavTarget.getWorld().equals(dest.getWorld())) {
+            double movedSq = lastNavTarget.distanceSquared(dest);
+            // Repath if destination moved meaningfully, speed changed notably, or path is stale.
+            if (movedSq > (ownerFollow ? 2.25 : 1.0) || Math.abs(speed - lastNavSpeed) > 0.05 || (now - lastNavTick) >= 20L) {
+                need = true;
+            }
+        } else if (!need) {
+            need = true;
+        }
+        if (!need) return;
+        try {
+            if (pf.moveTo(dest, speed)) {
+                lastNavTarget = dest.clone();
+                lastNavSpeed = speed;
+                lastNavTick = now;
+                lastNavWasOwner = ownerFollow;
+            }
         } catch (Exception ignored) {}
     }
 
@@ -84,6 +124,7 @@ public class SummonMoveGoal implements Goal<Mob> {
             if (pf == null) return;
             LivingEntity target = mob.getTarget();
             TargetIntent intent = readIntent(mob);
+            double speed = moveSpeedForIntent(mob, intent);
             if (target != null && !target.isDead() && target.getWorld().equals(mob.getWorld())
                     && owner.getWorld().equals(mob.getWorld())) {
                 // Bodyguard positioning: when peeling a threat off the owner, path to a point
@@ -94,16 +135,17 @@ public class SummonMoveGoal implements Goal<Mob> {
                 if (intent == TargetIntent.PEELING && distSq > MIN_CHASE_DIST_SQ) {
                     Location interpose = interposeLocation(mob, owner, target);
                     if (interpose != null) {
-                        pf.moveTo(interpose, moveSpeedForIntent(mob, intent));
+                        pathTo(pf, interpose, speed, false);
                         try { mob.lookAt(target); } catch (Throwable ignored) {}
                         return;
                     }
                 }
                 if (distSq <= MIN_CHASE_DIST_SQ) {
                     // In melee range: stop pathfinding, let MinionAI handle the attack.
-                    pf.stopPathfinding();
+                    try { pf.stopPathfinding(); } catch (Exception ignored) {}
+                    lastNavTarget = null;
                 } else {
-                    pf.moveTo(target.getLocation(), moveSpeedForIntent(mob, intent));
+                    pathTo(pf, target.getLocation(), speed, false);
                     try { mob.lookAt(target); } catch (Throwable ignored) {}
                 }
                 return;
@@ -112,28 +154,28 @@ public class SummonMoveGoal implements Goal<Mob> {
             if (!owner.getWorld().equals(mob.getWorld())) return;
             double distSqToOwner = mob.getLocation().distanceSquared(owner.getLocation());
             if (distSqToOwner <= IDLE_RADIUS_SQ) {
-                pf.stopPathfinding();
+                try { pf.stopPathfinding(); } catch (Exception ignored) {}
+                lastNavTarget = null;
                 return;
             }
-            pf.moveTo(owner.getLocation(), moveSpeedForIntent(mob, intent));
+            pathTo(pf, owner.getLocation(), speed, true);
             try { mob.lookAt(owner); } catch (Throwable ignored) {}
         } catch (Exception ignored) {}
     }
 
-    private static double mobSpeed(Mob mob) {
+    private static double desiredBaseBps(Mob mob) {
         try {
-            var fly = mob.getAttribute(Attribute.FLYING_SPEED);
-            if (fly != null) return Math.max(0.6, fly.getValue() * 10.0);
-        } catch (Exception ignored) {}
+            NamespacedKey key = new NamespacedKey(GlovedPlugin.getPlugin(GlovedPlugin.class), "summon_move_bps");
+            Double stored = mob.getPersistentDataContainer().get(key, PersistentDataType.DOUBLE);
+            if (stored != null && Double.isFinite(stored)) {
+                return Math.max(1.0, Math.min(14.0, stored));
+            }
+        } catch (Throwable ignored) {}
         try {
             var move = mob.getAttribute(Attribute.MOVEMENT_SPEED);
-            if (move != null) {
-                // Normalize to Paper pathfinder speed scale: 1.0 = normal walking speed.
-                double base = move.getValue();
-                return Math.max(1.0, Math.min(2.0, base / 0.3));
-            }
+            if (move != null) return Math.max(1.0, Math.min(14.0, move.getValue() * 43.17));
         } catch (Exception ignored) {}
-        return 1.0;
+        return 5.0;
     }
 
     /** Read the minion's current targeting intent from its PDC (set by MinionAI). */
@@ -157,14 +199,28 @@ public class SummonMoveGoal implements Goal<Mob> {
         };
     }
 
-    /** Final speed cap for minion movement so speed bursts never go out of control. */
-    private static final double MAX_MOVE_SPEED = 1.6;
-
-    /** Base speed with a hard cap, then intent multiplier applied, then clamped to MAX_MOVE_SPEED. */
+    /** Base speed with intent burst, dampened at higher speeds and capped to ~14 bps total. */
     private static double moveSpeedForIntent(Mob mob, TargetIntent intent) {
-        double base = mobSpeed(mob);
-        double multiplied = base * speedMultiplier(intent);
-        return Math.max(0.5, Math.min(MAX_MOVE_SPEED, multiplied));
+        double baseBps = desiredBaseBps(mob);
+        double intentMult = speedMultiplier(intent);
+        double maxBps = 14.0;
+        // Diminishing returns for intent bursts: higher base speed => less effect from "other stuff".
+        double bonus = Math.max(0.0, intentMult - 1.0);
+        double effectiveness = Math.max(0.0, Math.min(1.0, (maxBps - baseBps) / maxBps));
+        double desiredBps = baseBps * (1.0 + bonus * effectiveness);
+        desiredBps = Math.max(1.0, Math.min(maxBps, desiredBps));
+
+        double attr = 0.23;
+        try {
+            var move = mob.getAttribute(Attribute.MOVEMENT_SPEED);
+            if (move != null && move.getValue() > 0.0) attr = move.getValue();
+        } catch (Exception ignored) {}
+        // Pathfinder speed 1.0 = move at entity's MOVEMENT_SPEED attribute (theoretical).
+        // Empirical calibration: observed actual movement is significantly below attr*43.17 in practice.
+        final double CALIBRATION = 6.0;
+        double pf = (desiredBps / (attr * 43.17)) * CALIBRATION;
+        if (!Double.isFinite(pf) || pf <= 0.0) pf = CALIBRATION;
+        return Math.max(0.2, Math.min(12.0, pf));
     }
 
     /**
