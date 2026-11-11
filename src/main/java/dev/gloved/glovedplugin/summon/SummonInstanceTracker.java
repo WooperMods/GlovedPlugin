@@ -78,10 +78,10 @@ public class SummonInstanceTracker {
         if (le == null || le.getWorld() == null) return;
         World world = le.getWorld();
         org.bukkit.Location at = le.getLocation().add(0, 0.6, 0);
-        world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 24, 0.5, 0.7, 0.5, 0.04);
-        world.spawnParticle(Particle.REVERSE_PORTAL, at, 20, 0.6, 0.6, 0.6, 0.06);
-        world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 14, 0.35, 0.5, 0.35, 0.03);
-        world.spawnParticle(Particle.SOUL, at, 30, 0.4, 0.5, 0.4, 0.02);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 12, 0.5, 0.7, 0.5, 0.04);
+        world.spawnParticle(Particle.REVERSE_PORTAL, at, 10, 0.6, 0.6, 0.6, 0.06);
+        world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 7, 0.35, 0.5, 0.35, 0.03);
+        world.spawnParticle(Particle.SOUL, at, 15, 0.4, 0.5, 0.4, 0.02);
         world.playSound(at, Sound.ENTITY_ENDERMAN_TELEPORT, 0.7f, 1.3f);
         world.playSound(at, Sound.BLOCK_BEACON_DEACTIVATE, 0.6f, 1.6f);
     }

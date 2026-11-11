@@ -364,7 +364,7 @@ public class SoulService {
             if (!start.getWorld().equals(end.getWorld())) return;
             final Location trailStart = start.clone();
             final Location trailEnd = end.clone();
-            final int durationTicks = 8;
+            final int durationTicks = 6;
             final org.bukkit.scheduler.BukkitRunnable task = new org.bukkit.scheduler.BukkitRunnable() {
                 int tick = 0;
 

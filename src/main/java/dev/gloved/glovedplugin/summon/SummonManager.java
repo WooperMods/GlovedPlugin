@@ -485,11 +485,11 @@ public class SummonManager {
         try {
             World world = at.getWorld();
             Location fx = at.clone().add(0, 0.8, 0);
-            world.spawnParticle(Particle.SOUL_FIRE_FLAME, fx, 28 + Math.min(count * 4, 40), 0.9, 0.7, 0.9, 0.02);
-            world.spawnParticle(Particle.REVERSE_PORTAL, fx, 24 + Math.min(count * 3, 30), 0.8, 0.6, 0.8, 0.03);
-            world.spawnParticle(Particle.WITCH, fx, 16 + Math.min(count * 2, 24), 0.7, 0.5, 0.7, 0.01);
-            world.spawnParticle(Particle.END_ROD, fx.clone().add(0, 0.6, 0), 10 + Math.min(count * 2, 18), 0.5, 0.8, 0.5, 0.01);
-            world.spawnParticle(Particle.CLOUD, fx, 8, 0.5, 0.2, 0.5, 0.02);
+            world.spawnParticle(Particle.SOUL_FIRE_FLAME, fx, 14 + Math.min(count * 2, 20), 0.9, 0.7, 0.9, 0.02);
+            world.spawnParticle(Particle.REVERSE_PORTAL, fx, 12 + Math.min(count * 2, 15), 0.8, 0.6, 0.8, 0.03);
+            world.spawnParticle(Particle.WITCH, fx, 8 + Math.min(count * 1, 12), 0.7, 0.5, 0.7, 0.01);
+            world.spawnParticle(Particle.END_ROD, fx.clone().add(0, 0.6, 0), 5 + Math.min(count * 1, 9), 0.5, 0.8, 0.5, 0.01);
+            world.spawnParticle(Particle.CLOUD, fx, 4, 0.5, 0.2, 0.5, 0.02);
             world.playSound(fx, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 0.8f, 1.15f);
             world.playSound(fx, Sound.BLOCK_BEACON_ACTIVATE, 0.35f, 1.6f);
             if (player != null) {
