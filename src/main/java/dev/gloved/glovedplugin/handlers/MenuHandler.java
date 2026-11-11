@@ -182,12 +182,44 @@ public class MenuHandler implements Listener {
         switch (event.getClick()) {
             case CONTROL_DROP -> {
                 var res = svc.salvage(player.getUniqueId(), soul);
-                if (res.ok()) player.sendMessage(Component.text("Salvaged " + dev.gloved.glovedplugin.summon.soul.SoulService.shortId(soul) + " for +" + res.essenceGained() + " essence."));
-                else player.sendMessage(Component.text("Cannot salvage: " + res.reason()));
+                if (res.ok()) player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§d[Soul] §7Salvaged " + dev.gloved.glovedplugin.summon.soul.SoulService.describe(soul) + " → §b+" + res.essenceGained() + " Essence"));
+                else player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§c[Soul] Cannot salvage: " + res.reason()));
                 new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                 return;
             }
             case DROP -> {
+                // Deduplication: remove any existing physical copies of this soul (vault authoritative)
+                try {
+                    java.util.UUID soulUuid = soul.getSoulId();
+                    org.bukkit.inventory.Inventory inv = player.getInventory();
+                    for (int i = 0; i < inv.getSize(); i++) {
+                        org.bukkit.inventory.ItemStack is = inv.getItem(i);
+                        if (is != null && dev.gloved.glovedplugin.summon.soul.SoulDropItem.isSoulDrop(plugin, is)) {
+                            dev.gloved.glovedplugin.summon.soul.SoulInstance s = dev.gloved.glovedplugin.summon.soul.SoulDropItem.readSoul(plugin, is);
+                            if (s != null && s.getSoulId().equals(soulUuid)) {
+                                inv.setItem(i, null);
+                            }
+                        }
+                    }
+                    org.bukkit.inventory.ItemStack off = player.getInventory().getItemInOffHand();
+                    if (off != null && dev.gloved.glovedplugin.summon.soul.SoulDropItem.isSoulDrop(plugin, off)) {
+                        dev.gloved.glovedplugin.summon.soul.SoulInstance s = dev.gloved.glovedplugin.summon.soul.SoulDropItem.readSoul(plugin, off);
+                        if (s != null && s.getSoulId().equals(soulUuid)) {
+                            player.getInventory().setItemInOffHand(null);
+                        }
+                    }
+                    for (org.bukkit.entity.Entity e : player.getNearbyEntities(32, 32, 32)) {
+                        if (e instanceof org.bukkit.entity.Item itemEnt) {
+                            org.bukkit.inventory.ItemStack is = itemEnt.getItemStack();
+                            if (is != null && dev.gloved.glovedplugin.summon.soul.SoulDropItem.isSoulDrop(plugin, is)) {
+                                dev.gloved.glovedplugin.summon.soul.SoulInstance s = dev.gloved.glovedplugin.summon.soul.SoulDropItem.readSoul(plugin, is);
+                                if (s != null && s.getSoulId().equals(soulUuid)) {
+                                    itemEnt.remove();
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
                 // Validate we can create the physical item BEFORE deleting the soul from the vault.
                 // If item creation throws, we must not lose the soul.
                 org.bukkit.inventory.ItemStack item;
@@ -413,14 +445,14 @@ public class MenuHandler implements Listener {
         // The client predicts merges on cancelled clicks and then echoes that
         // fiction back in later click packets (tagged cursor the server never
         // held). Opening windows on fiction amplifies the desync into working
-        // duplicate buttons, so swallow it: cancel, resync, no menu, no sound.
+        // duplicate buttons, so we log and resync but still allow the opener to work
+        // to avoid permanent loss of menu access after desync.
         if (!cursorStateMatches(cursor, player.getItemOnCursor())) {
-            event.setCancelled(true);
             dev.gloved.glovedplugin.DebugLog.log("INFO",
-                    "Opener desync-click swallowed player=" + player.getName() + " action=" + event.getAction()
+                    "Opener desync-click detected player=" + player.getName() + " action=" + event.getAction()
                             + " cursor=" + diagItem(cursor) + " serverCursor=" + diagItem(player.getItemOnCursor()));
+            // resync client inventory to reduce drift, but don't silently drop the click
             player.updateInventory();
-            return;
         }
 
         switch (event.getAction()) {

@@ -9,9 +9,9 @@ public enum SoulRarity {
     COMMON(5000, 1, 1),
     UNCOMMON(2800, 2, 2),
     RARE(1400, 2, 3),
-    EPIC(600, 3, 3),
-    LEGENDARY(180, 3, 4),
-    MYTHIC(20, 4, 4);
+    EPIC(600, 3, 4),
+    LEGENDARY(180, 3, 5),
+    MYTHIC(20, 4, 6);
 
     public final int defaultWeight;
     public final int minAffixes;
