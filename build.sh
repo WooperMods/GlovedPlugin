@@ -8,8 +8,12 @@ PLUGIN_DIR="/home/crafty/crafty-4/servers/9db363c7-b2ff-47b6-b334-c647675017c9/p
 echo "[GlovedPlugin] Building project in ${PROJECT_DIR}"
 cd "${PROJECT_DIR}"
 
-# Use Java 17 to run Gradle, toolchain will compile with Java 25
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+# Prefer Java 25 for Gradle/paperweight (toolchain targets Java 25); fall back to Java 17.
+if [ -d "/usr/lib/jvm/java-25-openjdk" ]; then
+  export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
+elif [ -d "/usr/lib/jvm/java-17-openjdk" ]; then
+  export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+fi
 export PATH="${JAVA_HOME}/bin:${PATH}"
 
 ./gradlew clean shadowJar --no-daemon

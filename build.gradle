@@ -1,6 +1,7 @@
 plugins {
     id 'java'
-    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id 'io.papermc.paperweight.userdev' version '2.0.0-beta.23'
+    id 'com.gradleup.shadow' version '8.3.6'
 }
 
 group = 'dev.gloved.glovedplugin'
@@ -44,7 +45,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly "io.papermc.paper:paper-api:26.3.build.+"
+    paperweight.paperDevBundle("26.3.build.+")
     compileOnly "com.magmaguy:EliteMobs:10.9.10"
     compileOnly "org.xerial:sqlite-jdbc:3.48.0.0"
     compileOnly "net.luckperms:api:5.4"
@@ -53,7 +54,7 @@ dependencies {
     compileOnly "com.sk89q.worldguard:worldguard-bukkit:7.0.10"
 }
 
-
+// Mojang-mapped output for modern Paper servers (default in recent paperweight; omit explicit config for compatibility).
 
 def targetJavaVersion = 25
 java {
@@ -71,6 +72,10 @@ tasks.withType(JavaCompile).configureEach {
     if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
         options.release.set(targetJavaVersion)
     }
+}
+
+tasks.assemble {
+    dependsOn(tasks.shadowJar)
 }
 
 processResources {
