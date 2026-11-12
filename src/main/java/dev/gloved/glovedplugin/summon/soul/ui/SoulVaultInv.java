@@ -116,6 +116,7 @@ public class SoulVaultInv implements InventoryHolder {
         inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity"));
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort"));
         inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close"));
+        inv.setItem(52, combatModeItem());
 
         // help
         ItemStack help = new ItemStack(Material.BOOK);
@@ -154,6 +155,7 @@ public class SoulVaultInv implements InventoryHolder {
             SoulService svc = plugin.getSoulService();
             var st = svc != null ? svc.getState(viewerId) : null;
             int sel = st != null ? st.selectedSlot() : 0;
+            String mode = svc != null ? svc.getSummonCombatMode(viewerId) : "AGGRESSIVE";
             meta.displayName(LegacyComponentSerializer.legacySection().deserialize("§dSoul Vault").decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Souls: §f" + total + "/" + cap).decoration(TextDecoration.ITALIC, false));
@@ -161,7 +163,36 @@ public class SoulVaultInv implements InventoryHolder {
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Selected slot: §f" + sel).decoration(TextDecoration.ITALIC, false));
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Filter: §f" + (filterType == null || filterType.isBlank() ? "ALL" : filterType) + " §7Rarity: §f" + (filterRarity == null ? "ALL" : filterRarity.name())).decoration(TextDecoration.ITALIC, false));
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Sort: §f" + sortMode).decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Summon mode: " + ("DEFENSIVE".equals(mode) ? "§eDefensive" : "§cAggressive")).decoration(TextDecoration.ITALIC, false));
             meta.lore(lore);
+            it.setItemMeta(meta);
+        }
+        return it;
+    }
+
+    private ItemStack combatModeItem() {
+        SoulService svc = plugin.getSoulService();
+        String mode = svc != null ? svc.getSummonCombatMode(viewerId) : "AGGRESSIVE";
+        boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
+        ItemStack it = new ItemStack(defensive ? Material.SHIELD : Material.IRON_SWORD);
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            String name = defensive ? "§eSummon Mode: Defensive" : "§cSummon Mode: Aggressive";
+            meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name).decoration(TextDecoration.ITALIC, false));
+            List<Component> lore = new ArrayList<>();
+            if (defensive) {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Summons attack threats to you or").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7themselves/recent attackers only.").decoration(TextDecoration.ITALIC, false));
+            } else {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Summons auto-target nearby valid").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7hostiles/threats.").decoration(TextDecoration.ITALIC, false));
+            }
+            lore.add(Component.empty());
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§aClick to toggle Defensive/Aggressive").decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Applies to active and future summons.").decoration(TextDecoration.ITALIC, false));
+            meta.lore(lore);
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, "combat");
             it.setItemMeta(meta);
         }
         return it;

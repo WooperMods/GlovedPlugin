@@ -16,12 +16,17 @@ public final class SoulConfig {
     private boolean enabled = true;
     private boolean allowAllLiving = true;
     private final Set<String> blacklist = new HashSet<>();
-    private boolean allowBosses = false;
+    private boolean allowBosses = true;
     private int defaultBatch = 1;
+    private int lifetimeTicks = 1200; // <= 0 disables timed minion despawn
+    private int wardenSonicEngageDelayTicks = 200; // delay after engaging a target before Warden sonic boom can start
     private String nametagFormat = "{player}'s {mob}";
+    private boolean nametagEnabled = true;
 
     // category defaults
     private final EnumMap<EntityCategory, CategoryDefaults> categoryDefaults = new EnumMap<>(EntityCategory.class);
+    // Explicit per-entity-type max active summon caps (hard caps; not scaled above by progression).
+    private final Map<String, Integer> typeMaxActiveOverrides = new HashMap<>();
 
     // capture
     private double captureBaseChance = 0.08;
@@ -46,6 +51,12 @@ public final class SoulConfig {
     private int vaultBaseCapacity = 30;
     private int vaultMaxCapacity = 0; // <= 0 means unlimited
     private double vaultCapacityPerLevel = 2.0;
+    private String vaultOverflowMode = "CONVERT_TO_ESSENCE";
+    private double vaultOverflowMultiplier = 1.0;
+
+    // essence values (sources)
+    private final EnumMap<SoulRarity, Integer> essenceValues = new EnumMap<>(SoulRarity.class);
+    private double essenceOverflowMultiplier = 1.0;
 
     // loadout/selection
     private int loadoutBaseSlots = 1;
@@ -55,6 +66,7 @@ public final class SoulConfig {
     // cast
     private int castSharedGcdTicks = 40;
     private int castBaseCooldownTicks = 240;
+    private boolean castManaEnabled = true;
     private double castBaseManaCost = 12.0;
     private boolean replaceIfCapped = false;
 
@@ -69,8 +81,7 @@ public final class SoulConfig {
     public record CategoryDefaults(int maxActivePerType, double costMult, double hpMult, boolean enabled) {}
 
     public SoulConfig() {
-        // sensible defaults
-        blacklist.addAll(List.of("ENDER_DRAGON", "WITHER", "WARDEN", "GIANT", "PLAYER"));
+        // No hardcoded blacklist by default; configure via souls.dynamic.blacklist if needed.
         for (SoulRarity r : SoulRarity.values()) rarityWeights.put(r, r.defaultWeight);
         rarityMinLevels.put(SoulRarity.COMMON, 0);
         rarityMinLevels.put(SoulRarity.UNCOMMON, 0);
@@ -88,8 +99,18 @@ public final class SoulConfig {
         categoryDefaults.put(EntityCategory.FLYING, new CategoryDefaults(3, 1.1, 0.9, true));
         categoryDefaults.put(EntityCategory.AQUATIC, new CategoryDefaults(3, 1.0, 1.0, true));
         categoryDefaults.put(EntityCategory.AMBIENT, new CategoryDefaults(2, 0.6, 0.7, true));
-        categoryDefaults.put(EntityCategory.BOSS, new CategoryDefaults(1, 3.0, 1.5, false));
+        categoryDefaults.put(EntityCategory.BOSS, new CategoryDefaults(1, 3.0, 1.5, true));
         categoryDefaults.put(EntityCategory.SPECIAL, new CategoryDefaults(1, 1.2, 1.0, true));
+
+        essenceValues.put(SoulRarity.COMMON, 1);
+        essenceValues.put(SoulRarity.UNCOMMON, 3);
+        essenceValues.put(SoulRarity.RARE, 8);
+        essenceValues.put(SoulRarity.EPIC, 18);
+        essenceValues.put(SoulRarity.LEGENDARY, 42);
+        essenceValues.put(SoulRarity.MYTHIC, 95);
+        essenceOverflowMultiplier = 1.0;
+        vaultOverflowMode = "CONVERT_TO_ESSENCE";
+        vaultOverflowMultiplier = 1.0;
     }
 
     public static SoulConfig load(FileConfiguration yaml) {
@@ -105,6 +126,8 @@ public final class SoulConfig {
             cfg.allowAllLiving = dyn.getBoolean("allow-all-living", true);
             cfg.allowBosses = dyn.getBoolean("allow-bosses", false);
             cfg.defaultBatch = Math.max(1, dyn.getInt("default-batch", 1));
+            cfg.lifetimeTicks = dyn.getInt("lifetime-ticks", 1200);
+            cfg.wardenSonicEngageDelayTicks = Math.max(0, dyn.getInt("warden-sonic-engage-delay-ticks", 200));
             cfg.nametagFormat = dyn.getString("default-nametag-format", "{player}'s {mob}");
             List<String> bl = dyn.getStringList("blacklist");
             if (!bl.isEmpty()) {
@@ -112,6 +135,18 @@ public final class SoulConfig {
                 for (String b : bl) {
                     if (b != null && !b.isBlank()) cfg.blacklist.add(b.trim().toUpperCase(Locale.ROOT));
                 }
+            }
+        }
+        cfg.nametagEnabled = s.getBoolean("nametag.enabled", true);
+
+        cfg.typeMaxActiveOverrides.clear();
+        ConfigurationSection typeCaps = dyn != null ? dyn.getConfigurationSection("max-active-by-type") : null;
+        if (typeCaps == null) typeCaps = s.getConfigurationSection("dynamic.max-active-by-type");
+        if (typeCaps != null) {
+            for (String key : typeCaps.getKeys(false)) {
+                if (key == null || key.isBlank()) continue;
+                int v = Math.max(1, typeCaps.getInt(key, 1));
+                cfg.typeMaxActiveOverrides.put(key.trim().toUpperCase(Locale.ROOT), v);
             }
         }
 
@@ -180,15 +215,35 @@ public final class SoulConfig {
             cfg.vaultMaxCapacity = vault.getInt("max-capacity", 0); // <= 0 means unlimited
             if (cfg.vaultMaxCapacity > 0) cfg.vaultMaxCapacity = Math.max(cfg.vaultBaseCapacity, cfg.vaultMaxCapacity);
             cfg.vaultCapacityPerLevel = clamp(vault.getDouble("capacity-per-level", 2.0), 0.0, 50.0);
+            cfg.vaultOverflowMode = vault.getString("overflow-mode", vault.getString("overflow", "CONVERT_TO_ESSENCE"));
+            if (cfg.vaultOverflowMode == null || cfg.vaultOverflowMode.isBlank()) cfg.vaultOverflowMode = "CONVERT_TO_ESSENCE";
+            cfg.vaultOverflowMode = cfg.vaultOverflowMode.trim().toUpperCase(Locale.ROOT);
+            cfg.vaultOverflowMultiplier = clamp(vault.getDouble("overflow-multiplier", 1.0), 0.0, 10.0);
             cfg.loadoutBaseSlots = Math.max(1, vault.getInt("loadout.base-slots", vault.getInt("loadout-base-slots", 1)));
             cfg.loadoutLevelsPerSlot = Math.max(1, vault.getInt("loadout.levels-per-slot", vault.getInt("loadout-levels-per-slot", 10)));
             cfg.loadoutMaxSlots = Math.max(cfg.loadoutBaseSlots, vault.getInt("loadout.max-slots", vault.getInt("loadout-max-slots", 5)));
+        }
+
+        ConfigurationSection essenceSec = s.getConfigurationSection("essence");
+        if (essenceSec != null) {
+            ConfigurationSection ev = essenceSec.getConfigurationSection("values");
+            if (ev != null) {
+                for (SoulRarity r : SoulRarity.values()) {
+                    if (ev.isSet(r.name())) {
+                        cfg.essenceValues.put(r, Math.max(0, ev.getInt(r.name(), cfg.essenceValues.getOrDefault(r, 0))));
+                    }
+                }
+            }
+            cfg.essenceOverflowMultiplier = clamp(essenceSec.getDouble("overflow-multiplier", cfg.vaultOverflowMultiplier), 0.0, 10.0);
+        } else {
+            cfg.essenceOverflowMultiplier = cfg.vaultOverflowMultiplier;
         }
 
         ConfigurationSection cast = s.getConfigurationSection("cast");
         if (cast != null) {
             cfg.castSharedGcdTicks = Math.max(0, cast.getInt("shared-gcd-ticks", 40));
             cfg.castBaseCooldownTicks = Math.max(0, cast.getInt("base-cooldown-ticks", 120));
+            cfg.castManaEnabled = cast.getBoolean("mana-enabled", true);
             cfg.castBaseManaCost = Math.max(0.0, cast.getDouble("base-mana-cost", 12.0));
             String rp = cast.getString("replace-policy", "BLOCK_IF_CAPPED");
             cfg.replaceIfCapped = rp != null && rp.toUpperCase(Locale.ROOT).contains("REPLACE");
@@ -210,9 +265,29 @@ public final class SoulConfig {
         if (cfg == null) return;
         setIfMissing(cfg, "souls.enabled", true);
         setIfMissing(cfg, "souls.dynamic.allow-all-living", true);
-        setIfMissing(cfg, "souls.dynamic.allow-bosses", false);
+        setIfMissing(cfg, "souls.dynamic.allow-bosses", true);
         setIfMissing(cfg, "souls.dynamic.default-batch", 1);
+        setIfMissing(cfg, "souls.dynamic.lifetime-ticks", 1200);
+        setIfMissing(cfg, "souls.dynamic.warden-sonic-engage-delay-ticks", 200);
         setIfMissing(cfg, "souls.dynamic.default-nametag-format", "{player}'s {mob}");
+        // Fix misplaced blacklist (previously nested under souls.nametag) and default to empty.
+        if (!cfg.isList("souls.dynamic.blacklist")) {
+            if (cfg.isList("souls.nametag.blacklist")) {
+                // Remove misplaced copy; do not carry it over since blacklist is now disabled by default.
+                cfg.set("souls.nametag.blacklist", null);
+            }
+            cfg.set("souls.dynamic.blacklist", java.util.Collections.emptyList());
+        } else if (cfg.isList("souls.nametag.blacklist")) {
+            // Correct location exists; drop misplaced duplicate.
+            cfg.set("souls.nametag.blacklist", null);
+        }
+        if (!cfg.isConfigurationSection("souls.dynamic.max-active-by-type")) {
+            cfg.set("souls.dynamic.max-active-by-type.WARDEN", 1);
+            cfg.set("souls.dynamic.max-active-by-type.ENDER_DRAGON", 1);
+            cfg.set("souls.dynamic.max-active-by-type.WITHER", 1);
+            cfg.set("souls.dynamic.max-active-by-type.ELDER_GUARDIAN", 1);
+        }
+        setIfMissing(cfg, "souls.nametag.enabled", true);
         if (!cfg.isList("souls.dynamic.blacklist")) {
             cfg.set("souls.dynamic.blacklist", List.of("ENDER_DRAGON", "WITHER", "WARDEN", "GIANT", "PLAYER"));
         }
@@ -240,11 +315,21 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.vault.max-capacity", 0); // <= 0 means unlimited
         setIfMissing(cfg, "souls.vault.capacity-per-level", 2.0);
         setIfMissing(cfg, "souls.vault.overflow", "CONVERT_TO_ESSENCE");
+        setIfMissing(cfg, "souls.vault.overflow-mode", "CONVERT_TO_ESSENCE");
+        setIfMissing(cfg, "souls.vault.overflow-multiplier", 1.0);
         setIfMissing(cfg, "souls.vault.loadout.base-slots", 1);
         setIfMissing(cfg, "souls.vault.loadout.levels-per-slot", 10);
         setIfMissing(cfg, "souls.vault.loadout.max-slots", 5);
-        setIfMissing(cfg, "souls.cast.shared-gcd-ticks", 10);
-        setIfMissing(cfg, "souls.cast.base-cooldown-ticks", 120);
+        setIfMissing(cfg, "souls.essence.values.COMMON", 1);
+        setIfMissing(cfg, "souls.essence.values.UNCOMMON", 3);
+        setIfMissing(cfg, "souls.essence.values.RARE", 8);
+        setIfMissing(cfg, "souls.essence.values.EPIC", 18);
+        setIfMissing(cfg, "souls.essence.values.LEGENDARY", 42);
+        setIfMissing(cfg, "souls.essence.values.MYTHIC", 95);
+        setIfMissing(cfg, "souls.essence.overflow-multiplier", 1.0);
+        setIfMissing(cfg, "souls.cast.shared-gcd-ticks", 0);
+        setIfMissing(cfg, "souls.cast.base-cooldown-ticks", 0);
+        setIfMissing(cfg, "souls.cast.mana-enabled", true);
         setIfMissing(cfg, "souls.cast.base-mana-cost", 12.0);
         setIfMissing(cfg, "souls.cast.replace-policy", "BLOCK_IF_CAPPED");
         setIfMissing(cfg, "souls.caps.global-max-active-base", 2);
@@ -268,7 +353,7 @@ public final class SoulConfig {
         setCat(cfg, "FLYING", 3, 1.1, 0.9, true);
         setCat(cfg, "AQUATIC", 3, 1.0, 1.0, true);
         setCat(cfg, "AMBIENT", 2, 0.6, 0.7, true);
-        setCat(cfg, "BOSS", 1, 3.0, 1.5, false);
+        setCat(cfg, "BOSS", 1, 3.0, 1.5, true);
         setCat(cfg, "SPECIAL", 1, 1.2, 1.0, true);
     }
 
@@ -307,7 +392,15 @@ public final class SoulConfig {
         EntityCategory cat = EntityCategory.of(type);
         CategoryDefaults cd = categoryDefaults.getOrDefault(cat, new CategoryDefaults(2, 1.0, 1.0, true));
         int perTypeCap = Math.max(1, cd.maxActivePerType);
+        Integer override = getTypeMaxActiveOverride(type != null ? type.name() : null);
+        if (override != null) perTypeCap = Math.max(1, override);
         return new DynamicSoulTemplate(type.name(), type, cat, defaultBatch, perTypeCap, DynamicSoulTemplate.defaultColor(cat));
+    }
+
+    /** Explicit per-type max active override (hard cap), or null if none. */
+    public Integer getTypeMaxActiveOverride(String familyKey) {
+        if (familyKey == null || familyKey.isBlank()) return null;
+        return typeMaxActiveOverrides.get(familyKey.trim().toUpperCase(Locale.ROOT));
     }
 
     /** Resolve by family/type key string (entity type name). */
@@ -350,9 +443,11 @@ public final class SoulConfig {
     public int getLoadoutMaxSlots() { return loadoutMaxSlots; }
     public int getCastSharedGcdTicks() { return castSharedGcdTicks; }
     public int getCastBaseCooldownTicks() { return castBaseCooldownTicks; }
+    public boolean isCastManaEnabled() { return castManaEnabled; }
     public double getCastBaseManaCost() { return castBaseManaCost; }
     public boolean isReplaceIfCapped() { return replaceIfCapped; }
     public String getNametagFormat() { return nametagFormat; }
+    public boolean isNametagEnabled() { return nametagEnabled; }
     public Map<SoulRarity, Integer> getRarityWeights() { return Collections.unmodifiableMap(rarityWeights); }
     public Map<SoulRarity, Integer> getRarityWeightsForLevel(int summoningLevel) {
         EnumMap<SoulRarity, Integer> out = new EnumMap<>(SoulRarity.class);
@@ -370,4 +465,22 @@ public final class SoulConfig {
     public int getRarityMinLevel(SoulRarity r) { return rarityMinLevels.getOrDefault(r, 0); }
     public CategoryDefaults getCategoryDefaults(EntityCategory cat) { return categoryDefaults.getOrDefault(cat, new CategoryDefaults(2,1,1,true)); }
     public boolean isDebugTelemetry() { return debugTelemetry; }
+    public String getVaultOverflowMode() { return vaultOverflowMode != null ? vaultOverflowMode : "CONVERT_TO_ESSENCE"; }
+    public double getVaultOverflowMultiplier() { return vaultOverflowMultiplier; }
+    public double getEssenceOverflowMultiplier() { return essenceOverflowMultiplier; }
+    public int getEssenceValue(SoulRarity rarity) {
+        if (rarity == null) return 1;
+        return Math.max(0, essenceValues.getOrDefault(rarity, switch (rarity) {
+            case COMMON -> 1;
+            case UNCOMMON -> 3;
+            case RARE -> 8;
+            case EPIC -> 18;
+            case LEGENDARY -> 42;
+            case MYTHIC -> 95;
+        }));
+    }
+    /** Base lifetime for summoned minions in ticks. <= 0 disables timed despawn. */
+    public int getLifetimeTicks() { return lifetimeTicks; }
+    /** Delay after engaging a target before a Warden summon can start charging sonic boom (ticks). */
+    public int getWardenSonicEngageDelayTicks() { return wardenSonicEngageDelayTicks; }
 }

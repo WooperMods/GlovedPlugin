@@ -51,10 +51,21 @@ public final class SoulLoreBuilder {
      * base stat, the enhancement level and the rolled affixes.
      */
     public static List<Component> statsSection(GlovedPlugin plugin, SoulInstance soul) {
-        return statsSection(plugin, soul, null);
+        return statsSection(plugin, soul, null, false);
     }
 
     public static List<Component> statsSection(GlovedPlugin plugin, SoulInstance soul, UUID viewerId) {
+        return statsSection(plugin, soul, viewerId, false);
+    }
+
+    /**
+     * Unified soul stats/lore section used by vault, dropped soul items, Soul Table, previews, etc.
+     * Add new soul stats here so all views stay consistent.
+     *
+     * @param viewerId        player context for owner bonuses (may be null)
+     * @param showAffixQuality when true, append per-affix roll quality (e.g. Soul Table)
+     */
+    public static List<Component> statsSection(GlovedPlugin plugin, SoulInstance soul, UUID viewerId, boolean showAffixQuality) {
         List<Component> out = new ArrayList<>();
         out.add(header("Stats"));
         if (soul == null) {
@@ -147,6 +158,22 @@ public final class SoulLoreBuilder {
         out.add(line("§a" + fmt(atkSpdAps, 2) + " §7ATK SPD"));
         out.add(line(moveLine));
 
+        // Summons (authoritative soul stat): base + enhancement + Summons affix %, capped.
+        int effectiveCap = service != null ? service.effectiveGroupCapacity(soul) : Math.max(1, soul.getGroupCapacity());
+        String capLine = "§7Summons §3" + effectiveCap;
+        if (service != null) {
+            int[] cb = service.computeGroupCapacityBreakdown(soul);
+            double capPct = soul != null ? soul.affixValue(SoulAffixType.CAPACITY) : 0.0;
+            StringBuilder parts = new StringBuilder();
+            parts.append(cb[0]);
+            if (cb[1] > 0) parts.append("+").append(cb[1]).append(" enh");
+            if (Math.abs(capPct) >= 0.00005) parts.append("+").append(fmtPercent(capPct * 100.0));
+            if (parts.length() > 0 && !parts.toString().equals(String.valueOf(cb[0])) || cb[3] != cb[0]) {
+                capLine = "§7Summons §3" + cb[3] + " §8(" + parts + ")";
+            }
+        }
+        out.add(line(capLine));
+
         int level = soul.getEnhanceLevel();
         if (level > 0) {
             var tableCfg = service != null ? service.tableConfig() : null;
@@ -155,11 +182,15 @@ public final class SoulLoreBuilder {
             out.add(line("§dEnhancement §fLv " + level + " §7(+" + fmt(bonus, 1) + "% stats)"));
         }
 
-        if (soul.getAffixes().isEmpty()) {
+        if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {
             out.add(line("§7- No affixes"));
         } else {
             for (SoulAffixRoll affix : soul.getAffixes()) {
-                out.add(line("§a" + SoulAffixType.format(affix)));
+                if (affix == null) continue;
+                String affixText = showAffixQuality
+                        ? SoulAffixType.format(soul.getRarity(), affix)
+                        : SoulAffixType.format(affix);
+                out.add(line("§a" + affixText));
             }
         }
         out.add(separator());

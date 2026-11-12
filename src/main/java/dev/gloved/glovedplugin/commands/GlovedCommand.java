@@ -401,6 +401,7 @@ public class GlovedCommand implements BasicCommand {
             case "codex" -> handleSoulCodex(source, args, svc);
             case "trap", "traps" -> handleSoulTrapGive(source, args);
             case "table" -> handleSoulTable(source, args);
+            case "essence" -> handleSoulEssence(source, args, svc);
             case "help" -> handleSoulHelp(source);
             default -> handleSoulHelp(source);
         }
@@ -604,7 +605,8 @@ public class GlovedCommand implements BasicCommand {
         if (soulCfg != null) {
             double luck = Math.min(soulCfg.getCaptureLuckMaxBonus(), soulCfg.getCaptureLuckPerLevel() * level);
             source.getSender().sendMessage(Component.text("Capture: base=" + fmtPct(soulCfg.getCaptureBaseChance()) + " luck=" + fmtPct(luck) + " minionKills=" + (soulCfg.isCaptureMinionKills() ? "on x" + soulCfg.getCaptureMinionKillMultiplier() : "off") + " pity=" + (soulCfg.isPityEnabled() ? "on" : "off"), net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
-            source.getSender().sendMessage(Component.text("Soul config: enabled=" + soulCfg.isEnabled() + " globalCapBase=" + soulCfg.computeGlobalMaxActive(0) + " now=" + soulCfg.computeGlobalMaxActive(level) + " castCDBase=" + String.format(java.util.Locale.ROOT, "%.1fs", soulCfg.getCastBaseCooldownTicks()/20.0) + " manaBase=" + String.format(java.util.Locale.ROOT, "%.1f", soulCfg.getCastBaseManaCost()), net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+            String manaBase = soulCfg.isCastManaEnabled() ? " manaBase=" + String.format(java.util.Locale.ROOT, "%.1f", soulCfg.getCastBaseManaCost()) : "";
+            source.getSender().sendMessage(Component.text("Soul config: enabled=" + soulCfg.isEnabled() + " globalCapBase=" + soulCfg.computeGlobalMaxActive(0) + " now=" + soulCfg.computeGlobalMaxActive(level) + " castCDBase=" + String.format(java.util.Locale.ROOT, "%.1fs", soulCfg.getCastBaseCooldownTicks()/20.0) + manaBase, net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
             if (state != null && state.pityJson() != null) {
                 source.getSender().sendMessage(Component.text("Pity: " + state.pityJson(), net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
             }
@@ -615,7 +617,8 @@ public class GlovedCommand implements BasicCommand {
             try { if (plugin.getSummonManager() != null) rem = plugin.getSummonManager().getSoulCastCooldownRemainingMs(target.getUniqueId()); } catch (Throwable ignored) {}
             int cdTicks = svc.computeCastCooldownTicks(selected, soulCfg);
             double mana = svc.computeCastManaCost(selected, soulCfg);
-            source.getSender().sendMessage(Component.text("Selected: " + SoulGenerator.describe(selected) + " | castMana=" + String.format(java.util.Locale.ROOT, "%.1f", mana) + " castCD=" + String.format(java.util.Locale.ROOT, "%.1fs", cdTicks/20.0) + (rem > 0 ? " | cdLeft=" + String.format(java.util.Locale.ROOT, "%.1fs", rem/1000.0) : " | ready"), net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            String manaPart = (soulCfg.isCastManaEnabled() && mana > 0.0) ? " | castMana=" + String.format(java.util.Locale.ROOT, "%.1f", mana) : "";
+            source.getSender().sendMessage(Component.text("Selected: " + SoulGenerator.describe(selected) + manaPart + " | castCD=" + String.format(java.util.Locale.ROOT, "%.1fs", cdTicks/20.0) + (rem > 0 ? " | cdLeft=" + String.format(java.util.Locale.ROOT, "%.1fs", rem/1000.0) : " | ready"), net.kyori.adventure.text.format.NamedTextColor.GREEN));
         } else {
             source.getSender().sendMessage(Component.text("Selected soul: (none)", net.kyori.adventure.text.format.NamedTextColor.YELLOW));
         }
@@ -829,6 +832,69 @@ public class GlovedCommand implements BasicCommand {
         source.getSender().sendMessage(Component.text("Gave " + amount + "x " + tier.displayName.replace("&", "§") + " §ato " + target.getName(), net.kyori.adventure.text.format.NamedTextColor.GREEN));
     }
 
+    private void handleSoulEssence(@NotNull CommandSourceStack source, @NotNull String[] args, SoulService svc) {
+        // /gloved soul essence <give|set|remove> <player> <amount>
+        if (args.length < 4) {
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul essence <give|set|remove> <player> <amount>"));
+            return;
+        }
+        String action = args[2].toLowerCase(Locale.ROOT);
+        if (!action.equals("give") && !action.equals("set") && !action.equals("remove")) {
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul essence <give|set|remove> <player> <amount>"));
+            return;
+        }
+        if (args.length < 5) {
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul essence " + action + " <player> <amount>"));
+            return;
+        }
+        Player target = Bukkit.getPlayerExact(args[3]);
+        if (target == null) target = Bukkit.getPlayer(args[3]);
+        if (target == null) {
+            source.getSender().sendMessage(Component.text("Player not found: " + args[3]));
+            return;
+        }
+        int amount;
+        try {
+            amount = Integer.parseInt(args[4]);
+        } catch (NumberFormatException e) {
+            source.getSender().sendMessage(Component.text("Invalid amount: " + args[4]));
+            return;
+        }
+        if (action.equals("give")) {
+            if (amount <= 0) {
+                source.getSender().sendMessage(Component.text("Amount must be positive."));
+                return;
+            }
+            svc.addEssence(target.getUniqueId(), amount);
+            int total = svc.getEssence(target.getUniqueId());
+            source.getSender().sendMessage(Component.text("Gave " + amount + " essence to " + target.getName() + " (now " + total + ").", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            if (!source.getSender().equals(target)) {
+                target.sendMessage(Component.text("+" + amount + " essence.", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
+            }
+        } else if (action.equals("set")) {
+            if (amount < 0) {
+                source.getSender().sendMessage(Component.text("Amount must be zero or positive."));
+                return;
+            }
+            svc.setEssence(target.getUniqueId(), amount);
+            int total = svc.getEssence(target.getUniqueId());
+            source.getSender().sendMessage(Component.text("Set " + target.getName() + "'s essence to " + total + ".", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            if (!source.getSender().equals(target)) {
+                target.sendMessage(Component.text("Your essence is now " + total + ".", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
+            }
+        } else {
+            if (amount <= 0) {
+                source.getSender().sendMessage(Component.text("Amount must be positive."));
+                return;
+            }
+            int total = svc.removeEssence(target.getUniqueId(), amount);
+            source.getSender().sendMessage(Component.text("Removed " + amount + " essence from " + target.getName() + " (now " + total + ").", net.kyori.adventure.text.format.NamedTextColor.GREEN));
+            if (!source.getSender().equals(target)) {
+                target.sendMessage(Component.text("-" + amount + " essence (now " + total + ").", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
+            }
+        }
+    }
+
     private void handleSoulTable(@NotNull CommandSourceStack source, @NotNull String[] args) {
         var sender = source.getSender();
         if (args.length < 3) {
@@ -943,8 +1009,9 @@ public class GlovedCommand implements BasicCommand {
         source.getSender().sendMessage(Component.text("/gloved soul inspect <id> | compare <idA> <idB> | lock <id> | favorite <id> | salvage <id>", net.kyori.adventure.text.format.NamedTextColor.GRAY));
         source.getSender().sendMessage(Component.text("/gloved soul give <player> <ENTITY_TYPE> [rarity] | simulate <ENTITY_TYPE> [rarity] [count]", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         source.getSender().sendMessage(Component.text("/gloved soul trap <tier> [amount] [player] - give a soul trap item", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+        source.getSender().sendMessage(Component.text("/gloved soul essence <give|set|remove> <player> <amount>", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         source.getSender().sendMessage(Component.text("/gloved soul table give [player] [amount] | list [page] | reload", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
-        source.getSender().sendMessage(Component.text("Soul Focus (hotbar slot 9): Right-click = Vault, Left-click = Cast selected soul", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
+        source.getSender().sendMessage(Component.text("Soul Focus (hotbar slot 9): Right-click = Vault, Left-click = Cast selected soul, Sneak + Left-click = Recall souls", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
         source.getSender().sendMessage(Component.text("Permission: gloved.soul, gloved.soul.table.give, gloved.soul.table.break", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
     }
 
@@ -953,7 +1020,7 @@ public class GlovedCommand implements BasicCommand {
         java.util.function.Predicate<String> match = s -> q.isEmpty() || s.toLowerCase(Locale.ROOT).startsWith(q);
         if (args.length == 2) {
             java.util.List<String> subs = new ArrayList<>();
-            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare", "trap", "table")) {
+            for (String s : List.of("list", "info", "codex", "help", "menu", "cast", "give", "simulate", "select", "equip", "unequip", "loadout", "favorite", "salvage", "inspect", "compare", "trap", "table", "essence")) {
                 if (match.test(s)) subs.add(s);
             }
             return subs;
@@ -974,6 +1041,13 @@ public class GlovedCommand implements BasicCommand {
             if (sub.equals("table")) {
                 List<String> out = new ArrayList<>();
                 for (String s : List.of("give", "list", "reload")) if (match.test(s)) out.add(s);
+                return out;
+            }
+            if (sub.equals("essence")) {
+                List<String> out = new ArrayList<>();
+                if (match.test("give")) out.add("give");
+                if (match.test("set")) out.add("set");
+                if (match.test("remove")) out.add("remove");
                 return out;
             }
             if (sub.equals("list")) {
@@ -1005,6 +1079,14 @@ public class GlovedCommand implements BasicCommand {
             return out;
         }
         if (args.length == 4) {
+            if (sub.equals("essence")) {
+                String action = args[2] == null ? "" : args[2].toLowerCase(Locale.ROOT);
+                if (action.equals("give") || action.equals("set") || action.equals("remove")) {
+                    List<String> out = new ArrayList<>();
+                    for (Player p : Bukkit.getOnlinePlayers()) if (match.test(p.getName())) out.add(p.getName());
+                    return out;
+                }
+            }
             if (sub.equals("table")) {
                 String action = args[2] == null ? "" : args[2].toLowerCase(Locale.ROOT);
                 List<String> out = new ArrayList<>();
@@ -1037,6 +1119,17 @@ public class GlovedCommand implements BasicCommand {
             }
         }
         if (args.length == 5) {
+            if (sub.equals("essence") && args[2] != null) {
+                String action = args[2].toLowerCase(Locale.ROOT);
+                if (action.equals("give") || action.equals("set") || action.equals("remove")) {
+                    List<String> out = new ArrayList<>();
+                    List<String> nums = action.equals("set")
+                            ? List.of("0", "1", "5", "10", "25", "50", "100", "500")
+                            : List.of("1", "5", "10", "25", "50", "100", "500");
+                    for (String n : nums) if (match.test(n)) out.add(n);
+                    return out;
+                }
+            }
             if (sub.equals("table") && args[2] != null && args[2].equalsIgnoreCase("give")) {
                 List<String> out = new ArrayList<>();
                 for (String n : List.of("1", "2", "4", "8", "16")) if (match.test(n)) out.add(n);

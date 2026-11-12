@@ -76,13 +76,10 @@ public final class SoulDropItem {
         String display = rarity.coloredNameLegacy() + sep + mobName + " Soul";
         meta.displayName(LegacyComponentSerializer.legacySection().deserialize(display).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
-        if (soul != null) {
-            lore.addAll(SoulLoreBuilder.traitsSection(soul));
-            lore.addAll(SoulLoreBuilder.statsSection(plugin, soul));
-        } else {
-            lore.add(SoulLoreBuilder.header("Stats"));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7- None").decoration(TextDecoration.ITALIC, false));
-            lore.add(SoulLoreBuilder.separator());
+        lore.addAll(SoulLoreBuilder.traitsSection(soul));
+        lore.addAll(SoulLoreBuilder.statsSection(plugin, soul));
+        if (soul == null) {
+            // statsSection already renders a safe empty stats block for null souls.
         }
         lore.add(Component.empty());
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§aRight-click§7: add to Soul Vault").decoration(TextDecoration.ITALIC, false));
@@ -199,6 +196,7 @@ public final class SoulDropItem {
         dto.favorite = soul.isFavorite();
         dto.maxHealth = soul.getMaxHealth();
         dto.enhanceLevel = soul.getEnhanceLevel();
+        dto.groupCapacity = soul.getGroupCapacity();
         dto.baseStats = soul.getBaseStats() != null ? soul.getBaseStats().toJson() : null;
         dto.affixes = new ArrayList<>();
         for (SoulAffixRoll r : soul.getAffixes()) {
@@ -234,9 +232,10 @@ public final class SoulDropItem {
                 try { affixes.add(new SoulAffixRoll(SoulAffixType.valueOf(a.type), a.value)); } catch (Exception ignored) {}
             }
         }
+        int groupCapacity = dto.groupCapacity > 0 ? dto.groupCapacity : 1;
         return new SoulInstance(soulId, ownerId, et, dto.familyKey, cat, rarity, dto.quality, affixes, traits,
                 dto.createdAt, dto.maxHealth, dto.favorite,
-                baseStatsOrFallback(dto.baseStats, et, dto.familyKey), dto.enhanceLevel);
+                baseStatsOrFallback(dto.baseStats, et, dto.familyKey), dto.enhanceLevel, groupCapacity);
     }
 
     private static SoulBaseStats baseStatsOrFallback(String json, EntityType type, String familyKey) {
@@ -252,6 +251,7 @@ public final class SoulDropItem {
         List<String> traits;
         double quality; long createdAt; double maxHealth; boolean favorite;
         int enhanceLevel;
+        int groupCapacity;
         List<AffixDto> affixes;
     }
     private static class AffixDto {

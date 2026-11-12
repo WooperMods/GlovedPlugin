@@ -28,14 +28,14 @@ public record SoulBaseStats(
         double attackSpeed
 ) {
     /** Neutral fallback used when a mob has no read-able attribute map. Attack speed is in APS. */
-    public static final SoulBaseStats NEUTRAL = new SoulBaseStats(20.0, 0.0, 0.1, 0.40);
+    public static final SoulBaseStats NEUTRAL = new SoulBaseStats(20.0, 0.0, 0.1, 0.80);
 
     private static final Gson GSON = new Gson();
 
     /** Attack speed is measured in attacks per second (APS). */
-    public static final double MIN_ATTACK_SPEED_APS = 0.10;
-    public static final double AVG_ATTACK_SPEED_APS = 0.40;
-    public static final double MAX_ATTACK_SPEED_APS = 1.20;
+    public static final double MIN_ATTACK_SPEED_APS = 0.20;
+    public static final double AVG_ATTACK_SPEED_APS = 0.80;
+    public static final double MAX_ATTACK_SPEED_APS = 2.40;
 
     /** Stat keys used by config variance/caps. */
     public static final String KEY_HEALTH = "health";
@@ -100,13 +100,14 @@ public record SoulBaseStats(
         }
     }
 
-    /** Converts stored/legacy/vanilla attack speed values to APS (0.10–1.20). */
+    /** Converts stored/legacy/vanilla attack speed values to APS. */
     public static double normalizeAttackSpeedAps(double value) {
         if (!Double.isFinite(value) || value <= 0.0) return MIN_ATTACK_SPEED_APS;
         double aps = value;
-        // Legacy/vanilla attribute scale (typically ~4.0, caps ~8.0) -> APS scale.
-        if (aps > 2.0) {
-            aps = aps / 10.0;
+        // Legacy/vanilla entity ATTACK_SPEED attribute scale (typically ~4.0, caps ~8.0) -> APS scale.
+        // New APS values can be > 2.0 (up to MAX_ATTACK_SPEED_APS), so only treat clearly vanilla-scale values as legacy.
+        if (aps > 3.0) {
+            aps = (aps / 10.0) * (AVG_ATTACK_SPEED_APS / 0.40); // preserve prior ~4.0 -> old avg mapping, scaled to new avg
         }
         return clamp(aps, MIN_ATTACK_SPEED_APS, MAX_ATTACK_SPEED_APS);
     }
@@ -114,100 +115,63 @@ public record SoulBaseStats(
     // ------------------------------------------------------------------ rolling
 
     /**
-     * Applies the rarity multiplier and a uniform per-stat variance roll.
-     * Caps are applied separately via {@link #capped(SoulStatConfig)}.
+     * Rolls base stats within the rarity's auto-partitioned absolute band (ignores mob base values).
+     * Endpoint exclusivity is enforced: only Common may roll the global floor and only Mythic the
+     * global max. {@link #capped(SoulStatConfig)} is a no-op safety clamp under the new model.
      */
-    public SoulBaseStats withVariance(Random random, SoulRarity rarity, SoulStatConfig cfg) {
-        return withVariance(random, rarity, cfg, true);
+    public static SoulBaseStats roll(SoulRarity rarity, SoulStatConfig cfg, Random random) {
+        Random rng = random != null ? random : new Random();
+        SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
+        if (cfg == null) cfg = new SoulStatConfig();
+        return new SoulBaseStats(
+                sample(cfg, KEY_HEALTH, r, rng),
+                sample(cfg, KEY_ATTACK_DAMAGE, r, rng),
+                sample(cfg, KEY_MOVEMENT_SPEED, r, rng),
+                sample(cfg, KEY_ATTACK_SPEED, r, rng)
+        ).normalized();
     }
 
     /**
-     * Applies the rarity multiplier and a uniform per-stat variance roll.
-     * Caps are applied separately via {@link #capped(SoulStatConfig)}.
-     *
-     * @param healthUsesRarityMultiplier false for legacy backfill of elite-captured health
-     *                                   (max_health already includes elite inflation)
+     * Legacy compatibility: old call sites (and legacy backfill) roll within the rarity band.
+     * The extra boolean is ignored; base values on this instance are not used.
      */
     public SoulBaseStats withVariance(Random random, SoulRarity rarity, SoulStatConfig cfg,
-                                      boolean healthUsesRarityMultiplier) {
-        Random rng = random != null ? random : new Random();
-        double mult = cfg != null ? cfg.rarityMultiplier(rarity) : 1.0;
-        double atkMult = mult * attackRarityBoost(rarity);
-        double moveMult = movementRarityMultiplier(rarity);
-        double atkSpdMult = attackSpeedRarityMultiplier(rarity);
-        double moveBase = 2.5 / 43.17; // normalized target average base (~2.5 bps)
-        double atkSpdBase = AVG_ATTACK_SPEED_APS; // normalized target average base (~0.40 APS)
+                                      boolean ignoredHealthUsesRarityMultiplier) {
+        return roll(rarity, cfg, random);
+    }
+
+    public SoulBaseStats withVariance(Random random, SoulRarity rarity, SoulStatConfig cfg) {
+        return roll(rarity, cfg, random);
+    }
+
+    private static double sample(SoulStatConfig cfg, String key, SoulRarity rarity, Random rng) {
+        SoulStatConfig.Band band = cfg.band(key, rarity);
+        double lo = band.min();
+        double hi = band.max();
+        if (hi <= lo) return band.clampRolled(lo);
+        double value = lo + rng.nextDouble() * (hi - lo);
+        return band.clampRolled(value);
+    }
+
+    /** Applies hard stat floors/APS normalization (safety). */
+    public SoulBaseStats normalized() {
         return new SoulBaseStats(
-                jitter(health, healthUsesRarityMultiplier ? mult : 1.0, cfg, KEY_HEALTH, rng),
-                Math.max(4.0, jitter(attackDamage, atkMult, cfg, KEY_ATTACK_DAMAGE, rng)),
-                jitter(moveBase, moveMult, cfg, KEY_MOVEMENT_SPEED, rng),
-                jitter(atkSpdBase, atkSpdMult, cfg, KEY_ATTACK_SPEED, rng)
+                Math.max(0.0, health),
+                Math.max(4.0, attackDamage),
+                Math.max(0.0, movementSpeed),
+                normalizeAttackSpeedAps(attackSpeed)
         );
     }
 
-    /**
-     * Extra rarity-based scaling for attack damage so higher-rarity souls hit significantly harder.
-     */
-    private static double attackRarityBoost(SoulRarity rarity) {
-        if (rarity == null) return 1.0;
-        return switch (rarity) {
-            case COMMON -> 1.0;
-            case UNCOMMON -> 1.25;
-            case RARE -> 1.6;
-            case EPIC -> 2.1;
-            case LEGENDARY -> 2.8;
-            case MYTHIC -> 3.8;
-        };
-    }
-
-    /**
-     * Rarity scaling for movement speed base rolls, tuned around a ~2.5 bps average base
-     * with headroom for SWIFT and diminishing returns up to the global cap.
-     */
-    private static double movementRarityMultiplier(SoulRarity rarity) {
-        if (rarity == null) return 1.0;
-        return switch (rarity) {
-            case COMMON -> 1.00;
-            case UNCOMMON -> 1.08;
-            case RARE -> 1.18;
-            case EPIC -> 1.30;
-            case LEGENDARY -> 1.45;
-            case MYTHIC -> 1.60;
-        };
-    }
-
-    /**
-     * Rarity scaling for attack speed base rolls (APS), tuned around ~0.40 average with
-     * headroom for bonuses up to the 1.20 APS cap.
-     */
-    private static double attackSpeedRarityMultiplier(SoulRarity rarity) {
-        if (rarity == null) return 1.0;
-        return switch (rarity) {
-            case COMMON -> 1.00;
-            case UNCOMMON -> 1.08;
-            case RARE -> 1.18;
-            case EPIC -> 1.30;
-            case LEGENDARY -> 1.45;
-            case MYTHIC -> 1.60;
-        };
-    }
-
-    private static double jitter(double source, double multiplier, SoulStatConfig cfg, String key, Random rng) {
-        double variance = cfg != null ? cfg.variance(key) : 0.0;
-        double factor = 1.0 + (rng.nextDouble() * 2.0 - 1.0) * Math.max(0.0, variance);
-        return Math.max(0.0, source * multiplier * factor);
-    }
-
-    /** Clamps every stat to its configured cap and applies minimum floors. */
+    /** Legacy safety clamp; bands already bound values, but keep hard floors/global caps respected. */
     public SoulBaseStats capped(SoulStatConfig cfg) {
-        if (cfg == null) {
-            return new SoulBaseStats(health, Math.max(4.0, attackDamage), movementSpeed, attackSpeed);
-        }
+        SoulBaseStats n = normalized();
+        if (cfg == null) return n;
         return new SoulBaseStats(
-                cap(health, cfg.cap(KEY_HEALTH)),
-                Math.max(4.0, cap(attackDamage, cfg.cap(KEY_ATTACK_DAMAGE))),
-                cap(movementSpeed, cfg.cap(KEY_MOVEMENT_SPEED)),
-                cap(attackSpeed, cfg.cap(KEY_ATTACK_SPEED))
+                clamp(n.health, cfg.globalMin(KEY_HEALTH), cfg.globalMax(KEY_HEALTH)),
+                Math.max(4.0, clamp(n.attackDamage, cfg.globalMin(KEY_ATTACK_DAMAGE), cfg.globalMax(KEY_ATTACK_DAMAGE))),
+                clamp(n.movementSpeed, cfg.globalMin(KEY_MOVEMENT_SPEED), cfg.globalMax(KEY_MOVEMENT_SPEED)),
+                clamp(n.attackSpeed, cfg.globalMin(KEY_ATTACK_SPEED), cfg.globalMax(KEY_ATTACK_SPEED))
         );
     }
 
@@ -224,33 +188,68 @@ public record SoulBaseStats(
         return value;
     }
 
-    /** Multiplies every stat by the Soul Table enhancement factor. */
+    /** Multiplies every stat by the Soul Table enhancement factor (no rarity ceiling). */
     public SoulBaseStats enhanced(int enhanceLevel, double perLevelBonus) {
+        return enhanced(enhanceLevel, perLevelBonus, null, null);
+    }
+
+    /**
+     * Applies enhancement and enforces rarity final-stat ceilings: non-Mythic cannot reach the
+     * global max, Mythic may reach it. Attack speed uses diminishing returns toward the rarity's
+     * ceiling (Mythic → global max).
+     */
+    public SoulBaseStats enhanced(int enhanceLevel, double perLevelBonus, SoulRarity rarity, SoulStatConfig cfg) {
         int level = Math.max(0, enhanceLevel);
         double bonus = Math.max(0.0, perLevelBonus);
-        if (level == 0 || bonus == 0.0) return this;
+        if (cfg == null) cfg = new SoulStatConfig();
+        SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
+        if (level == 0 || bonus == 0.0) {
+            return clampFinal(this, r, cfg);
+        }
         double factor = 1.0 + bonus * level;
-        return new SoulBaseStats(
+        double maxAtkSpd = cfg.band(KEY_ATTACK_SPEED, r).max();
+        SoulBaseStats boosted = new SoulBaseStats(
                 health * factor,
                 attackDamage * factor,
                 movementSpeed * factor,
-                enhancedAttackSpeed(attackSpeed, factor)
+                enhancedAttackSpeed(attackSpeed, factor, maxAtkSpd)
         );
+        return clampFinal(boosted, r, cfg);
+    }
+
+    /** Clamps final/effective stats to the rarity's ceiling (enforces endpoint exclusivity). */
+    public SoulBaseStats clampFinal(SoulRarity rarity, SoulStatConfig cfg) {
+        if (cfg == null) cfg = new SoulStatConfig();
+        return clampFinal(this, rarity != null ? rarity : SoulRarity.COMMON, cfg);
+    }
+
+    private static SoulBaseStats clampFinal(SoulBaseStats stats, SoulRarity rarity, SoulStatConfig cfg) {
+        return new SoulBaseStats(
+                cfg.band(KEY_HEALTH, rarity).clampFinal(stats.health),
+                cfg.band(KEY_ATTACK_DAMAGE, rarity).clampFinal(Math.max(4.0, stats.attackDamage)),
+                cfg.band(KEY_MOVEMENT_SPEED, rarity).clampFinal(stats.movementSpeed),
+                cfg.band(KEY_ATTACK_SPEED, rarity).clampFinal(normalizeAttackSpeedAps(stats.attackSpeed))
+        );
+    }
+
+    public static double enhancedAttackSpeed(double baseAps, double factor) {
+        return enhancedAttackSpeed(baseAps, factor, MAX_ATTACK_SPEED_APS);
     }
 
     /**
      * Applies enhancement as a bonus above base attack speed (APS) with diminishing returns
-     * toward the cap (higher APS => harder to increase).
+     * toward the provided ceiling (rarity ceiling; Mythic → global max).
      */
-    public static double enhancedAttackSpeed(double baseAps, double factor) {
+    public static double enhancedAttackSpeed(double baseAps, double factor, double ceilingAps) {
         double base = normalizeAttackSpeedAps(baseAps);
         double f = Double.isFinite(factor) ? factor : 1.0;
-        if (f <= 1.0) return base;
-        double max = MAX_ATTACK_SPEED_APS;
+        double max = clamp(ceilingAps, MIN_ATTACK_SPEED_APS, MAX_ATTACK_SPEED_APS);
+        if (max < base) max = base;
+        if (f <= 1.0) return clamp(base, MIN_ATTACK_SPEED_APS, max);
         double min = MIN_ATTACK_SPEED_APS;
         double bonus = f - 1.0;
-        // Gentler curve than movement speed: easier early gains, still diminished near cap.
-        double effectiveness = Math.pow(Math.max(0.0, (max - base) / (max - min)), 0.6);
+        double span = Math.max(0.0001, max - min);
+        double effectiveness = Math.pow(Math.max(0.0, (max - base) / span), 0.6);
         double applied = base + base * bonus * effectiveness;
         return clamp(applied, min, max);
     }

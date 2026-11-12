@@ -11,7 +11,8 @@ public enum SoulAffixType {
     TENACIOUS,   // +damage reduction / toughness %
     ENDURING,    // +duration/uptime %
     RESONANT,    // +ability potency %
-    COMMANDER;   // -mana/cooldown cost %
+    COMMANDER,   // -mana/cooldown cost %
+    CAPACITY;    // +group/summon capacity % (mild)
 
     public String friendlyName() {
         return switch (this) {
@@ -24,6 +25,7 @@ public enum SoulAffixType {
             case ENDURING -> "Duration";
             case RESONANT -> "Ability Power";
             case COMMANDER -> "Cost Reduction";
+            case CAPACITY -> "Summons";
         };
     }
 

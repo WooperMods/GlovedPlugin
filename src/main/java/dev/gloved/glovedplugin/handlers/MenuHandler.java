@@ -89,6 +89,11 @@ public class MenuHandler implements Listener {
             table.handleClick(player, event.getRawSlot(), event.getClick());
             return;
         }
+        if (event.getView().getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableGuideInv guide) {
+            event.setCancelled(true);
+            guide.handleClick(player, event.getRawSlot(), event.getClick());
+            return;
+        }
         MenuConfig config = plugin.getMenuConfig();
         if (config == null) return;
 
@@ -152,6 +157,12 @@ public class MenuHandler implements Listener {
                     for (int i = 0; i < presets.length; i++) if (java.util.Objects.equals(cur, presets[i]) || (cur != null && cur.equalsIgnoreCase(presets[i] == null ? "" : presets[i]))) { idx = i; break; }
                     String next = presets[(idx + 1) % presets.length];
                     new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), 0, next, vault.getFilterRarity(), vault.getSortMode()).open(player);
+                }
+                case "combat" -> {
+                    String next = svc.toggleSummonCombatMode(player.getUniqueId());
+                    String label = "DEFENSIVE".equalsIgnoreCase(next) ? "§eDefensive" : "§cAggressive";
+                    player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§d[Souls] §7Summon combat mode set to " + label + "§7."));
+                    new dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                 }
                 default -> {}
             }
@@ -576,7 +587,8 @@ public class MenuHandler implements Listener {
         int topSize = view.getTopInventory().getSize();
         if (view.getTopInventory().getHolder() instanceof MenuEditorInv
                 || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv
-                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv) {
+                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv
+                || view.getTopInventory().getHolder() instanceof dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableGuideInv) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {
                     event.setCancelled(true);

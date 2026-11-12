@@ -45,7 +45,7 @@ public final class SoulItem {
 
     private static java.util.List<Component> buildLore(Player player, GlovedPlugin plugin) {
         java.util.ArrayList<Component> lore = new java.util.ArrayList<>();
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aCast selected soul").decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aCast / Recall selected soul").decoration(TextDecoration.ITALIC, false));
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right-click: §bOpen Soul Vault").decoration(TextDecoration.ITALIC, false));
         lore.add(Component.empty());
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Selected: " + selectedSoulText(player, plugin)).decoration(TextDecoration.ITALIC, false));

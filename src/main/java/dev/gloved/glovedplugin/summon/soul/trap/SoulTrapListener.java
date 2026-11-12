@@ -7,6 +7,7 @@ import dev.gloved.glovedplugin.summon.soul.SoulConfig;
 import dev.gloved.glovedplugin.summon.soul.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.SoulService;
 import dev.gloved.glovedplugin.summon.soul.SoulGenerator;
+import dev.gloved.glovedplugin.summon.nms.SummonEntityInjector;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
@@ -56,6 +57,12 @@ public class SoulTrapListener implements Listener {
 
         if (target instanceof Player) {
             player.sendMessage(net.kyori.adventure.text.Component.text("§cYou cannot trap players."));
+            return;
+        }
+
+        SoulConfig cfg = soulService != null ? soulService.soulConfig() : (config != null ? config.getSoulConfig() : null);
+        if (cfg == null || !cfg.isAllowed(target.getType()) || !SummonEntityInjector.isSupported(target.getType())) {
+            player.sendMessage(net.kyori.adventure.text.Component.text("§cThis creature's soul cannot be captured."));
             return;
         }
 
@@ -111,6 +118,9 @@ public class SoulTrapListener implements Listener {
         SoulInstance soul = SoulGenerator.generate(ownerId, target.getType(), cfg, finalRarity, level, 0, 0);
 
         SoulService.CollectResult res = soulService.persistSoulToVaultPublic(player, soul, cfg, false, true);
+        if (res.stored() || res.convertedToEssence()) {
+            try { soulService.applyTrapCaptureSideEffects(player, target, soul); } catch (Throwable ignored) {}
+        }
         if (res.stored()) {
             player.sendMessage(net.kyori.adventure.text.Component.text(
                     "§aCaptured §f" + SoulService.describe(soul) + " §afrom " + target.getType().name() + "!"));

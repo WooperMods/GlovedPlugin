@@ -3,6 +3,7 @@ package dev.gloved.glovedplugin.summon.soul;
 import dev.gloved.glovedplugin.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulDatabase;
 import dev.gloved.glovedplugin.summon.soul.db.SoulRepository;
+import dev.gloved.glovedplugin.summon.nms.SummonEntityInjector;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.Location;
@@ -115,6 +116,44 @@ public class SoulService {
         }
     }
 
+    /** Adds essence to an owner (admin/command path). */
+    public void addEssence(UUID owner, int amount) {
+        if (owner == null || amount <= 0) return;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            repository.addEssence(owner, amount, cap);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to add essence for " + owner + ": " + e);
+        }
+    }
+
+    /** Sets an owner's essence to an absolute value (admin/command path). */
+    public void setEssence(UUID owner, int amount) {
+        if (owner == null) return;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            repository.setEssence(owner, Math.max(0, amount), cap);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to set essence for " + owner + ": " + e);
+        }
+    }
+
+    /** Removes essence from an owner, clamped at zero (admin/command path). Returns the resulting balance. */
+    public int removeEssence(UUID owner, int amount) {
+        if (owner == null) return 0;
+        if (amount <= 0) return getEssence(owner);
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            return repository.removeEssence(owner, amount, cap);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to remove essence for " + owner + ": " + e);
+            return getEssence(owner);
+        }
+    }
+
     /** Public cache invalidation used by Soul Table operations that mutate rows directly. */
     public void invalidateSoul(UUID soulId, UUID ownerId) {
         invalidateSoulCache(soulId);
@@ -152,7 +191,94 @@ public class SoulService {
         if (soul == null) return SoulBaseStats.NEUTRAL;
         var cfg = tableConfig();
         double perLevel = cfg != null ? cfg.getEnhancePerLevelBonus() : 0.025;
-        return baseStatsOf(soul).enhanced(soul.getEnhanceLevel(), perLevel);
+        var statCfg = cfg != null ? cfg.getStatConfig() : new dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig.SoulStatConfig();
+        return baseStatsOf(soul).enhanced(soul.getEnhanceLevel(), perLevel, soul.getRarity(), statCfg);
+    }
+
+    /** Base group capacity rolled/generated on the soul (before affix/enhancement modifiers). */
+    public int baseGroupCapacity(SoulInstance soul) {
+        if (soul == null) return 1;
+        return Math.max(1, soul.getGroupCapacity());
+    }
+
+    /**
+     * Effective/authoritative group capacity for a soul: base + enhancement milestones + capacity affix %,
+     * clamped by hard per-type overrides and absolute ceilings. Mob types with hard overrides can still
+     * roll the capacity affix on the soul; the override remains a final ceiling.
+     */
+    public int effectiveGroupCapacity(SoulInstance soul) {
+        if (soul == null) return 1;
+        int base = Math.max(1, soul.getGroupCapacity());
+
+        // Enhancement path: milestone increases (balanced, integer), capped later.
+        int enhanceBonus = 0;
+        int lvl = Math.max(0, soul.getEnhanceLevel());
+        if (lvl >= 5) enhanceBonus += 1;
+        if (lvl >= 10) enhanceBonus += 1;
+
+        // Reforge/enhancement can increase capacity via base rerolls and these milestones.
+        int baseWithEnhance = Math.max(1, base + enhanceBonus);
+
+        double pct = 0.0;
+        try { pct = Math.max(0.0, Math.min(1.0, getSnapshot(soul).capacityBonus())); } catch (Throwable ignored) {}
+        int computed = (int) Math.floor(baseWithEnhance * (1.0 + pct) + 1e-9);
+        if (pct > 0.0 && computed == baseWithEnhance) {
+            // Ensure a meaningful mild % affix can contribute at low capacities.
+            computed = baseWithEnhance + 1;
+        }
+        if (computed < 1) computed = 1;
+
+        // Absolute safety ceiling for generated/modified soul capacity.
+        int ceiling = 10;
+
+        // Category/type guidance ceiling (keeps rarity scaling from becoming extreme for some archetypes).
+        try {
+            SoulConfig cfg = soulConfig();
+            if (cfg != null) {
+                var cat = soul.getCategory();
+                if (cat == null) cat = EntityCategory.of(soul.getEntityType());
+                var cd = cfg.getCategoryDefaults(cat);
+                if (cd != null) {
+                    ceiling = Math.min(ceiling, Math.max(1, cd.maxActivePerType() + 2));
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Hard per-type override is an absolute ceiling (final authority cap).
+        try {
+            SoulConfig cfg = soulConfig();
+            if (cfg != null) {
+                String family = soul.getFamilyKey();
+                if (family == null || family.isBlank()) {
+                    family = soul.getEntityType() != null ? soul.getEntityType().name() : null;
+                }
+                Integer hard = cfg.getTypeMaxActiveOverride(family);
+                if (hard == null && soul.getEntityType() != null) {
+                    hard = cfg.getTypeMaxActiveOverride(soul.getEntityType().name());
+                }
+                if (hard != null) ceiling = Math.min(ceiling, Math.max(1, hard));
+            }
+        } catch (Throwable ignored) {}
+
+        return Math.max(1, Math.min(computed, ceiling));
+    }
+
+    /** Breakdown for UI: [base, enhanceBonus, affixBonusCount, effectiveFinal]. */
+    public int[] computeGroupCapacityBreakdown(SoulInstance soul) {
+        if (soul == null) return new int[]{1, 0, 0, 1};
+        int base = Math.max(1, soul.getGroupCapacity());
+        int lvl = Math.max(0, soul.getEnhanceLevel());
+        int enhanceBonus = (lvl >= 5 ? 1 : 0) + (lvl >= 10 ? 1 : 0);
+        int beforeAffix = Math.max(1, base + enhanceBonus);
+        double pct = 0.0;
+        try { pct = Math.max(0.0, Math.min(1.0, getSnapshot(soul).capacityBonus())); } catch (Throwable ignored) {}
+        int computed = (int) Math.floor(beforeAffix * (1.0 + pct) + 1e-9);
+        if (pct > 0.0 && computed == beforeAffix) computed = beforeAffix + 1;
+        int effective = effectiveGroupCapacity(soul);
+        int affixBonus = Math.max(0, effective - Math.min(effective, beforeAffix));
+        // if capped down by ceilings, affixBonus shown as 0 or reduced; keep simple
+        if (computed > effective) affixBonus = Math.max(0, effective - beforeAffix);
+        return new int[]{base, enhanceBonus, affixBonus, effective};
     }
 
     public int getSummoningLevel(UUID owner) {
@@ -184,6 +310,11 @@ public class SoulService {
 
         EntityType type = victim.getType();
         if (!cfg.isAllowed(type)) return new CaptureResult(false, null, "not-allowed", false);
+        // Only allow souls for mob types with registered custom summon/NMS AI support.
+        if (!SummonEntityInjector.isSupported(type)) {
+            debug("Capture blocked for " + killer.getName() + " type=" + type + ": no summon AI/NMS support");
+            return new CaptureResult(false, null, "no-summon-ai", false);
+        }
 
         int level = getSummoningLevel(killer.getUniqueId());
         double chance = Math.max(0.0, Math.min(1.0, cfg.getCaptureBaseChance()
@@ -306,7 +437,7 @@ public class SoulService {
             int count = repository.countSouls(player.getUniqueId());
             boolean toEssence = count >= Math.max(1, state.vaultCapacity());
             if (toEssence) {
-                int essence = essenceValue(soul.getRarity());
+                int essence = overflowEssenceValue(soul.getRarity());
                 repository.addEssence(player.getUniqueId(), essence, scaledCap);
                 if (updateCodex) repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
                 return CollectResult.okEssence(essence);
@@ -344,7 +475,8 @@ public class SoulService {
                     soul.getMaxHealth(),
                     false,
                     soul.getBaseStats(),
-                    soul.getEnhanceLevel()
+                    soul.getEnhanceLevel(),
+                    soul.getGroupCapacity()
             );
         }
         SoulConfig cfg = soulConfig();
@@ -388,16 +520,46 @@ public class SoulService {
         lastCaptureAt.computeIfAbsent(owner, k -> new ConcurrentHashMap<>()).put(familyKey, System.currentTimeMillis());
     }
 
+    /** Capture side effects for non-kill captures (e.g. soul traps): codex, DR, pity, and progression capture XP. */
+    public void applyTrapCaptureSideEffects(Player player, LivingEntity victim, SoulInstance soul) {
+        if (player == null || soul == null) return;
+        SoulConfig cfg = soulConfig();
+        try {
+            if (cfg != null && cfg.isPityEnabled()) updatePityOnResult(player.getUniqueId(), cfg, soul.getRarity(), true);
+        } catch (Throwable ignored) {}
+        try { repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity()); } catch (SQLException ignored) {}
+        try { markCaptureDr(player.getUniqueId(), soul.getFamilyKey()); } catch (Throwable ignored) {}
+        try {
+            var prog = plugin.getSummonProgression();
+            if (prog != null) prog.onSoulCaptured(player, victim, soul.getFamilyKey(), soul.getRarity());
+        } catch (Throwable ignored) {}
+    }
+
+    /** Essence value using new defaults (config-less fallback). Prefer {@link #essenceValueOf(SoulRarity)}. */
     public static int essenceValue(SoulRarity rarity) {
         if (rarity == null) return 1;
         return switch (rarity) {
             case COMMON -> 1;
-            case UNCOMMON -> 2;
-            case RARE -> 5;
-            case EPIC -> 12;
-            case LEGENDARY -> 30;
-            case MYTHIC -> 80;
+            case UNCOMMON -> 3;
+            case RARE -> 8;
+            case EPIC -> 18;
+            case LEGENDARY -> 42;
+            case MYTHIC -> 95;
         };
+    }
+
+    /** Config-driven essence value for salvage/capture conversion. */
+    public int essenceValueOf(SoulRarity rarity) {
+        SoulConfig cfg = soulConfig();
+        return cfg != null ? cfg.getEssenceValue(rarity) : essenceValue(rarity);
+    }
+
+    /** Config-driven essence value for vault overflow conversion (applies overflow multiplier). */
+    public int overflowEssenceValue(SoulRarity rarity) {
+        int base = essenceValueOf(rarity);
+        SoulConfig cfg = soulConfig();
+        double mult = cfg != null ? Math.max(0.0, cfg.getEssenceOverflowMultiplier()) : 1.0;
+        return Math.max(0, (int) Math.round(base * mult));
     }
 
     private void playCaptureFeedback(Player player, SoulInstance soul, boolean essence, int essenceAmt) {
@@ -494,6 +656,62 @@ public class SoulService {
             return st;
         }
         catch (SQLException e) { return null; }
+    }
+
+    public String getSummonCombatMode(UUID owner) {
+        SoulRepository.PlayerSoulState st = getState(owner);
+        if (st == null || st.combatMode() == null) return "AGGRESSIVE";
+        return normalizeCombatMode(st.combatMode());
+    }
+
+    public String setSummonCombatMode(UUID owner, String mode) {
+        if (owner == null) return "AGGRESSIVE";
+        String normalized = normalizeCombatMode(mode);
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            repository.setCombatMode(owner, normalized, cap);
+        } catch (SQLException e) {
+            plugin.getLogger().warning("[Souls] Failed to set combat mode for " + owner + ": " + e);
+        }
+        return normalized;
+    }
+
+    public String toggleSummonCombatMode(UUID owner) {
+        String current = getSummonCombatMode(owner);
+        String next = "AGGRESSIVE".equalsIgnoreCase(current) ? "DEFENSIVE" : "AGGRESSIVE";
+        return setSummonCombatMode(owner, next);
+    }
+
+    public String getSoulTableTab(UUID owner) {
+        if (owner == null) return "COMBINE";
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            String tab = repository.getSoulTableTab(owner, cap);
+            return tab == null || tab.isBlank() ? "COMBINE" : tab;
+        } catch (SQLException e) {
+            return "COMBINE";
+        }
+    }
+
+    public void setSoulTableTab(UUID owner, String tab) {
+        if (owner == null) return;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            repository.setSoulTableTab(owner, tab, cap);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to set soul table tab for " + owner + ": " + e);
+        }
+    }
+
+    public static String normalizeCombatMode(String mode) {
+        if (mode == null) return "AGGRESSIVE";
+        return switch (mode.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "DEFENSIVE", "DEFENSE", "DEFEND" -> "DEFENSIVE";
+            default -> "AGGRESSIVE";
+        };
     }
 
     public SoulInstance getSoul(UUID soulId) {
@@ -613,7 +831,7 @@ public class SoulService {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
             if (loadout.containsValue(soul.getSoulId())) return new SalvageResult(false, 0, "equipped");
         } catch (SQLException ignored) {}
-        int essence = essenceValue(soul.getRarity());
+        int essence = essenceValueOf(soul.getRarity());
         try {
             SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
@@ -678,6 +896,7 @@ public class SoulService {
         sb.append("§dSoul ").append(shortId(s)).append(" §7(").append(s.getSoulId()).append(")\n");
         sb.append("§7Family: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
         sb.append("§7Rarity: §f").append(s.getRarity()).append("\n");
+        sb.append("§7Summons: §f").append(effectiveGroupCapacity(s)).append(" §7(base ").append(Math.max(1, s.getGroupCapacity())).append(")\n");
         sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-").append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
         if (s.getAffixes().isEmpty()) {
             sb.append("§7Affixes: §f-");
@@ -713,7 +932,7 @@ public class SoulService {
         if (owner != null) lastCaptureAt.remove(owner);
     }
 
-    public enum CastResult { OK, NO_SYSTEM, DISABLED, NO_PLAYER, NO_SELECTED_SOUL, NOT_ALLOWED, ON_COOLDOWN, NO_MANA, CAPPED, FAILED }
+    public enum CastResult { OK, RECALLED, NO_SYSTEM, DISABLED, NO_PLAYER, NO_SELECTED_SOUL, NOT_ALLOWED, ON_COOLDOWN, NO_MANA, CAPPED, FAILED }
 
     public record CastAttempt(CastResult result, int spawned, String detail) {
         public static CastAttempt of(CastResult r) { return new CastAttempt(r, 0, null); }
@@ -721,10 +940,13 @@ public class SoulService {
         public static CastAttempt ok(int spawned) { return new CastAttempt(CastResult.OK, spawned, null); }
     }
 
-    /** Compute effective cast cooldown ticks for a soul (category/rarity/cost-efficiency aware). */
+    /** Compute effective cast cooldown ticks for a soul (category/rarity/cost-efficiency aware). Returns 0 when disabled. */
     public int computeCastCooldownTicks(SoulInstance soul, SoulConfig cfg) {
-        if (cfg == null) return 240;
-        double base = Math.max(20, cfg.getCastBaseCooldownTicks());
+        if (cfg == null) return 0;
+        double rawBase = cfg.getCastBaseCooldownTicks();
+        int rawGcd = Math.max(0, cfg.getCastSharedGcdTicks());
+        if (rawBase <= 0.0 && rawGcd <= 0) return 0;
+        double base = Math.max(20, rawBase);
         double mult = 1.0;
         if (soul != null) {
             SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
@@ -736,15 +958,17 @@ public class SoulService {
             mult *= 1.0 + (eff - 1.0) * 0.5;
         }
         int computed = (int) Math.max(20, Math.round(base * mult));
-        // Enforce shared GCD floor
-        computed = Math.max(computed, Math.max(0, cfg.getCastSharedGcdTicks()));
+        // Enforce shared GCD floor when configured
+        if (rawGcd > 0) computed = Math.max(computed, rawGcd);
         return computed;
     }
 
-    /** Compute effective cast mana cost for a soul. */
+    /** Compute effective cast mana cost for a soul. Returns 0 when soul cast mana is disabled. */
     public double computeCastManaCost(SoulInstance soul, SoulConfig cfg) {
-        if (cfg == null) return 12.0;
+        if (cfg == null) return 0.0;
+        if (!cfg.isCastManaEnabled()) return 0.0;
         double base = Math.max(0.0, cfg.getCastBaseManaCost());
+        if (base <= 0.0) return 0.0;
         if (soul == null) return base;
         double mult = 1.0;
         SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
@@ -776,6 +1000,19 @@ public class SoulService {
         double moveFloor = 1.0 / 43.17; // ~1 bps floor
         double baseMove = base.movementSpeed();
         if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
+        // Compatibility/parity: older souls may have normalized-low movement bases (~2.5 bps).
+        // Never estimate/apply below ~90% of the mob type's vanilla/default movement speed.
+        try {
+            org.bukkit.entity.EntityType type = null;
+            try { type = org.bukkit.entity.EntityType.valueOf(String.valueOf(soul.getEntityType())); } catch (Throwable ignored) {}
+            if (type == null) {
+                try { type = org.bukkit.entity.EntityType.valueOf(String.valueOf(soul.getFamilyKey())); } catch (Throwable ignored) {}
+            }
+            double defMove = type != null ? SoulBaseStats.defaults(type).movementSpeed() : 0.0;
+            if (Double.isFinite(defMove) && defMove > 0.0) {
+                baseMove = Math.max(baseMove, defMove * 0.90);
+            }
+        } catch (Throwable ignored) {}
         if (baseMove < moveFloor) baseMove = moveFloor;
         if (baseMove > maxMove) baseMove = maxMove;
         // Diminishing returns: higher base speed => affixes affect it less.
@@ -804,7 +1041,7 @@ public class SoulService {
 
     /**
      * Estimate the average melee hit damage this soul's minion would deal (non-elite baseline),
-     * mirroring MinionAI.applyMinionHit/SummonAbilityService crit resolution as closely as
+     * mirroring SummonAI.applyMinionHit/SummonAbilityService crit resolution as closely as
      * possible without target-specific context. Packbound is omitted (ally-dependent).
      */
     public double estimateAverageHitDamage(UUID ownerId, SoulInstance soul) {
@@ -830,7 +1067,6 @@ public class SoulService {
         SoulStatSnapshot snap = getSnapshot(soul);
         double soulDamageMult = Math.max(0.25, Math.min(4.0, snap.damageMultiplier()));
         if (soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.FRENZIED)) soulDamageMult *= 1.08;
-        if (soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.BULWARK)) soulDamageMult *= 0.97;
         baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
 
         // Expected crit multiplier (average per hit)
@@ -916,46 +1152,75 @@ public class SoulService {
         var summonCfg = plugin.getSummonConfig();
         var summonMgr = plugin.getSummonManager();
         if (summonCfg == null || summonMgr == null || !summonCfg.isEnabled()) return CastAttempt.of(CastResult.NO_SYSTEM);
+
         SoulInstance soul = getSelectedSoul(player.getUniqueId());
         if (soul == null) {
             player.sendMessage("§cNo soul selected. Use /gloved soul menu or /gloved soul select/equip.");
             return CastAttempt.of(CastResult.NO_SELECTED_SOUL);
         }
+
+        // SoulId-exclusive toggle/hotswap: one active soul instance group per owner.
+        var tracker = plugin.getSummonTracker();
+        java.util.UUID selectedId = soul.getSoulId();
+        java.util.UUID activeSoulId = summonMgr.getActiveSoulId(player.getUniqueId());
+        boolean hasActive = false;
+        try { hasActive = tracker != null && !tracker.getActiveMinions(player.getUniqueId()).isEmpty(); } catch (Throwable ignored) {}
+
+        if (selectedId != null && selectedId.equals(activeSoulId)) {
+            // Same selected soul active -> recall/toggle off (no mana, no cooldown)
+            int recalled = summonMgr.recallAll(player);
+            debug("Recalled soul " + shortId(soul) + " by " + player.getName() + " recalled=" + recalled);
+            return new CastAttempt(CastResult.RECALLED, 0, selectedId.toString());
+        }
+
+        // Validate selected soul before hotswap recall so we don't recall if cast cannot proceed.
         if (!cfg.isAllowed(soul.getEntityType())) {
             player.sendMessage("§cThat soul type is not currently allowed.");
             return CastAttempt.of(CastResult.NOT_ALLOWED);
         }
-        // cooldown
-        long rem = summonMgr.getSoulCastCooldownRemainingMs(player.getUniqueId());
-        if (rem > 0) {
-            player.sendMessage("§cSoul cast on cooldown: §f" + String.format(java.util.Locale.ROOT, "%.1fs", rem / 1000.0));
-            return CastAttempt.of(CastResult.ON_COOLDOWN, String.valueOf(rem));
-        }
-        // mana
-        double manaCost = computeCastManaCost(soul, cfg);
-        if (!summonMgr.tryConsumeSoulCastMana(player, manaCost)) {
-            player.sendMessage("§cNot enough mana to cast this soul. §7(" + String.format(java.util.Locale.ROOT, "%.1f", manaCost) + ")");
-            return CastAttempt.of(CastResult.NO_MANA);
-        }
-        // resolve template and spawn
         dev.gloved.glovedplugin.summon.SummonProfile profile = summonCfg.getProfile(soul.getEntityType());
         if (profile == null) {
             player.sendMessage("§cCould not resolve summon template for " + soul.getFamilyKey() + ".");
             return CastAttempt.of(CastResult.NOT_ALLOWED);
         }
-        int spawned = summonMgr.spawnFromSoul(player, profile, soul, null, cfg.isReplaceIfCapped());
+
+        long rem = summonMgr.getSoulCastCooldownRemainingMs(player.getUniqueId());
+        int cdTicks = computeCastCooldownTicks(soul, cfg);
+        if (cdTicks > 0 && rem > 0) {
+            player.sendMessage("§cSoul cast on cooldown: §f" + String.format(java.util.Locale.ROOT, "%.1fs", rem / 1000.0));
+            return CastAttempt.of(CastResult.ON_COOLDOWN, String.valueOf(rem));
+        }
+
+        double manaCost = computeCastManaCost(soul, cfg);
+        boolean manaActive = cfg.isCastManaEnabled() && manaCost > 0.0
+                && summonCfg != null && summonCfg.isManaEnabled();
+        if (manaActive && !summonMgr.tryConsumeSoulCastMana(player, manaCost)) {
+            player.sendMessage("§cNot enough mana to cast this soul. §7(" + String.format(java.util.Locale.ROOT, "%.1f", manaCost) + ")");
+            return CastAttempt.of(CastResult.NO_MANA);
+        }
+
+        // Different active soul (or mixed/legacy active state) -> hotswap recall, then cast selected soul.
+        if (hasActive) {
+            int recalled = summonMgr.recallAll(player);
+            debug("Hotswap recall for " + player.getName() + " recalled=" + recalled + " before casting " + shortId(soul));
+        }
+
+        int spawned = summonMgr.spawnSoulGroupToCap(player, profile, soul, null);
         if (spawned <= 0) {
-            player.sendMessage("§eCannot summon now (active cap reached or spawn blocked).");
+            player.sendMessage("§eCannot summon now (spawn blocked).");
             return CastAttempt.of(CastResult.CAPPED);
         }
-        int cdTicks = computeCastCooldownTicks(soul, cfg);
-        summonMgr.setSoulCastCooldown(player.getUniqueId(), cdTicks * 50L);
+
+        if (cdTicks > 0) {
+            summonMgr.setSoulCastCooldown(player.getUniqueId(), cdTicks * 50L);
+        }
         try {
             var prog = plugin.getSummonProgression();
             if (prog != null) prog.onSoulCast(player, soul.getFamilyKey());
         } catch (Throwable ignored) {}
-        player.sendMessage("§dCast §f" + describe(soul) + " §7(+" + spawned + " summoned, -" + String.format(java.util.Locale.ROOT, "%.1f", manaCost) + " mana, " + String.format(java.util.Locale.ROOT, "%.1fs", cdTicks / 20.0) + " cd)");
-        debug("Cast soul " + shortId(soul) + " by " + player.getName() + " family=" + soul.getFamilyKey() + " rarity=" + soul.getRarity() + " mana=" + manaCost + " cdTicks=" + cdTicks + " spawned=" + spawned);
+
+        debug("Cast soul " + shortId(soul) + " by " + player.getName() + " family=" + soul.getFamilyKey() + " rarity=" + soul.getRarity()
+                + " mana=" + manaCost + " manaActive=" + manaActive + " cdTicks=" + cdTicks + " spawned=" + spawned);
         return CastAttempt.ok(spawned);
     }
 

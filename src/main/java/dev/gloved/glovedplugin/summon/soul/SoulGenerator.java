@@ -45,30 +45,136 @@ public final class SoulGenerator {
         SoulRarity rarity = forcedRarity != null ? forcedRarity : rollRarity(cfg, summoningLevel, pityRare, pityEpic);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
-        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng);
+        boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
+        boolean allowCount = !hasHardCountCap(cfg, type);
+        boolean allowCommander = isCostReductionRelevant(cfg);
+        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
         List<SoulTrait> traits = rollTraits(rarity, rng);
         double quality = SoulQuality.percent(rarity, affixes);
         SoulBaseStats baseStats = rollBaseStats(type, rarity, source, tableCfg);
+        int groupCapacity = rollBaseGroupCapacity(rarity, cat, type != null ? type.name() : null, cfg);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
-                System.currentTimeMillis(), maxHealth, false, baseStats, 0);
+                System.currentTimeMillis(), maxHealth, false, baseStats, 0, groupCapacity);
     }
 
-    /** Rolls the captured base-stat block (rarity multiplier + variance + caps). */
+    /** Rolls base group capacity (rarity-scaled, type/category-aware, capped). Hard per-type overrides are absolute ceilings. */
+    public static int rollBaseGroupCapacity(SoulRarity rarity, EntityCategory category, String typeKey, SoulConfig cfg) {
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
+        EntityCategory cat = category != null ? category : EntityCategory.SPECIAL;
+
+        Integer hardOverride = null;
+        try {
+            if (cfg != null && typeKey != null && !typeKey.isBlank()) {
+                hardOverride = cfg.getTypeMaxActiveOverride(typeKey);
+            }
+        } catch (Throwable ignored) {}
+        if (hardOverride != null) {
+            return Math.max(1, hardOverride);
+        }
+
+        // Rarity-scaled bands (modest) to avoid "huge army of top-stat mythics"
+        int min;
+        int max;
+        switch (r) {
+            case COMMON -> { min = 1; max = 1; }
+            case UNCOMMON -> { min = 1; max = 2; }
+            case RARE -> { min = 1; max = 2; }
+            case EPIC -> { min = 2; max = 3; }
+            case LEGENDARY -> { min = 2; max = 3; }
+            case MYTHIC -> { min = 2; max = 4; }
+            default -> { min = 1; max = 1; }
+        }
+
+        // Category archetype bias (subtle; final hard overrides/caps enforced elsewhere)
+        int catAdj = switch (cat) {
+            case PASSIVE, AMBIENT -> 1;
+            case HOSTILE, FLYING, AQUATIC, NEUTRAL -> 0;
+            case BOSS, SPECIAL -> -1;
+        };
+        // Apply bias mostly to upper bound for variety, keep floors sane
+        max = Math.max(min, max + (catAdj > 0 ? 1 : 0));
+        min = Math.max(1, min + (catAdj < 0 && min > 1 ? -1 : 0));
+
+        int rolled = (min >= max) ? min : rng.nextInt(min, max + 1);
+
+        // Soft ceiling guidance from current per-type/category cap hints when available (not hard override)
+        try {
+            if (cfg != null) {
+                var cd = cfg.getCategoryDefaults(cat);
+                if (cd != null) {
+                    int catCap = Math.max(1, cd.maxActivePerType());
+                    rolled = Math.min(rolled, Math.max(1, catCap + 1)); // allow slight variance above category default but bounded
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Absolute safety bounds
+        if (rolled < 1) rolled = 1;
+        if (rolled > 8) rolled = 8;
+        return rolled;
+    }
+
+    /** Rolls the captured base-stat block within the rarity's auto-partitioned absolute band. */
     public static SoulBaseStats rollBaseStats(EntityType type, SoulRarity rarity, SoulBaseStats source,
                                               SoulTableConfig tableCfg) {
         SoulBaseStats statSource = source != null ? source : SoulBaseStats.defaults(type);
-        if (tableCfg != null && !tableCfg.isStatsEnabled()) return statSource;
         SoulTableConfig.SoulStatConfig statCfg =
                 tableCfg != null ? tableCfg.getStatConfig() : DEFAULT_STAT_CONFIG;
-        return statSource.withVariance(ThreadLocalRandom.current(), rarity, statCfg).capped(statCfg);
+        if (tableCfg != null && !tableCfg.isStatsEnabled()) {
+            return statSource.normalized().capped(statCfg);
+        }
+        return SoulBaseStats.roll(rarity, statCfg, ThreadLocalRandom.current());
     }
 
     /** Rerolls the affix list for a rarity (used by the Soul Table reforge). */
     public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity) {
+        return rollAffixesForRarity(rarity, (SoulConfig) null, (EntityType) null);
+    }
+
+    /** Rerolls the affix list for a rarity, optionally excluding Duration/Count based on config and soul type. */
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg) {
+        return rollAffixesForRarity(rarity, cfg, (EntityType) null);
+    }
+
+    /** Rerolls the affix list for a rarity, optionally excluding Duration/Count/Commander based on config and soul type. */
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg, EntityType type) {
+        if (rarity == null) return List.of();
+        boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
+        boolean allowCount = !hasHardCountCap(cfg, type);
+        boolean allowCommander = isCostReductionRelevant(cfg);
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
+        return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
+    }
+
+    /** Rerolls the affix list for a rarity, optionally excluding the Duration (ENDURING) affix. */
+    @Deprecated(forRemoval = false)
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, boolean allowDuration) {
         if (rarity == null) return List.of();
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
-        return rollAffixes(rarity, affixCount, rng);
+        return rollAffixes(rarity, affixCount, rng, allowDuration, true, true);
+    }
+
+    public static boolean hasHardCountCap(SoulConfig cfg, EntityType type) {
+        if (cfg == null || type == null) return false;
+        try {
+            Integer hard = cfg.getTypeMaxActiveOverride(type.name());
+            return hard != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** Cost reduction (Commander) is irrelevant when soul-cast mana and cast cooldowns are disabled. */
+    public static boolean isCostReductionRelevant(SoulConfig cfg) {
+        if (cfg == null) return false;
+        boolean manaRelevant = false;
+        try { manaRelevant = cfg.isCastManaEnabled() && cfg.getCastBaseManaCost() > 0.0; } catch (Throwable ignored) {}
+        boolean cooldownRelevant = false;
+        try { cooldownRelevant = cfg.getCastBaseCooldownTicks() > 0 || cfg.getCastSharedGcdTicks() > 0; } catch (Throwable ignored) {}
+        return manaRelevant || cooldownRelevant;
     }
 
     public static SoulRarity rollRarity(SoulConfig cfg) {
@@ -112,7 +218,22 @@ public final class SoulGenerator {
     }
 
     private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng) {
+        return rollAffixes(rarity, count, rng, true, true, true);
+    }
+
+    private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng, boolean allowDuration) {
+        return rollAffixes(rarity, count, rng, allowDuration, true, true);
+    }
+
+    private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng, boolean allowDuration, boolean allowCount) {
+        return rollAffixes(rarity, count, rng, allowDuration, allowCount, true);
+    }
+
+    private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng, boolean allowDuration, boolean allowCount, boolean allowCommander) {
         List<SoulAffixType> pool = new ArrayList<>(Arrays.asList(SoulAffixType.values()));
+        if (!allowDuration) pool.remove(SoulAffixType.ENDURING);
+        if (!allowCount) pool.remove(SoulAffixType.CAPACITY);
+        if (!allowCommander) pool.remove(SoulAffixType.COMMANDER);
         Collections.shuffle(pool, new Random(rng.nextLong()));
         int n = Math.min(count, pool.size());
         List<SoulAffixRoll> out = new ArrayList<>(n);
@@ -142,6 +263,15 @@ public final class SoulGenerator {
             case LEGENDARY -> 0.38;
             case MYTHIC -> 0.45;
         };
+        // Group capacity affix: mild % bonus (rarity-bounded). Can roll on all souls, including types with hard cap overrides.
+        double capacityCap = switch (rarity) {
+            case COMMON -> 0.08;
+            case UNCOMMON -> 0.10;
+            case RARE -> 0.12;
+            case EPIC -> 0.15;
+            case LEGENDARY -> 0.18;
+            case MYTHIC -> 0.20;
+        };
         for (int i = 0; i < n; i++) {
             SoulAffixType t = pool.get(i);
             double val = baseMin + rng.nextDouble() * (baseMax - baseMin);
@@ -151,6 +281,7 @@ public final class SoulGenerator {
                 case DEADLY, RESONANT -> val * 0.8;
                 case SWIFT -> Math.min(val, swiftCap); // speed safety
                 case COMMANDER -> Math.min(val, commanderCap); // cost/cd efficiency
+                case CAPACITY -> Math.min(val * 0.5, capacityCap); // mild % group capacity bonus
                 default -> val;
             };
             out.add(new SoulAffixRoll(t, Math.round(val * 10000.0) / 10000.0));

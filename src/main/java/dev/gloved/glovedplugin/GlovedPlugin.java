@@ -44,7 +44,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.SummonConfig summonConfig;
     private dev.gloved.glovedplugin.summon.SummonManager summonManager;
     private dev.gloved.glovedplugin.summon.SummonInstanceTracker summonTracker;
-    private dev.gloved.glovedplugin.summon.MinionAI minionAI;
+    private dev.gloved.glovedplugin.summon.SummonAI summonAI;
     private dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge summonProgression;
     private dev.gloved.glovedplugin.summon.progression.SummonAbilityService summonAbilityService;
     private dev.gloved.glovedplugin.summon.soul.db.SoulDatabase soulDatabase;
@@ -57,6 +57,7 @@ public final class GlovedPlugin extends JavaPlugin {
     private dev.gloved.glovedplugin.summon.soul.table.SoulTableService soulTableService;
     private dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService soulTablePackService;
     private dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager soulTableRecipeManager;
+    private dev.gloved.glovedplugin.summon.nms.SummonNMS summonNMS;
 
     {
         logger = getLogger();
@@ -229,6 +230,12 @@ public final class GlovedPlugin extends JavaPlugin {
         } catch (Exception e) {
             getLogger().warning("[Souls] Failed to backfill legacy base stats: " + e);
         }
+        try {
+            int capUpdated = this.soulService.getRepository().backfillLegacyGroupCapacity();
+            if (capUpdated > 0) logInfo("Backfilled group capacity for " + capUpdated + " legacy soul(s)");
+        } catch (Exception e) {
+            getLogger().warning("[Souls] Failed to backfill legacy group capacity: " + e);
+        }
         // Worlds/entities are ready once the server has finished loading all plugins; rehydrate tables
         // and refresh the resource pack then (ResourcePackManager may enable after GlovedPlugin).
         getServer().getPluginManager().registerEvents(new StartupListener(), this);
@@ -242,13 +249,19 @@ public final class GlovedPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulPickupListener(this), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.soul.SoulItemListener(this), this);
         this.summonTracker = new dev.gloved.glovedplugin.summon.SummonInstanceTracker(this);
-        this.minionAI = new dev.gloved.glovedplugin.summon.MinionAI(this, this.summonTracker);
-        this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.minionAI);
-        this.minionAI.setSummon(this.summonConfig, this.summonManager);
+        this.summonAI = new dev.gloved.glovedplugin.summon.SummonAI(this, this.summonTracker);
+        this.summonManager = new dev.gloved.glovedplugin.summon.SummonManager(this, this.summonConfig, this.summonTracker, this.summonAI);
+        this.summonAI.setSummon(this.summonConfig, this.summonManager);
         this.summonProgression = createSummonProgressionBridge();
-        this.minionAI.setProgression(this.summonProgression);
+        this.summonAI.setProgression(this.summonProgression);
         this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
-        this.minionAI.setAbilityService(this.summonAbilityService);
+        this.summonAI.setAbilityService(this.summonAbilityService);
+        this.summonNMS = dev.gloved.glovedplugin.nms.v26p3.SummonNMSBootstrap.create(this);
+        if (this.summonNMS != null) {
+            logInfo("Summon NMS backend initialized: " + this.summonNMS.getSupportedEntities().size() + " supported entity types");
+        } else {
+            logWarning("Summon NMS backend unavailable; falling back to legacy Bukkit summon AI");
+        }
         this.summonProgression.onEnable();
         // Auto-reload AuraSkills skill into menu after first player joins if it is missing
         if (this.summonProgression instanceof dev.gloved.glovedplugin.summon.progression.AuraSkillsSummonProgressionBridge auraBridge) {
@@ -266,7 +279,7 @@ public final class GlovedPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker), this);
         this.summonAbilityIndicator = new dev.gloved.glovedplugin.summon.SummonAbilityIndicator(this, this.summonConfig);
         getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
-        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker, this.minionAI), this);
+        getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.DamageProxy(this.summonTracker, this.summonAI), this);
         getServer().getPluginManager().registerEvents(new dev.gloved.glovedplugin.summon.progression.SummonKillAttributionListener(() -> this.summonProgression, () -> this.summonConfig), this);
         // Clean up orphaned summon entities (e.g. leftover after restart/crash or owner logout edge cases)
         getServer().getScheduler().runTaskLater(this, () -> {
@@ -337,9 +350,9 @@ public final class GlovedPlugin extends JavaPlugin {
         }
         if (this.summonProgression != null) {
             this.summonProgression = refreshSummonProgressionBridge(this.summonProgression);
-            if (this.minionAI != null) this.minionAI.setProgression(this.summonProgression);
+            if (this.summonAI != null) this.summonAI.setProgression(this.summonProgression);
             this.summonAbilityService = new dev.gloved.glovedplugin.summon.progression.SummonAbilityService(this, this.summonProgression);
-            if (this.minionAI != null) this.minionAI.setAbilityService(this.summonAbilityService);
+            if (this.summonAI != null) this.summonAI.setAbilityService(this.summonAbilityService);
             this.summonProgression.onReload(this.summonConfig);
         }
         if (this.damageHologramModule != null) {
@@ -409,6 +422,14 @@ public final class GlovedPlugin extends JavaPlugin {
 
     public dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager getSoulTableRecipeManager() {
         return soulTableRecipeManager;
+    }
+
+    public dev.gloved.glovedplugin.summon.SummonAI getSummonAI() {
+        return summonAI;
+    }
+
+    public dev.gloved.glovedplugin.summon.nms.SummonNMS getSummonNMS() {
+        return summonNMS;
     }
 
     public dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge getSummonProgression() {

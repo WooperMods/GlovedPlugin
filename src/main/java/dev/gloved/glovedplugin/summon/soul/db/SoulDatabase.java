@@ -53,6 +53,7 @@ public class SoulDatabase {
             addColumnIfMissing(stmt, "max_health", "ALTER TABLE souls ADD COLUMN max_health REAL NOT NULL DEFAULT 0");
             addColumnIfMissing(stmt, "base_stats_json", "ALTER TABLE souls ADD COLUMN base_stats_json TEXT");
             addColumnIfMissing(stmt, "enhance_level", "ALTER TABLE souls ADD COLUMN enhance_level INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(stmt, "group_capacity", "ALTER TABLE souls ADD COLUMN group_capacity INTEGER NOT NULL DEFAULT 1");
 
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS soul_loadouts (" +
@@ -76,6 +77,8 @@ public class SoulDatabase {
                 "updated_at INTEGER NOT NULL" +
                 ");"
             );
+            addPlayerStateColumnIfMissing(stmt, "combat_mode", "ALTER TABLE soul_player_state ADD COLUMN combat_mode TEXT NOT NULL DEFAULT 'AGGRESSIVE'");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_tab", "ALTER TABLE soul_player_state ADD COLUMN soul_table_tab TEXT NOT NULL DEFAULT 'COMBINE'");
 
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS soul_codex (" +
@@ -108,6 +111,15 @@ public class SoulDatabase {
 
     private static void addColumnIfMissing(Statement stmt, String column, String alterSql) throws SQLException {
         try (ResultSet cols = stmt.executeQuery("PRAGMA table_info(souls)")) {
+            while (cols.next()) {
+                if (column.equalsIgnoreCase(cols.getString("name"))) return;
+            }
+        }
+        stmt.execute(alterSql);
+    }
+
+    private static void addPlayerStateColumnIfMissing(Statement stmt, String column, String alterSql) throws SQLException {
+        try (ResultSet cols = stmt.executeQuery("PRAGMA table_info(soul_player_state)")) {
             while (cols.next()) {
                 if (column.equalsIgnoreCase(cols.getString("name"))) return;
             }

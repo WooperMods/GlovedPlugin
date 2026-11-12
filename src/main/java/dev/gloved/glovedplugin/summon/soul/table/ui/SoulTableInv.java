@@ -1,6 +1,8 @@
 package dev.gloved.glovedplugin.summon.soul.table.ui;
 
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.SoulAffixRoll;
+import dev.gloved.glovedplugin.summon.soul.SoulAffixType;
 import dev.gloved.glovedplugin.summon.soul.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.SoulLoreBuilder;
@@ -67,6 +69,7 @@ public final class SoulTableInv implements InventoryHolder {
     private static final int SLOT_ESSENCE = 49;
     private static final int SLOT_CONFIRM = 50;
     private static final int SLOT_CLEAR = 51;
+    private static final int SLOT_GUIDE = 52;
     private static final int SLOT_INFO = 8;
     private static final int SLOT_NEXT = 53;
     private static final int[] TAB_SLOTS = {0, 2, 4, 6};
@@ -90,9 +93,34 @@ public final class SoulTableInv implements InventoryHolder {
         this.plugin = plugin;
         this.viewerId = player.getUniqueId();
         this.tableId = table != null ? table.tableId() : null;
+        this.tab = loadLastTab();
         this.inventory = Bukkit.createInventory(this, SIZE,
                 Component.text("Soul Table", NamedTextColor.LIGHT_PURPLE));
         refresh();
+    }
+
+    private Tab loadLastTab() {
+        try {
+            SoulService svc = plugin.getSoulService();
+            if (svc == null) return Tab.COMBINE;
+            String raw = svc.getSoulTableTab(viewerId);
+            if (raw == null) return Tab.COMBINE;
+            return Tab.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (Exception ignored) {
+            return Tab.COMBINE;
+        }
+    }
+
+    private void saveLastTabAsync(Tab tab) {
+        if (tab == null || plugin == null) return;
+        final UUID owner = viewerId;
+        final String name = tab.name();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                SoulService svc = plugin.getSoulService();
+                if (svc != null) svc.setSoulTableTab(owner, name);
+            } catch (Throwable ignored) {}
+        });
     }
 
     public static NamespacedKey soulIdKey(GlovedPlugin plugin) {
@@ -202,6 +230,9 @@ public final class SoulTableInv implements InventoryHolder {
         inventory.setItem(SLOT_CONFIRM, confirmItem());
         inventory.setItem(SLOT_CLEAR, actionItem(Material.BARRIER, "§cClear Selection", "clear",
                 List.of("§7Removes every selected soul.")));
+        inventory.setItem(SLOT_GUIDE, actionItem(Material.BOOK, "§bSoul Guide", "guide",
+                List.of("§7View traits, affixes, stats, and table info.",
+                        "§eClick to open.")));
         inventory.setItem(SLOT_NEXT, actionItem(Material.ARROW, "§eNext Page", "next", List.of(
                 "§7Page §f" + (page + 1) + "§7/§f" + (maxPage + 1))));
     }
@@ -311,7 +342,10 @@ public final class SoulTableInv implements InventoryHolder {
                 }
                 case SALVAGE -> {
                     int total = 0;
-                    for (SoulInstance soul : chosen) total += SoulService.essenceValue(soul.getRarity());
+                    for (SoulInstance soul : chosen) {
+                        SoulService ss = plugin.getSoulService();
+                        total += ss != null ? ss.essenceValueOf(soul.getRarity()) : SoulService.essenceValue(soul.getRarity());
+                    }
                     lore.add(LEGACY.deserialize("§7Selected: §f" + chosen.size() + " §7soul(s)").decoration(TextDecoration.ITALIC, false));
                     lore.add(LEGACY.deserialize("§7Value: §b" + total + " Essence").decoration(TextDecoration.ITALIC, false));
                 }
@@ -376,6 +410,10 @@ public final class SoulTableInv implements InventoryHolder {
                     int cost = svc != null ? svc.essenceCostReforge(soul.getRarity()) : cfg.reforgeCost(soul.getRarity());
                     lore.add("§7Affixes will be rerolled at " + soul.getRarity().coloredNameLegacy() + "§7.");
                     lore.add("§7Family, rarity, base stats and level are kept.");
+                    lore.add("§eCurrent soul:");
+                    for (Component c : SoulLoreBuilder.statsSection(plugin, soul, viewerId, true)) {
+                        lore.add(LEGACY.serialize(c));
+                    }
                     lore.add("§7Cost: §b" + costLabel(cost));
                     if (essence < cost) lore.add("§cNot enough Essence");
                     else enabled = true;
@@ -386,7 +424,10 @@ public final class SoulTableInv implements InventoryHolder {
                     lore.add("§7Select at least §f1§7 soul.");
                 } else {
                     int total = 0;
-                    for (SoulInstance soul : chosen) total += SoulService.essenceValue(soul.getRarity());
+                    SoulService ss = plugin.getSoulService();
+                    for (SoulInstance soul : chosen) {
+                        total += ss != null ? ss.essenceValueOf(soul.getRarity()) : SoulService.essenceValue(soul.getRarity());
+                    }
                     if (armed) {
                         enabled = true;
                         name = "§c§lClick again to confirm";
@@ -450,15 +491,18 @@ public final class SoulTableInv implements InventoryHolder {
         if (meta == null) return item;
 
         String mobName = SoulLoreBuilder.pretty(soul.getFamilyKey());
+        String qualityStr = SoulLoreBuilder.fmt(SoulQuality.percent(soul), 2) + "%";
         meta.displayName(Component.empty()
                 .append(soul.getRarity().coloredNameComponent())
                 .append(Component.text(" " + mobName + " Soul", soul.getRarity().getColor())
+                        .decoration(TextDecoration.BOLD, false))
+                .append(Component.text(" §7[" + qualityStr + "]", NamedTextColor.GRAY)
                         .decoration(TextDecoration.BOLD, false))
                 .decoration(TextDecoration.ITALIC, false));
 
         List<Component> lore = new ArrayList<>();
         lore.addAll(SoulLoreBuilder.traitsSection(soul));
-        lore.addAll(SoulLoreBuilder.statsSection(plugin, soul, viewerId));
+        lore.addAll(SoulLoreBuilder.statsSection(plugin, soul, viewerId, true));
         if (isSelected) {
             lore.add(LEGACY.deserialize("§a§lSELECTED").decoration(TextDecoration.ITALIC, false));
         } else {
@@ -471,6 +515,9 @@ public final class SoulTableInv implements InventoryHolder {
         item.setItemMeta(meta);
         return item;
     }
+
+    // Soul stats/affixes/traits lore is centralized in SoulLoreBuilder to keep vault/table/drop/item views consistent.
+    // Use statsSection(plugin, soul, viewerId, true) in Soul Table contexts that show per-affix quality.
 
     private static void glint(ItemMeta meta) {
         try {
@@ -512,6 +559,7 @@ public final class SoulTableInv implements InventoryHolder {
             } catch (IllegalArgumentException ignored) {
                 return;
             }
+            saveLastTabAsync(tab);
             selected.clear();
             salvageArmedUntil = 0L;
             page = 0;
@@ -533,6 +581,8 @@ public final class SoulTableInv implements InventoryHolder {
                 salvageArmedUntil = 0L;
                 refresh();
             }
+            case "guide" -> Bukkit.getScheduler().runTask(plugin, () ->
+                    new SoulTableGuideInv(plugin, player, tableId, SoulTableGuideInv.Page.MAIN).open(player));
             case "confirm" -> confirm(player);
             default -> {
                 // ignore unknown actions (future-proofing)
@@ -623,7 +673,7 @@ public final class SoulTableInv implements InventoryHolder {
                     return;
                 }
                 SoulTableService.TableResult result = svc.reforge(viewerId, chosen.get(0).getSoulId());
-                finish(player, result, "Soul reforged.", true);
+                finish(player, result, "Soul reforged.", false);
             }
             case SALVAGE -> {
                 if (chosen.isEmpty()) {

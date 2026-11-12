@@ -110,7 +110,7 @@ public final class SoulTableService {
                             generated.getEntityType(), first.getFamilyKey(), generated.getCategory(),
                             generated.getRarity(), generated.getQualityScore(), generated.getAffixes(),
                             generated.getTraits(), generated.getCreatedAt(), 0.0, false,
-                            generated.getBaseStats(), generated.getEnhanceLevel());
+                            generated.getBaseStats(), generated.getEnhanceLevel(), generated.getGroupCapacity());
                 }
                 repository.insertSoul(generated);
                 return generated;
@@ -150,7 +150,7 @@ public final class SoulTableService {
         }
     }
 
-    /** Rerolls affixes and base stats at the soul's current rarity, preserving everything else. */
+    /** Rerolls affixes, base stats, and base group capacity at the soul's current rarity, preserving everything else. */
     public TableResult reforge(UUID owner, UUID soulId) {
         if (owner == null || soulId == null) return TableResult.fail("Invalid soul");
         try {
@@ -161,16 +161,21 @@ public final class SoulTableService {
                 if (soulCost == Integer.MAX_VALUE) throw new TableFailure("Reforge is not available for this soul");
                 if (!repository.spendEssence(owner, soulCost, cap)) throw new TableFailure(NOT_ENOUGH);
 
-                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(soul.getRarity());
+                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(soul.getRarity(), soulService.soulConfig(), soul.getEntityType());
                 double quality = SoulQuality.percent(soul.getRarity(), affixes);
                 dev.gloved.glovedplugin.summon.soul.SoulBaseStats baseStats =
                         SoulGenerator.rollBaseStats(soul.getEntityType(), soul.getRarity(), null, config());
+                int groupCapacity = SoulGenerator.rollBaseGroupCapacity(
+                        soul.getRarity(), soul.getCategory(),
+                        soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey(),
+                        soulService.soulConfig());
                 repository.updateSoulAffixes(soulId, affixes, quality);
                 repository.updateSoulBaseStats(soulId, baseStats);
-                return soul.withBaseStats(baseStats).withAffixes(affixes, quality);
+                repository.updateSoulGroupCapacity(soulId, groupCapacity);
+                return soul.withReforgedState(baseStats, affixes, quality, groupCapacity);
             });
             soulService.invalidateSoul(soulId, owner);
-            return TableResult.ok("Reforged soul stats and affixes", result);
+            return TableResult.ok("Reforged soul stats, affixes, and capacity", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
         } catch (SQLException e) {
@@ -190,7 +195,7 @@ public final class SoulTableService {
             database.transaction(conn -> {
                 List<SoulInstance> souls = loadOwned(owner, ids);
                 int total = 0;
-                for (SoulInstance soul : souls) total += SoulService.essenceValue(soul.getRarity());
+                for (SoulInstance soul : souls) total += soulService.essenceValueOf(soul.getRarity());
                 for (UUID id : ids) repository.deleteSoul(id);
                 if (total > 0) repository.addEssence(owner, total, cap);
                 gained[0] = total;

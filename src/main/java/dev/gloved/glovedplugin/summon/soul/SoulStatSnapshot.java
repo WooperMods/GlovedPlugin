@@ -13,10 +13,11 @@ public record SoulStatSnapshot(
         double abilityPotencyMultiplier, // 1.0 + RESONANT
         double costEfficiency,     // 1.0 - COMMANDER (reduces mana/cd)
         double tenacityBonus,      // damage reduction bonus (capped)
-        double enduranceBonus      // duration/uptime bonus
+        double enduranceBonus,     // duration/uptime bonus
+        double capacityBonus       // additive fraction for group capacity (e.g. 0.10 = +10%)
 ) {
     public static SoulStatSnapshot identity() {
-        return new SoulStatSnapshot(1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0);
+        return new SoulStatSnapshot(1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0);
     }
 
     public static SoulStatSnapshot fromSoul(SoulInstance soul) {
@@ -30,6 +31,7 @@ public record SoulStatSnapshot(
         double commander = clamp01(soul.affixValue(SoulAffixType.COMMANDER));
         double tenacious = clamp01(soul.affixValue(SoulAffixType.TENACIOUS));
         double enduring = clamp01(soul.affixValue(SoulAffixType.ENDURING));
+        double capacity = Math.max(0.0, Math.min(1.0, soul.affixValue(SoulAffixType.CAPACITY)));
         return new SoulStatSnapshot(
                 1.0 + brutal,
                 1.0 + vigorous,
@@ -39,7 +41,8 @@ public record SoulStatSnapshot(
                 1.0 + resonant,
                 Math.max(0.2, 1.0 - Math.min(0.6, commander)),
                 tenacious,
-                enduring
+                enduring,
+                capacity
         );
     }
 
