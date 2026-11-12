@@ -24,16 +24,23 @@ souls:
   enabled: true
   dynamic:
     allow-all-living: true
-    allow-bosses: false
+    allow-bosses: true
     default-batch: 1
+    # Base minion lifetime in ticks. Set to 0 or -1 to disable timed despawn.
+    lifetime-ticks: 1200
+    # Delay after engaging a target before a Warden summon can start charging sonic boom (ticks). Vanilla-like: 200 (10s).
+    warden-sonic-engage-delay-ticks: 200
     default-nametag-format: "{player}'s {mob}"
-    blacklist:
-      - ENDER_DRAGON
-      - WITHER
-      - WARDEN
-      - GIANT
-      - PLAYER
-      - ARMOR_STAND
+    blacklist: []
+    # Explicit per-entity-type max active summon caps (hard caps; overrides category defaults and scaling).
+    max-active-by-type:
+      WARDEN: 1
+      ENDER_DRAGON: 1
+      WITHER: 1
+      ELDER_GUARDIAN: 1
+  nametag:
+    # Custom LM-style summon nametag (rarity + base name). Health indicator removed.
+    enabled: true
 
   categories:
     PASSIVE:
@@ -70,7 +77,7 @@ souls:
       max-active-per-type: 1
       cost-mult: 3.0
       hp-mult: 1.5
-      enabled: false
+      enabled: true
     SPECIAL:
       max-active-per-type: 1
       cost-mult: 1.2
@@ -119,19 +126,32 @@ souls:
       LEGENDARY: 30
       MYTHIC: 50
 
+  essence:
+    values:
+      COMMON: 1
+      UNCOMMON: 3
+      RARE: 8
+      EPIC: 18
+      LEGENDARY: 42
+      MYTHIC: 95
+    overflow-multiplier: 1.0
+
   vault:
     base-capacity: 30
     max-capacity: 0 # <= 0 means unlimited
     capacity-per-level: 2.0
     overflow: CONVERT_TO_ESSENCE
+    overflow-mode: CONVERT_TO_ESSENCE
+    overflow-multiplier: 1.0
     loadout:
       base-slots: 1
       levels-per-slot: 10
       max-slots: 5
 
   cast:
-    shared-gcd-ticks: 10
-    base-cooldown-ticks: 120
+    shared-gcd-ticks: 0
+    base-cooldown-ticks: 0
+    mana-enabled: true
     base-mana-cost: 12.0
     replace-policy: BLOCK_IF_CAPPED
 
@@ -149,23 +169,26 @@ souls:
     break-owner-only: true
     costs:
       combine:
-        UNCOMMON: 10
-        RARE: 25
-        EPIC: 75
-        LEGENDARY: 200
-        MYTHIC: 500
+        UNCOMMON: 8
+        RARE: 20
+        EPIC: 55
+        LEGENDARY: 150
+        MYTHIC: 425
       enhance:
-        base: 10
-        exponent: 2
+        base: 8.0
+        exponent: 1.8
+        offset: 1
+        min-cost: 1
+        max-cost: 0
         max-level: 10
         per-level-bonus: 0.025
       reforge:
-        COMMON: 20
-        UNCOMMON: 40
-        RARE: 80
-        EPIC: 160
-        LEGENDARY: 320
-        MYTHIC: 640
+        COMMON: 12
+        UNCOMMON: 20
+        RARE: 40
+        EPIC: 80
+        LEGENDARY: 150
+        MYTHIC: 275
       salvage:
         confirmation-seconds: 5
     recipe:
@@ -181,28 +204,34 @@ souls:
         O: OBSIDIAN
         N: NETHERITE_SCRAP
 
-  # Rolled soul base stats. Follow/target range is intentionally absent: it is a fixed
-  # SummonProfile AI limit, never a soul stat.
+  # Rolled soul base stats (auto-partitioned absolute bands). Follow/target range is intentionally
+  # absent: it is a fixed SummonProfile AI limit, never a soul stat.
+  # Legacy souls.stats.rarity-multipliers/variance are deprecated and ignored.
   stats:
     enabled: true
     backfill-legacy: true
-    rarity-multipliers:
-      COMMON: 1.00
-      UNCOMMON: 1.10
-      RARE: 1.25
-      EPIC: 1.50
-      LEGENDARY: 1.85
-      MYTHIC: 2.30
-    variance:
-      health: 0.10
-      attack-damage: 0.10
-      movement-speed: 0.05
-      attack-speed: 0.10
-    caps:
-      health: 200.0
-      attack-damage: 30.0
-      movement-speed: 0.32436
-      attack-speed: 1.20
+    bounds:
+      health:
+        min: 1.0
+        max: 200.0
+      attack-damage:
+        min: 4.0
+        max: 30.0
+      movement-speed:
+        min: 0.02316678234931691
+        max: 0.32436
+      attack-speed:
+        min: 0.20
+        max: 1.20
+    ranges:
+      overlap: 0.06
+      split:
+        COMMON: 1.0
+        UNCOMMON: 1.0
+        RARE: 1.0
+        EPIC: 1.0
+        LEGENDARY: 1.0
+        MYTHIC: 1.0
 
 progression:
   enabled: true
@@ -220,23 +249,23 @@ progression:
   xp:
     minion-hit:
       enabled: true
-      amount: 2.0
+      amount: 4.0
       owner-cooldown-ticks: 10
       per-target-cooldown-ticks: 40
-      max-per-minute: 300.0
+      max-per-minute: 600.0
     minion-kill:
       enabled: true
-      amount: 20.0
+      amount: 40.0
       attribution-window-ticks: 200
-      max-per-minute: 200.0
+      max-per-minute: 400.0
     soul-capture:
       enabled: true
-      amount: 5.0
-      max-per-minute: 150.0
+      amount: 10.0
+      max-per-minute: 300.0
     soul-cast:
-      enabled: true
-      amount: 3.0
-      max-per-minute: 100.0
+      enabled: false
+      amount: 6.0
+      max-per-minute: 200.0
   scaling:
     enabled: true
     chance:

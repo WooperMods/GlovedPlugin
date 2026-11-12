@@ -26,20 +26,20 @@ public class SummonConfig {
     private String progressionSkillId = "summoning";
     private boolean progressionApplyMultipliers = true;
     private boolean progressionHitXpEnabled = true;
-    private double progressionHitXpAmount = 0.5;
+    private double progressionHitXpAmount = 1.0;
     private int progressionHitOwnerCooldownTicks = 10;
     private int progressionHitTargetCooldownTicks = 40;
-    private double progressionHitMaxPerMinute = 120.0;
+    private double progressionHitMaxPerMinute = 240.0;
     private boolean progressionKillXpEnabled = true;
-    private double progressionKillXpAmount = 8.0;
+    private double progressionKillXpAmount = 16.0;
     private int progressionKillAttributionWindowTicks = 200;
-    private double progressionKillMaxPerMinute = 80.0;
+    private double progressionKillMaxPerMinute = 160.0;
     private boolean progressionCaptureXpEnabled = true;
-    private double progressionCaptureXpAmount = 2.0;
-    private double progressionCaptureXpMaxPerMinute = 60.0;
+    private double progressionCaptureXpAmount = 4.0;
+    private double progressionCaptureXpMaxPerMinute = 120.0;
     private boolean progressionCastXpEnabled = true;
-    private double progressionCastXpAmount = 1.0;
-    private double progressionCastXpMaxPerMinute = 40.0;
+    private double progressionCastXpAmount = 2.0;
+    private double progressionCastXpMaxPerMinute = 80.0;
     private boolean progressionGenerateAuraSkillsContentFiles = true;
 
     // AuraSkills mana cost per summon trigger (batch).
@@ -170,20 +170,20 @@ public class SummonConfig {
         manaCostPerTrigger = safeNonNegative(yaml.getDouble("progression.mana.cost-per-trigger", 3.0));
         manaAllowWhenAuraSkillsMissing = yaml.getBoolean("progression.mana.allow-when-auraskills-missing", true);
         progressionHitXpEnabled = yaml.getBoolean("progression.xp.minion-hit.enabled", true);
-        progressionHitXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.amount", 2.0));
+        progressionHitXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.amount", 4.0));
         progressionHitOwnerCooldownTicks = Math.max(0, yaml.getInt("progression.xp.minion-hit.owner-cooldown-ticks", 10));
         progressionHitTargetCooldownTicks = Math.max(0, yaml.getInt("progression.xp.minion-hit.per-target-cooldown-ticks", 40));
-        progressionHitMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.max-per-minute", 300.0));
+        progressionHitMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-hit.max-per-minute", 600.0));
         progressionKillXpEnabled = yaml.getBoolean("progression.xp.minion-kill.enabled", true);
-        progressionKillXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.amount", 20.0));
+        progressionKillXpAmount = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.amount", 40.0));
         progressionKillAttributionWindowTicks = Math.max(1, yaml.getInt("progression.xp.minion-kill.attribution-window-ticks", 200));
-        progressionKillMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.max-per-minute", 200.0));
+        progressionKillMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.minion-kill.max-per-minute", 400.0));
         progressionCaptureXpEnabled = yaml.getBoolean("progression.xp.soul-capture.enabled", true);
-        progressionCaptureXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.amount", 5.0));
-        progressionCaptureXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.max-per-minute", 150.0));
-        progressionCastXpEnabled = yaml.getBoolean("progression.xp.soul-cast.enabled", true);
-        progressionCastXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.amount", 3.0));
-        progressionCastXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.max-per-minute", 100.0));
+        progressionCaptureXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.amount", 10.0));
+        progressionCaptureXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-capture.max-per-minute", 300.0));
+        progressionCastXpEnabled = yaml.getBoolean("progression.xp.soul-cast.enabled", false);
+        progressionCastXpAmount = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.amount", 6.0));
+        progressionCastXpMaxPerMinute = safeNonNegative(yaml.getDouble("progression.xp.soul-cast.max-per-minute", 200.0));
 
         scalingEnabled = yaml.getBoolean("progression.scaling.enabled", true);
         scalingChancePerLevel = safeNonNegative(yaml.getDouble("progression.scaling.chance.per-level", 0.005));
@@ -292,20 +292,20 @@ public class SummonConfig {
         setIfMissing(cfg, "progression.mana.allow-when-auraskills-missing", true);
         // XP
         setIfMissing(cfg, "progression.xp.minion-hit.enabled", true);
-        setIfMissing(cfg, "progression.xp.minion-hit.amount", 0.5);
+        setIfMissing(cfg, "progression.xp.minion-hit.amount", 1.0);
         setIfMissing(cfg, "progression.xp.minion-hit.owner-cooldown-ticks", 10);
         setIfMissing(cfg, "progression.xp.minion-hit.per-target-cooldown-ticks", 40);
-        setIfMissing(cfg, "progression.xp.minion-hit.max-per-minute", 120.0);
+        setIfMissing(cfg, "progression.xp.minion-hit.max-per-minute", 240.0);
         setIfMissing(cfg, "progression.xp.minion-kill.enabled", true);
-        setIfMissing(cfg, "progression.xp.minion-kill.amount", 8.0);
+        setIfMissing(cfg, "progression.xp.minion-kill.amount", 16.0);
         setIfMissing(cfg, "progression.xp.minion-kill.attribution-window-ticks", 200);
-        setIfMissing(cfg, "progression.xp.minion-kill.max-per-minute", 80.0);
+        setIfMissing(cfg, "progression.xp.minion-kill.max-per-minute", 160.0);
         setIfMissing(cfg, "progression.xp.soul-capture.enabled", true);
-        setIfMissing(cfg, "progression.xp.soul-capture.amount", 2.0);
-        setIfMissing(cfg, "progression.xp.soul-capture.max-per-minute", 60.0);
-        setIfMissing(cfg, "progression.xp.soul-cast.enabled", true);
-        setIfMissing(cfg, "progression.xp.soul-cast.amount", 1.0);
-        setIfMissing(cfg, "progression.xp.soul-cast.max-per-minute", 40.0);
+        setIfMissing(cfg, "progression.xp.soul-capture.amount", 4.0);
+        setIfMissing(cfg, "progression.xp.soul-capture.max-per-minute", 120.0);
+        setIfMissing(cfg, "progression.xp.soul-cast.enabled", false);
+        setIfMissing(cfg, "progression.xp.soul-cast.amount", 2.0);
+        setIfMissing(cfg, "progression.xp.soul-cast.max-per-minute", 80.0);
         // Scaling
         setIfMissing(cfg, "progression.scaling.enabled", true);
         setIfMissing(cfg, "progression.scaling.chance.per-level", 0.005);

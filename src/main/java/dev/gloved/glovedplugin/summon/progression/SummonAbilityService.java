@@ -55,7 +55,6 @@ public class SummonAbilityService {
             double pot = Math.max(0.2, Math.min(3.0, snap.abilityPotencyMultiplier()));
             List<SoulTrait> traits = soul.getTraits();
             if (traits.contains(SoulTrait.FRENZIED)) { cc += 0.03; cd += 0.08; pot *= 1.05; }
-            if (traits.contains(SoulTrait.BULWARK)) { pot *= 0.95; }
             return new SoulCombatMods(cc, cd, pot, traits);
         }
     }
@@ -196,11 +195,17 @@ public class SummonAbilityService {
             try {
                 if (target.getNoDamageTicks() > 0) target.setNoDamageTicks(0);
             } catch (Throwable ignored) {}
+            // Summon is the damage source/credit; owner is tracked separately by progression hooks.
             DamageSource src = DamageSource.builder(DamageType.GENERIC)
                     .withDirectEntity(minion)
-                    .withCausingEntity(owner)
+                    .withCausingEntity(minion != null ? minion : owner)
                     .build();
-            target.damage(cr.damage, src);
+            try {
+                dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                target.damage(cr.damage, src);
+            } finally {
+                dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+            }
             double healthAfter = target.isDead() ? 0.0 : target.getHealth();
             if (!target.isDead() && healthAfter >= healthBefore - 1.0e-6) {
                 int ndt = -1;
@@ -212,7 +217,12 @@ public class SummonAbilityService {
                         + " noDamageTicks=" + ndt + " invulnerable=" + inv);
                 // One retry after forcing no-damage ticks clear in case event pipeline/state interfered.
                 try { target.setNoDamageTicks(0); } catch (Throwable ignored) {}
-                target.damage(cr.damage, src);
+                try {
+                    dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                    target.damage(cr.damage, src);
+                } finally {
+                    dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+                }
                 double retryAfter = target.isDead() ? 0.0 : target.getHealth();
                 if (!target.isDead() && retryAfter >= healthAfter - 1.0e-6) {
                     GlovedPlugin.logDebug("[SummonAbility] Primary damage retry still had no effect on " + target.getType() + "/" + target.getName()
@@ -285,9 +295,14 @@ public class SummonAbilityService {
                             try { if (victim.getNoDamageTicks() > 0) victim.setNoDamageTicks(0); } catch (Throwable ignored) {}
                             DamageSource src = DamageSource.builder(DamageType.GENERIC)
                                     .withDirectEntity(minion)
-                                    .withCausingEntity(owner)
+                                    .withCausingEntity(minion != null ? minion : owner)
                                     .build();
-                            victim.damage(cleaveDamage, src);
+                            try {
+                                dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                                victim.damage(cleaveDamage, src);
+                            } finally {
+                                dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+                            }
                         } catch (Throwable t) {
                             GlovedPlugin.logDebug("[SummonAbility] Cleave damage failed: " + t);
                         }

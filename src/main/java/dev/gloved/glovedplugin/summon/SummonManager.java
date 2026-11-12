@@ -2,6 +2,8 @@ package dev.gloved.glovedplugin.summon;
 
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.data.SummonSharedData;
+import dev.gloved.glovedplugin.summon.nms.SummonNMS;
 import dev.gloved.glovedplugin.summon.soul.SoulConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -27,16 +29,16 @@ public class SummonManager {
     private final GlovedPlugin plugin;
     private final SummonConfig config;
     private final SummonInstanceTracker tracker;
-    private final MinionAI minionAI;
+    private final SummonAI summonAI;
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
     // Soul cast cooldowns (per-player), ms timestamps
     private final Map<UUID, Long> soulCastCooldowns = new ConcurrentHashMap<>();
 
-    public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, MinionAI minionAI) {
+    public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, SummonAI summonAI) {
         this.plugin = plugin;
         this.config = config;
         this.tracker = tracker;
-        this.minionAI = minionAI;
+        this.summonAI = summonAI;
     }
 
     public long getSoulCastCooldownRemainingMs(UUID playerId) {
@@ -124,6 +126,7 @@ public class SummonManager {
         GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + stats.minionsPerHit + " x " + profile.mobType
                 + " for " + player.getName() + " at " + spawnLoc + " (typeActive " + activeType + "/" + stats.maxActive + ", lvl " + stats.summoningLevel + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
         List<UUID> spawned = new ArrayList<>();
+        SummonNMS summonNms = plugin.getSummonNMS();
         for (int i = 0; i < toSpawn; i++) {
             EntityType type = profile.resolveEntityType();
             if (type == null || !type.isSpawnable() || !type.isAlive()) {
@@ -131,18 +134,33 @@ public class SummonManager {
                 continue;
             }
             Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
-            LivingEntity mob;
-            try {
-                mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
-            } catch (Throwable t) {
-                GlovedPlugin.logDebug("[Summon] Failed to spawn " + type + ": " + t);
-                continue;
+            LivingEntity mob = null;
+            boolean spawnedViaNms = false;
+            if (summonNms != null && summonNms.canSpawn(type)) {
+                try {
+                    SummonSharedData sharedData = new SummonSharedData(player.getUniqueId());
+                    sharedData.setProfileName(profile.name);
+                    if (soul != null) sharedData.setSoulId(soul.getSoulId());
+                    mob = summonNms.spawnSummon(profile, sharedData, loc);
+                    spawnedViaNms = mob != null;
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[Summon] NMS spawn failed for " + type + ", falling back: " + t);
+                    mob = null;
+                }
+            }
+            if (mob == null) {
+                try {
+                    mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[Summon] Failed to spawn " + type + ": " + t);
+                    continue;
+                }
             }
             if (mob == null) continue;
             try {
                 mob.setAI(true);
                 mob.setCanPickupItems(false);
-                if (mob instanceof Mob m) {
+                if (!spawnedViaNms && mob instanceof Mob m) {
                     MobGoals goals = plugin.getServer().getMobGoals();
                     var all = goals.getAllGoals(m);
                     var toRemove = new java.util.ArrayList<com.destroystokyo.paper.entity.ai.Goal<?>>();
@@ -153,7 +171,10 @@ public class SummonManager {
                     for (var g : toRemove) {
                         try { goals.removeGoal(m, (com.destroystokyo.paper.entity.ai.Goal) g); } catch (Exception ignored) {}
                     }
+                    // Legacy fallback movement goal for non-NMS summons
                     goals.addGoal(m, 0, new SummonMoveGoal(plugin, tracker, m));
+                    m.setTarget(null);
+                } else if (mob instanceof Mob m) {
                     m.setTarget(null);
                 }
             } catch (Exception ignored) {}
@@ -162,8 +183,14 @@ public class SummonManager {
             }
             String ownerName = player != null ? player.getName() : "Owner";
             var rarity = soul != null ? soul.getRarity() : null;
-            String displayName = MinionNametag.format(profile, player, ownerName, mob, rarity);
-            try { mob.setCustomName(displayName); mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE); } catch (Throwable ignored) {}
+            boolean nametagEnabled = false;
+            try { nametagEnabled = config != null && config.getSoulConfig() != null && config.getSoulConfig().isNametagEnabled(); } catch (Throwable ignored) {}
+            if (nametagEnabled) {
+                String displayName = SummonNametag.format(profile, player, ownerName, mob, rarity);
+                try { mob.setCustomName(displayName); mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE); } catch (Throwable ignored) {}
+            } else {
+                try { mob.setCustomName(null); mob.setCustomNameVisible(false); } catch (Throwable ignored) {}
+            }
             // Prevent sun-sensitive minions (e.g. zombies, skeletons) from burning in daylight.
             try {
                 mob.addPotionEffect(new org.bukkit.potion.PotionEffect(
@@ -210,19 +237,29 @@ public class SummonManager {
             if (target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
                 try { m2.setTarget(target); } catch (Throwable ignored) {}
             }
-            int lifetimeTicks = SummonProfile.LIFETIME_TICKS;
-            if (soul != null) {
+            int baseLifetimeTicks = SummonProfile.LIFETIME_TICKS;
+            try {
+                if (config != null && config.getSoulConfig() != null) {
+                    baseLifetimeTicks = config.getSoulConfig().getLifetimeTicks();
+                }
+            } catch (Throwable ignored) {}
+            int lifetimeTicks = baseLifetimeTicks;
+            if (baseLifetimeTicks > 0 && soul != null) {
                 try {
                     var svc = plugin.getSoulService();
                     var snap = svc != null ? svc.getSnapshot(soul)
                             : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.fromSoul(soul);
                     double enduranceBonus = Math.max(0.0, Math.min(1.0, snap.enduranceBonus()));
-                    lifetimeTicks = (int) Math.max(20L, Math.round(SummonProfile.LIFETIME_TICKS * (1.0 + enduranceBonus)));
+                    lifetimeTicks = (int) Math.max(20L, Math.round(baseLifetimeTicks * (1.0 + enduranceBonus)));
                 } catch (Throwable ignored) {}
             }
             tracker.track(player.getUniqueId(), mob, lifetimeTicks);
             spawned.add(mob.getUniqueId());
-            minionAI.monitorMinion(mob, player, profile);
+            // NMS summons are driven by their own goal/brain graphs and NMS attack goals.
+            // Running the legacy Bukkit/Paper SummonAI monitor alongside them fights navigation/targeting.
+            if (!spawnedViaNms) {
+                summonAI.monitorSummon(mob, player, profile);
+            }
         }
         if (!spawned.isEmpty()) {
             playSummonEffects(player, spawnLoc, spawned.size());
@@ -286,7 +323,11 @@ public class SummonManager {
     /** Mana consumption for explicit soul cast (uses soul cast base cost). */
     public boolean tryConsumeSoulCastMana(Player player) {
         double cost = 0.0;
-        if (config != null && config.getSoulConfig() != null) cost = Math.max(0.0, config.getSoulConfig().getCastBaseManaCost());
+        if (config != null && config.getSoulConfig() != null) {
+            var sc = config.getSoulConfig();
+            if (!sc.isCastManaEnabled()) return true;
+            cost = Math.max(0.0, sc.getCastBaseManaCost());
+        }
         return tryConsumeSoulCastMana(player, cost);
     }
 
@@ -294,6 +335,7 @@ public class SummonManager {
     public boolean tryConsumeSoulCastMana(Player player, double cost) {
         try {
             if (config == null) return true;
+            if (config.getSoulConfig() != null && !config.getSoulConfig().isCastManaEnabled()) return true;
             cost = Math.max(0.0, cost);
             if (cost <= 0.0) return true;
             if (!config.isManaEnabled()) return true;
@@ -365,6 +407,14 @@ public class SummonManager {
         double moveFloor = 1.0 / 43.17; // ~1 bps floor
         double baseMove = base.movementSpeed();
         if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
+        // Compatibility/parity: older souls may have normalized-low movement bases (~2.5 bps).
+        // Never force a summoned mob below ~90% of its vanilla/default movement speed.
+        try {
+            double defMove = dev.gloved.glovedplugin.summon.soul.SoulBaseStats.defaults(mob.getType()).movementSpeed();
+            if (Double.isFinite(defMove) && defMove > 0.0) {
+                baseMove = Math.max(baseMove, defMove * 0.90);
+            }
+        } catch (Throwable ignored) {}
         baseMove = clamp(baseMove, moveFloor, maxMove);
         double appliedMove;
         if (speedMult >= 1.0) {
@@ -579,6 +629,212 @@ public class SummonManager {
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[Summon] Failed to play summon effects: " + t);
         }
+    }
+
+    /** Returns the active summoned soulId for the owner when all active minions share the same soul, else null. */
+    public UUID getActiveSoulId(UUID ownerId) {
+        if (ownerId == null || tracker == null) return null;
+        List<LivingEntity> mins = tracker.getActiveMinions(ownerId);
+        if (mins == null || mins.isEmpty()) return null;
+        NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
+        UUID found = null;
+        for (LivingEntity le : mins) {
+            if (le == null || le.isDead()) continue;
+            String raw = le.getPersistentDataContainer().get(soulKey, PersistentDataType.STRING);
+            if (raw == null || raw.isBlank()) return null; // unknown/legacy -> treat as non-matching group
+            try {
+                UUID id = UUID.fromString(raw);
+                if (found == null) found = id;
+                else if (!found.equals(id)) return null; // mixed souls active
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return found;
+    }
+
+    /** Recalls/despawns all active minions for the owner. */
+    public int recallAll(Player owner) {
+        if (owner == null || tracker == null) return 0;
+        int count = 0;
+        try {
+            List<LivingEntity> mins = tracker.getActiveMinions(owner.getUniqueId());
+            count = mins != null ? mins.size() : 0;
+        } catch (Throwable ignored) {}
+        tracker.removeAllForPlayer(owner.getUniqueId());
+        return count;
+    }
+
+    /** Spawns a full soul group for the given soul up to that soul's authoritative effective capacity (exclusive single-group model). */
+    public int spawnSoulGroupToCap(Player player, SummonProfile profile, dev.gloved.glovedplugin.summon.soul.SoulInstance soul, LivingEntity target) {
+        if (player == null || profile == null) return 0;
+        Location spawnLoc = resolveSpawnLocation(player, target);
+        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
+        // Exclusive model: one active soul group at a time. Soul capacity is authoritative for group size.
+        int targetCount = 1;
+        try {
+            var soulService = plugin.getSoulService();
+            if (soul != null && soulService != null) {
+                targetCount = Math.max(1, soulService.effectiveGroupCapacity(soul));
+            } else {
+                targetCount = Math.max(1, stats.maxActive);
+            }
+        } catch (Throwable t) {
+            targetCount = Math.max(1, stats.maxActive);
+        }
+        int activeType = 0;
+        try { activeType = tracker.getActiveCount(player.getUniqueId(), profile.name); } catch (Throwable ignored) {}
+        int toSpawn = Math.max(0, targetCount - activeType);
+        if (toSpawn <= 0) return 0;
+
+        GlovedPlugin.logDebug("[Summon] Spawning full soul group " + toSpawn + " x " + profile.mobType
+                + " for " + player.getName() + " at " + spawnLoc + " (target " + targetCount + ", typeActive " + activeType
+                + ", lvl " + stats.summoningLevel + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
+
+        List<UUID> spawned = new ArrayList<>();
+        SummonNMS summonNms = plugin.getSummonNMS();
+        for (int i = 0; i < toSpawn; i++) {
+            EntityType type = profile.resolveEntityType();
+            if (type == null || !type.isSpawnable() || !type.isAlive()) {
+                GlovedPlugin.logDebug("[Summon] Invalid/non-spawnable entity type: " + profile.mobType);
+                continue;
+            }
+            Location loc = spawnLoc.clone().add((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
+            LivingEntity mob = null;
+            boolean spawnedViaNms = false;
+            if (summonNms != null && summonNms.canSpawn(type)) {
+                try {
+                    SummonSharedData sharedData = new SummonSharedData(player.getUniqueId());
+                    sharedData.setProfileName(profile.name);
+                    if (soul != null) sharedData.setSoulId(soul.getSoulId());
+                    mob = summonNms.spawnSummon(profile, sharedData, loc);
+                    spawnedViaNms = mob != null;
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[Summon] NMS spawn failed for " + type + ", falling back: " + t);
+                    mob = null;
+                }
+            }
+            if (mob == null) {
+                try {
+                    mob = (LivingEntity) player.getWorld().spawnEntity(loc, type);
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[Summon] Failed to spawn " + type + ": " + t);
+                    continue;
+                }
+            }
+            if (mob == null) continue;
+            try {
+                mob.setAI(true);
+                mob.setCanPickupItems(false);
+                if (!spawnedViaNms && mob instanceof Mob m) {
+                    MobGoals goals = plugin.getServer().getMobGoals();
+                    var all = goals.getAllGoals(m);
+                    var toRemove = new java.util.ArrayList<com.destroystokyo.paper.entity.ai.Goal<?>>();
+                    for (var g : all) {
+                        if (shouldRemoveVanillaGoal(g)) toRemove.add(g);
+                    }
+                    for (var g : toRemove) {
+                        try { goals.removeGoal(m, (com.destroystokyo.paper.entity.ai.Goal) g); } catch (Exception ignored) {}
+                    }
+                    goals.addGoal(m, 0, new SummonMoveGoal(plugin, tracker, m));
+                    m.setTarget(null);
+                } else if (mob instanceof Mob m) {
+                    m.setTarget(null);
+                }
+            } catch (Exception ignored) {}
+            if (mob instanceof Tameable t) {
+                try { t.setTamed(true); t.setOwner(player); t.setAdult(); } catch (Throwable ignored) {}
+            }
+            String ownerName = player != null ? player.getName() : "Owner";
+            var rarity = soul != null ? soul.getRarity() : null;
+            boolean nametagEnabled = false;
+            try { nametagEnabled = config != null && config.getSoulConfig() != null && config.getSoulConfig().isNametagEnabled(); } catch (Throwable ignored) {}
+            if (nametagEnabled) {
+                String displayName = SummonNametag.format(profile, player, ownerName, mob, rarity);
+                try { mob.setCustomName(displayName); mob.setCustomNameVisible(SummonProfile.NAMETAG_VISIBLE); } catch (Throwable ignored) {}
+            } else {
+                try { mob.setCustomName(null); mob.setCustomNameVisible(false); } catch (Throwable ignored) {}
+            }
+            try {
+                mob.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                        org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE,
+                        org.bukkit.potion.PotionEffect.INFINITE_DURATION,
+                        0, false, false, false));
+            } catch (Throwable ignored) {
+                try {
+                    mob.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                            org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE,
+                            Integer.MAX_VALUE, 0, false, false, false));
+                } catch (Throwable ignored2) {}
+            }
+
+            var pdc = mob.getPersistentDataContainer();
+            NamespacedKey mobTypeKey = new NamespacedKey(plugin, "summon_mobtype");
+            pdc.set(mobTypeKey, PersistentDataType.STRING, type.name());
+            NamespacedKey profileKey = new NamespacedKey(plugin, "summon_profile");
+            pdc.set(profileKey, PersistentDataType.STRING, profile.name);
+            NamespacedKey familyKey = new NamespacedKey(plugin, "summon_family");
+            pdc.set(familyKey, PersistentDataType.STRING, profile.name);
+            NamespacedKey ownerKey = new NamespacedKey(plugin, "summon_owner");
+            pdc.set(ownerKey, PersistentDataType.STRING, player.getUniqueId().toString());
+            pdc.set(new NamespacedKey(plugin, "summon_minion"), PersistentDataType.BYTE, (byte) 1);
+            if (soul != null) {
+                NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
+                pdc.set(soulKey, PersistentDataType.STRING, soul.getSoulId().toString());
+            }
+
+            if (soul != null) {
+                try { applySoulSnapshotToMinion(mob, soul); } catch (Throwable t) { GlovedPlugin.logDebug("[Summon] Failed to apply soul snapshot: " + t); }
+                scheduleSoulSnapshotReassert(mob, soul);
+            } else {
+                try {
+                    var hp = mob.getAttribute(Attribute.MAX_HEALTH);
+                    if (hp != null) mob.setHealth(Math.max(1.0, hp.getValue()));
+                } catch (Throwable ignored) {}
+            }
+
+            if (target != null && !target.isDead() && mob instanceof org.bukkit.entity.Mob m2) {
+                try { m2.setTarget(target); } catch (Throwable ignored) {}
+            }
+            int baseLifetimeTicks = SummonProfile.LIFETIME_TICKS;
+            try {
+                if (config != null && config.getSoulConfig() != null) {
+                    baseLifetimeTicks = config.getSoulConfig().getLifetimeTicks();
+                }
+            } catch (Throwable ignored) {}
+            int lifetimeTicks = baseLifetimeTicks;
+            if (baseLifetimeTicks > 0 && soul != null) {
+                try {
+                    var svc = plugin.getSoulService();
+                    var snap = svc != null ? svc.getSnapshot(soul)
+                            : dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot.fromSoul(soul);
+                    double enduranceBonus = Math.max(0.0, Math.min(1.0, snap.enduranceBonus()));
+                    lifetimeTicks = (int) Math.max(20L, Math.round(baseLifetimeTicks * (1.0 + enduranceBonus)));
+                } catch (Throwable ignored) {}
+            }
+            tracker.track(player.getUniqueId(), mob, lifetimeTicks);
+            spawned.add(mob.getUniqueId());
+            if (!spawnedViaNms) {
+                summonAI.monitorSummon(mob, player, profile);
+            }
+        }
+        if (!spawned.isEmpty()) {
+            playSummonEffects(player, spawnLoc, spawned.size());
+            try {
+                var soulService = plugin.getSoulService();
+                if (soulService != null) {
+                    Location from = player.getLocation().add(0, 1.0, 0);
+                    for (UUID id : spawned) {
+                        Entity ent = Bukkit.getEntity(id);
+                        if (ent instanceof LivingEntity minion && !minion.isDead()) {
+                            soulService.playSoulTrail(from, minion.getLocation().add(0, minion.getHeight() * 0.5, 0), null);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+            GlovedPlugin.logDebug("[Summon] Spawned soul group " + spawned.size() + " for " + player.getName() + " (soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
+        }
+        return spawned.size();
     }
 
     public void reload(SummonConfig newConfig) {

@@ -20,8 +20,8 @@ public class SummonProfile {
     public static final boolean INVULNERABLE = false;
     public static final int COOLDOWN_TICKS = 1;
     public static final int LIFETIME_TICKS = 1200;
-    /** Unified radius: max distance minions may travel from owner / target scan range. */
-    public static final double FOLLOW_RANGE = 16.0;
+    /** Max distance before CombatPets-style follow teleports to owner (scan/chase uses this as a baseline). */
+    public static final double FOLLOW_RANGE = 32.0;
     public static final String NAMETAG_FORMAT = "{player}'s {mob}";
     public static final boolean NAMETAG_VISIBLE = true;
 

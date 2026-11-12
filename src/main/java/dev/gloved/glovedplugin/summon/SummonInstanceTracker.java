@@ -87,16 +87,18 @@ public class SummonInstanceTracker {
     }
 
     public void resetTimer(UUID entityId, int lifetimeTicks) {
-        org.bukkit.scheduler.BukkitTask existing = despawnTasks.get(entityId);
+        org.bukkit.scheduler.BukkitTask existing = despawnTasks.remove(entityId);
         if (existing != null) {
             existing.cancel();
         }
+        // <= 0 disables timed despawn (minions persist until manually removed/died/unloaded cleanup rules apply)
+        if (lifetimeTicks <= 0) return;
         org.bukkit.scheduler.BukkitTask task = new BukkitRunnable() {
             @Override
             public void run() {
                 despawn(entityId);
             }
-        }.runTaskLater(plugin, lifetimeTicks);
+        }.runTaskLater(plugin, Math.max(1, lifetimeTicks));
         despawnTasks.put(entityId, task);
     }
 

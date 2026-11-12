@@ -52,15 +52,25 @@ public class SummonAbilityIndicator implements Listener {
                                 long rem = mgr.getSoulCastCooldownRemainingMs(p.getUniqueId());
                                 if (rem > 0) {
                                     status = "§cCD " + String.format(Locale.ROOT, "%.1fs", rem / 1000.0);
-                                } else if (scfg != null && tracker != null) {
-                                    int level = souls.getSummoningLevel(p.getUniqueId());
-                                    int globalMax = scfg.computeGlobalMaxActive(level);
-                                    int globalCount = tracker.getActiveMinions(p.getUniqueId()).size();
-                                    if (globalCount >= globalMax) {
-                                        status = "§eCap " + globalCount + "/" + globalMax;
+                                } else {
+                                    boolean activeSameSoul = false;
+                                    try {
+                                        if (tracker != null && sel.getSoulId() != null) {
+                                            java.util.UUID activeSoulId = mgr.getActiveSoulId(p.getUniqueId());
+                                            activeSameSoul = sel.getSoulId().equals(activeSoulId);
+                                        }
+                                    } catch (Throwable ignored) {}
+                                    if (activeSameSoul) {
+                                        status = "§eRecall";
                                     } else {
                                         double manaCost = souls.computeCastManaCost(sel, scfg);
-                                        status = "§aReady §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
+                                        boolean manaOn = scfg != null && scfg.isCastManaEnabled() && manaCost > 0.0
+                                                && config != null && config.isManaEnabled();
+                                        if (manaOn) {
+                                            status = "§aReady §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
+                                        } else {
+                                            status = "§aReady";
+                                        }
                                     }
                                 }
                             }

@@ -15,14 +15,12 @@ import java.util.Locale;
  * {@code  &fꓡꓦꓡ{rarity} &8&l༺&r {displayname} &8&l༻ {hpColor}{hp}&fꓧꓑ }
  * with health color tiered by HP ratio (LM {@code health-indicator.colored-tiers}).</p>
  */
-public final class MinionNametag {
-    private MinionNametag() {}
+public final class SummonNametag {
+    private SummonNametag() {}
 
     // LM nametag-using-numbers frame (server rules.yml), without the level marker.
     private static final String PREFIX = " §f";
     private static final String SEP_L = "§8§l༺§r ";
-    private static final String SEP_R = " §8§l༻ ";
-    private static final String SUFFIX = "§fꓧꓑ ";
 
     private static final String HP_TIER_1 = ChatColor.of("#22E76B").toString(); // >= 80%
     private static final String HP_TIER_2 = ChatColor.of("#528CFF").toString(); // >= 60%
@@ -45,7 +43,7 @@ public final class MinionNametag {
         return profile.getNametag(ownerName != null ? ownerName : "Owner", type);
     }
 
-    /** Full LM-style nametag with optional rarity badge and current HP. */
+    /** Full LM-style nametag with optional rarity badge (no health indicator). */
     public static String format(SummonProfile profile, org.bukkit.entity.Player ownerPlayer, String ownerName,
                                 LivingEntity minion, SoulRarity rarity) {
         if (minion == null) return "";
@@ -57,10 +55,8 @@ public final class MinionNametag {
         if (rarity != null) {
             sb.append(rarityBadge(rarity)).append(' ');
         }
-        sb.append(SEP_L).append(base).append(SEP_R);
-        sb.append(healthColor(minion)).append(roundedHealth(minion));
-        sb.append(SUFFIX);
-        return sb.toString();
+        sb.append(SEP_L).append(base);
+        return sb.toString().trim();
     }
 
     /** Compact colored rarity badge (replaces LM tiered level). */

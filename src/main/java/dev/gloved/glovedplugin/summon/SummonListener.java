@@ -91,7 +91,7 @@ public class SummonListener implements Listener {
                 }
             }
 
-            // Damage reduction for summoned minions: owner's toughness + soul TENACIOUS affix
+            // Damage reduction for summoned minions: owner's toughness + soul TENACIOUS affix + BULWARK trait
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
                     && tracker.isSummoned(victim.getUniqueId())) {
                 double totalReduction = 0.0;
@@ -111,7 +111,7 @@ public class SummonListener implements Listener {
                     }
                 }
 
-                // TENACIOUS soul affix (damage reduction/defense)
+                // TENACIOUS soul affix (damage reduction/defense) + BULWARK trait (tanky buff)
                 try {
                     String soulIdStr = victim.getPersistentDataContainer()
                             .get(new org.bukkit.NamespacedKey(plugin, "summon_soul_id"),
@@ -122,6 +122,10 @@ public class SummonListener implements Listener {
                         if (soulService != null) {
                             double tenacity = Math.max(0.0, Math.min(0.6, soulService.getSnapshot(soulId).tenacityBonus()));
                             if (tenacity > 0.0) totalReduction += tenacity;
+                            var soul = soulService.getSoulCached(soulId);
+                            if (soul != null && soul.hasTrait(dev.gloved.glovedplugin.summon.soul.SoulTrait.BULWARK)) {
+                                totalReduction += 0.10; // Bulwark: defensive buff (10% damage reduction)
+                            }
                         }
                     }
                 } catch (Throwable ignored) {}
@@ -135,12 +139,12 @@ public class SummonListener implements Listener {
             // Track who damages minions so they can prioritize hitting back
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
                     && tracker.isSummoned(victim.getUniqueId()) && damager != null) {
-                MinionAI.recordRecentDamager(victim, damager);
+                SummonAI.recordRecentDamager(victim, damager);
             }
 
             // Track recent damagers for minion AI and engagement
             if (event.getEntity() instanceof Player player) {
-                if (damager != null) MinionAI.recordRecentDamager(player, damager);
+                if (damager != null) SummonAI.recordRecentDamager(player, damager);
                 if (damager instanceof Mob mob) {
                     ensureEngagedTargetGoal(mob, player.getUniqueId());
                 }

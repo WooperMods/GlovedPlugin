@@ -46,6 +46,14 @@ public final class EffectiveSummonStats {
         int maxActive = (int) Math.round(profile.maxActive + config.getScalingMaxActivePerLevel() * level);
         maxActive = Math.max(maxActive, profile.maxActive);
         maxActive = Math.min(maxActive, Math.max(profile.maxActive, config.getScalingMaxActiveMax()));
+        // Respect explicit per-type hard max-active overrides (e.g. set mob types capped to 1).
+        try {
+            var sc = config.getSoulConfig();
+            Integer hardCap = sc != null ? sc.getTypeMaxActiveOverride(profile.name) : null;
+            if (hardCap != null) {
+                maxActive = Math.min(maxActive, Math.max(1, hardCap));
+            }
+        } catch (Throwable ignored) {}
         return new EffectiveSummonStats(chance, Math.max(1, mph), Math.max(1, maxActive), level);
     }
 
