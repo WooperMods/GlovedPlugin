@@ -104,7 +104,7 @@ public final class SoulTableService {
                 for (UUID id : ids) repository.deleteSoul(id);
 
                 SoulInstance generated = SoulGenerator.generate(owner, first.getEntityType(),
-                        soulService.soulConfig(), targetRarity, 0, 0, 0, 0.0, null, config());
+                        soulService.soulConfig(), plugin.getSummonConfig(), targetRarity, 0, 0, 0, 0.0, null, config());
                 if (!first.getFamilyKey().equals(generated.getFamilyKey())) {
                     // Keep the shared family key even if the generator derived it from the type name.
                     generated = new SoulInstance(generated.getSoulId(), generated.getOwnerId(),
@@ -162,7 +162,8 @@ public final class SoulTableService {
                 if (soulCost == Integer.MAX_VALUE) throw new TableFailure("Reforge is not available for this soul");
                 if (!repository.spendEssence(owner, soulCost, cap)) throw new TableFailure(NOT_ENOUGH);
 
-                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(soul.getRarity(), soulService.soulConfig(), soul.getEntityType());
+                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(
+                        soul.getRarity(), soulService.soulConfig(), plugin.getSummonConfig(), soul.getEntityType());
                 double quality = SoulQuality.percent(soul.getRarity(), affixes);
                 SoulBaseStats baseStats =
                         SoulGenerator.rollBaseStats(soul.getEntityType(), soul.getRarity(), null, config());

@@ -186,7 +186,7 @@ public final class SoulLoreBuilder {
             var tableCfg = service != null ? service.tableConfig() : null;
             double perLevel = tableCfg != null ? tableCfg.getEnhancePerLevelBonus() : 0.025;
             double bonus = perLevel * 100.0 * level;
-            out.add(line("§dEnhancement §fLv " + level + " §7(+" + fmt(bonus, 1) + "% stats)"));
+            out.add(line("§dEnhancement: §fLv " + level + " §7(+" + fmt(bonus, 1) + "% base stats, next summon)"));
         }
 
         if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {

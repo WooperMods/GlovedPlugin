@@ -361,7 +361,7 @@ public class SoulService {
         double capturedMaxHealth = victim.getAttribute(Attribute.MAX_HEALTH) != null
                 ? victim.getAttribute(Attribute.MAX_HEALTH).getBaseValue() : 0.0;
         SoulBaseStats capturedStats = SoulBaseStats.fromEntity(victim);
-        SoulInstance soul = SoulGenerator.generate(killer.getUniqueId(), type, cfg, forced, level, pity.rare, pity.epic,
+        SoulInstance soul = SoulGenerator.generate(killer.getUniqueId(), type, cfg, plugin.getSummonConfig(), forced, level, pity.rare, pity.epic,
                 capturedMaxHealth, capturedStats, tableConfig());
 
         // Capture-time side effects
@@ -395,7 +395,7 @@ public class SoulService {
         if (owner == null || type == null) return new CaptureResult(false, null, "invalid", false);
         SoulConfig cfg = soulConfig();
         int level = getSummoningLevel(owner.getUniqueId());
-        SoulInstance soul = SoulGenerator.generate(owner.getUniqueId(), type, cfg, forcedRarity, level, 0, 0,
+        SoulInstance soul = SoulGenerator.generate(owner.getUniqueId(), type, cfg, plugin.getSummonConfig(), forcedRarity, level, 0, 0,
                 0.0, SoulBaseStats.defaults(type), tableConfig());
         return storeCapturedSoulDirect(owner, soul, cfg);
     }
@@ -404,7 +404,7 @@ public class SoulService {
     public SoulInstance simulate(EntityType type, SoulRarity forcedRarity) {
         SoulConfig cfg = soulConfig();
         UUID fake = new UUID(0, 0);
-        return SoulGenerator.generate(fake, type, cfg, forcedRarity, 0, 0, 0, 0.0,
+        return SoulGenerator.generate(fake, type, cfg, plugin.getSummonConfig(), forcedRarity, 0, 0, 0, 0.0,
                 SoulBaseStats.defaults(type), tableConfig());
     }
 
@@ -905,13 +905,29 @@ public class SoulService {
     }
 
     public String inspect(SoulInstance s) {
+        return inspect(null, s);
+    }
+
+    public String inspect(UUID viewerId, SoulInstance s) {
         if (s == null) return "Soul not found.";
         StringBuilder sb = new StringBuilder();
         sb.append("§dSoul ").append(shortId(s)).append(" §7(").append(s.getSoulId()).append(")\n");
         sb.append("§7Family: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
-        sb.append("§7Rarity: §f").append(s.getRarity()).append("\n");
+        sb.append("§7Rarity: §f").append(s.getRarity()).append(" §7Quality: §f")
+                .append(String.format(java.util.Locale.ROOT, "%.2f%%", s.getQualityScore())).append("\n");
+        SoulBaseStats base = effectiveBaseStats(s);
+        double hp = computeSpawnedMaxHealth(viewerId != null ? viewerId : s.getOwnerId(), s);
+        double atk = estimateAverageHitDamage(viewerId != null ? viewerId : s.getOwnerId(), s);
+        double mv = computeSpawnedMovementBlocksPerSecond(s);
+        double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, base.attackSpeed()));
+        sb.append("§7Stats: §e").append(String.format(java.util.Locale.ROOT, "%.2f", hp)).append(" HP")
+                .append(" §c").append(String.format(java.util.Locale.ROOT, "%.2f", atk)).append(" ATK")
+                .append(" §b").append(String.format(java.util.Locale.ROOT, "%.2f", mv)).append(" bps")
+                .append(" §a").append(String.format(java.util.Locale.ROOT, "%.2f", aps)).append(" APS\n");
         sb.append("§7Summons: §f").append(effectiveGroupCapacity(s)).append(" §7(base ").append(Math.max(1, s.getGroupCapacity())).append(")\n");
-        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-").append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
+        sb.append("§7Enhancement: §fLv ").append(Math.max(0, s.getEnhanceLevel())).append("\n");
+        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-")
+                .append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
         if (s.getAffixes().isEmpty()) {
             sb.append("§7Affixes: §f-");
         } else {

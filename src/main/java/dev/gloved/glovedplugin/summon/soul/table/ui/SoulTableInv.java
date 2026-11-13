@@ -3,6 +3,7 @@ package dev.gloved.glovedplugin.summon.soul.table.ui;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixRoll;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
@@ -396,7 +397,22 @@ public final class SoulTableInv implements InventoryHolder {
                     } else {
                         int cost = svc != null ? svc.essenceCostEnhance(level) : cfg.enhanceCost(level);
                         lore.add("§7Level: §f" + level + " §7→ §f" + (level + 1));
-                        lore.add("§7Bonus: §a+" + SoulLoreBuilder.fmt(cfg.getEnhancePerLevelBonus() * 100.0, 1) + "% stats");
+                        lore.add("§7Bonus: §a+" + SoulLoreBuilder.fmt(cfg.getEnhancePerLevelBonus() * 100.0, 1) + "% base stats per level");
+                        SoulService ss = plugin.getSoulService();
+                        if (ss != null) {
+                            SoulInstance preview = soul.withEnhanceLevel(level + 1);
+                            double hp = ss.computeSpawnedMaxHealth(viewerId, preview);
+                            double atk = ss.estimateAverageHitDamage(viewerId, preview);
+                            double mv = ss.computeSpawnedMovementBlocksPerSecond(preview);
+                            SoulBaseStats pBase = ss.effectiveBaseStats(preview);
+                            double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS,
+                                    Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, pBase.attackSpeed()));
+                            int cap = ss.effectiveGroupCapacity(preview);
+                            lore.add("§7Preview (next summon):");
+                            lore.add("§e " + SoulLoreBuilder.fmt(hp, 2) + " §7HP  §c" + SoulLoreBuilder.fmt(atk, 2) + " §7ATK");
+                            lore.add("§b " + SoulLoreBuilder.fmt(mv, 2) + " bps §7MV  §a" + SoulLoreBuilder.fmt(aps, 2) + " §7APS");
+                            lore.add("§7 Summons: §3" + cap);
+                        }
                         lore.add("§7Cost: §b" + costLabel(cost));
                         if (essence < cost) lore.add("§cNot enough Essence");
                         else enabled = true;
@@ -409,8 +425,8 @@ public final class SoulTableInv implements InventoryHolder {
                 } else {
                     SoulInstance soul = chosen.get(0);
                     int cost = svc != null ? svc.essenceCostReforge(soul.getRarity()) : cfg.reforgeCost(soul.getRarity());
-                    lore.add("§7Affixes will be rerolled at " + soul.getRarity().coloredNameLegacy() + "§7.");
-                    lore.add("§7Family, rarity, base stats and level are kept.");
+                    lore.add("§7Rerolls affixes, base stats, and Summons capacity at " + soul.getRarity().coloredNameLegacy() + "§7.");
+                    lore.add("§7Family, rarity, enhancement level, and identity are kept.");
                     lore.add("§eCurrent soul:");
                     for (Component c : SoulLoreBuilder.statsSection(plugin, soul, viewerId, true)) {
                         lore.add(LEGACY.serialize(c));

@@ -41,13 +41,20 @@ public final class SoulGenerator {
     public static SoulInstance generate(UUID owner, EntityType type, SoulConfig cfg, SoulRarity forcedRarity,
                                         int summoningLevel, int pityRare, int pityEpic, double maxHealth,
                                         SoulBaseStats source, SoulTableConfig tableCfg) {
+        return generate(owner, type, cfg, null, forcedRarity, summoningLevel, pityRare, pityEpic, maxHealth, source, tableCfg);
+    }
+
+    public static SoulInstance generate(UUID owner, EntityType type, SoulConfig cfg,
+                                        dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
+                                        SoulRarity forcedRarity, int summoningLevel, int pityRare, int pityEpic,
+                                        double maxHealth, SoulBaseStats source, SoulTableConfig tableCfg) {
         EntityCategory cat = EntityCategory.of(type);
         SoulRarity rarity = forcedRarity != null ? forcedRarity : rollRarity(cfg, summoningLevel, pityRare, pityEpic);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
         boolean allowCount = !hasHardCountCap(cfg, type);
-        boolean allowCommander = isCostReductionRelevant(cfg);
+        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
         List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
         List<SoulTrait> traits = rollTraits(rarity, rng);
         double quality = SoulQuality.percent(rarity, affixes);
@@ -139,10 +146,17 @@ public final class SoulGenerator {
 
     /** Rerolls the affix list for a rarity, optionally excluding Duration/Count/Commander based on config and soul type. */
     public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg, EntityType type) {
+        return rollAffixesForRarity(rarity, cfg, null, type);
+    }
+
+    /** Rerolls the affix list for a rarity, optionally excluding Duration/Count/Commander based on config and soul type. */
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg,
+                                                           dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
+                                                           EntityType type) {
         if (rarity == null) return List.of();
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
         boolean allowCount = !hasHardCountCap(cfg, type);
-        boolean allowCommander = isCostReductionRelevant(cfg);
+        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
@@ -169,9 +183,21 @@ public final class SoulGenerator {
 
     /** Cost reduction (Commander) is irrelevant when soul-cast mana and cast cooldowns are disabled. */
     public static boolean isCostReductionRelevant(SoulConfig cfg) {
+        return isCostReductionRelevant(cfg, null);
+    }
+
+    /**
+     * Cost reduction (Commander) relevance based on effective cast mechanics.
+     * Cooldown reduction matters only when cast cooldowns/GCD are enabled.
+     * Mana reduction matters only when soul-cast mana is configured and progression mana consumption is enabled.
+     */
+    public static boolean isCostReductionRelevant(SoulConfig cfg, dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg) {
         if (cfg == null) return false;
         boolean manaRelevant = false;
-        try { manaRelevant = cfg.isCastManaEnabled() && cfg.getCastBaseManaCost() > 0.0; } catch (Throwable ignored) {}
+        try {
+            manaRelevant = cfg.isCastManaEnabled() && cfg.getCastBaseManaCost() > 0.0
+                    && (summonCfg == null || summonCfg.isManaEnabled());
+        } catch (Throwable ignored) {}
         boolean cooldownRelevant = false;
         try { cooldownRelevant = cfg.getCastBaseCooldownTicks() > 0 || cfg.getCastSharedGcdTicks() > 0; } catch (Throwable ignored) {}
         return manaRelevant || cooldownRelevant;

@@ -205,7 +205,9 @@ public final class SoulTableGuideInv implements InventoryHolder {
             var svc = plugin.getSoulService();
             if (svc == null || svc.soulConfig() == null) return false;
             var cfg = svc.soulConfig();
-            boolean manaRelevant = cfg.isCastManaEnabled() && cfg.getCastBaseManaCost() > 0.0;
+            var summonCfg = plugin.getSummonConfig();
+            boolean manaRelevant = cfg.isCastManaEnabled() && cfg.getCastBaseManaCost() > 0.0
+                    && (summonCfg == null || summonCfg.isManaEnabled());
             boolean cooldownRelevant = cfg.getCastBaseCooldownTicks() > 0 || cfg.getCastSharedGcdTicks() > 0;
             return manaRelevant || cooldownRelevant;
         } catch (Throwable ignored) {
@@ -298,7 +300,7 @@ public final class SoulTableGuideInv implements InventoryHolder {
                 "§7Max level: §f" + cfg.getEnhanceMaxLevel(),
                 "§7Cost scales by current level and consumes Essence.")));
         inventory.setItem(21, infoItem(Material.GRINDSTONE, "§dReforge", List.of(
-                "§7Reroll affixes and base stats at the same rarity.",
+                "§7Reroll affixes, base stats, and Summons capacity at the same rarity.",
                 "§7Keeps family, rarity, enhancement level, and identity.",
                 "§7Consumes Essence by rarity.")));
         inventory.setItem(22, infoItem(Material.HOPPER, "§dSalvage", List.of(
