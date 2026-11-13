@@ -258,6 +258,8 @@ public class SummonManager {
                 : (soul.getBaseStats() != null
                         ? soul.getBaseStats()
                         : SoulBaseStats.defaults(soul.getEntityType()));
+        int groupSize = 1;
+        try { groupSize = Math.max(1, svc != null ? svc.effectiveGroupCapacity(soul) : soul.getGroupCapacity()); } catch (Throwable ignored) {}
 
         double speedMult = clamp(snap.speedMultiplier(), 0.5, 1.6);
         // Movement: base scaled by SWIFT with diminishing returns near the cap (higher speed => less affix impact).
@@ -300,9 +302,11 @@ public class SummonManager {
                 fly.setBaseValue(clamp(flyBase * speedMult, 0.05, flyCap));
             }
         } catch (Throwable ignored) {}
-        // Offense / defense stats: absolute rolled values (affix multipliers where they exist).
-        setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)));
+        // Offense / defense stats: absolute rolled values (affix multipliers where they exist), split across group.
+        setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, (base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)) / groupSize));
         setBase(mob, Attribute.ATTACK_SPEED, base.attackSpeed());
+        // DEF: soul armor stat (base cap 13.75, ~55% base negation; enhancement can exceed caps).
+        setBase(mob, Attribute.ARMOR, Math.max(SoulBaseStats.MIN_DEFENSE, base.defense()));
 
         // Slime/Magma size normalization (safety/generic rule) must happen before final health is set,
         // because changing size resets a slime's max health to its size-based vanilla value.
@@ -315,7 +319,7 @@ public class SummonManager {
         } catch (Throwable ignored) {}
 
         // Apply bounded health scaling for damageable minions.
-        // Health = rolled (enhanced) base * VIGOROUS affix + owner's AuraSkills health stat (flat bonus).
+        // Soul's final (rolled+enhanced base * VIGOROUS + owner AuraSkills health bonus) is divided across the group.
         try {
             var hp = mob.getAttribute(Attribute.MAX_HEALTH);
             if (hp != null) {
@@ -338,7 +342,7 @@ public class SummonManager {
                         }
                     }
                 } catch (Throwable ignored) {}
-                double newMax = Math.max(1.0, scaledBase + ownerHealthBonus);
+                double newMax = Math.max(1.0, (scaledBase + ownerHealthBonus) / groupSize);
                 hp.setBaseValue(newMax);
                 mob.setHealth(newMax);
             }

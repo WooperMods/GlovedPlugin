@@ -216,21 +216,20 @@ public class SoulService {
     }
 
     /**
-     * Effective/authoritative group capacity for a soul: base + enhancement milestones + capacity affix %,
-     * clamped by hard per-type overrides and absolute ceilings. Mob types with hard overrides can still
-     * roll the capacity affix on the soul; the override remains a final ceiling.
+     * Effective/authoritative group capacity (summons created) for a soul:
+     * base (rarity-rolled) + enhancement milestones + CAPACITY affix %.
+     * Boss hard per-type overrides are kept as a final ceiling exception.
      */
     public int effectiveGroupCapacity(SoulInstance soul) {
         if (soul == null) return 1;
         int base = Math.max(1, soul.getGroupCapacity());
 
-        // Enhancement path: milestone increases (balanced, integer), capped later.
+        // Enhancement path: milestone increases (can raise count beyond base/global-like caps, like other stats).
         int enhanceBonus = 0;
         int lvl = Math.max(0, soul.getEnhanceLevel());
         if (lvl >= 5) enhanceBonus += 1;
         if (lvl >= 10) enhanceBonus += 1;
 
-        // Reforge/enhancement can increase capacity via base rerolls and these milestones.
         int baseWithEnhance = Math.max(1, base + enhanceBonus);
 
         double pct = 0.0;
@@ -242,23 +241,10 @@ public class SoulService {
         }
         if (computed < 1) computed = 1;
 
-        // Absolute safety ceiling for generated/modified soul capacity.
-        int ceiling = 10;
+        // Absolute safety ceiling (high enough to allow ~8+ via rarity/affix/enhance).
+        int ceiling = 12;
 
-        // Category/type guidance ceiling (keeps rarity scaling from becoming extreme for some archetypes).
-        try {
-            SoulConfig cfg = soulConfig();
-            if (cfg != null) {
-                var cat = soul.getCategory();
-                if (cat == null) cat = EntityCategory.of(soul.getEntityType());
-                var cd = cfg.getCategoryDefaults(cat);
-                if (cd != null) {
-                    ceiling = Math.min(ceiling, Math.max(1, cd.maxActivePerType() + 2));
-                }
-            }
-        } catch (Throwable ignored) {}
-
-        // Hard per-type override is an absolute ceiling (final authority cap).
+        // Hard per-type override is an absolute ceiling exception (e.g. boss overrides kept).
         try {
             SoulConfig cfg = soulConfig();
             if (cfg != null) {
@@ -920,7 +906,9 @@ public class SoulService {
         double atk = estimateAverageHitDamage(viewerId != null ? viewerId : s.getOwnerId(), s);
         double mv = computeSpawnedMovementBlocksPerSecond(s);
         double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, base.attackSpeed()));
+        double def = SoulBaseStats.clampDefense(base.defense());
         sb.append("§7Stats: §e").append(String.format(java.util.Locale.ROOT, "%.2f", hp)).append(" HP")
+                .append(" §9").append(String.format(java.util.Locale.ROOT, "%.2f", def)).append(" DEF")
                 .append(" §c").append(String.format(java.util.Locale.ROOT, "%.2f", atk)).append(" ATK")
                 .append(" §b").append(String.format(java.util.Locale.ROOT, "%.2f", mv)).append(" bps")
                 .append(" §a").append(String.format(java.util.Locale.ROOT, "%.2f", aps)).append(" APS\n");
@@ -1070,15 +1058,16 @@ public class SoulService {
     }
 
     /**
-     * Estimate the average melee hit damage this soul's minion would deal (non-elite baseline),
+     * Estimate the average melee hit damage this soul would deal (non-elite baseline),
      * mirroring SummonAI.applyMinionHit/SummonAbilityService crit resolution as closely as
      * possible without target-specific context. Packbound is omitted (ally-dependent).
+     * Returns the soul's full (pre group-division) damage stat for display/tooltips.
      */
     public double estimateAverageHitDamage(UUID ownerId, SoulInstance soul) {
         if (soul == null) return 0.0;
         var summonCfg = plugin.getSummonConfig();
 
-        // Core base: soul's effective (enhanced) attack stat (raw soul attribute foundation).
+        // Core base: soul's effective (enhanced) attack stat (full soul stat, pre-division).
         double baseDamage = Math.max(0.5, effectiveBaseStats(soul).attackDamage());
 
         // Owner strength bonus (AuraSkills attack damage trait)
@@ -1129,7 +1118,10 @@ public class SoulService {
         return Math.max(0.0, baseDamage);
     }
 
-    /** Breakdown of spawned max health: [baseIncludingOwner, affixBonus(VIGOROUS), ownerBonus, total]. */
+    /**
+     * Breakdown of spawned max health (full soul stat, pre group-division): [baseIncludingOwner, affixBonus(VIGOROUS), ownerBonus, total].
+     * Used for display/tooltips; actual per-minion health is divided across intended group size at spawn.
+     */
     public double[] computeSpawnedMaxHealthBreakdown(UUID ownerId, SoulInstance soul) {
         if (soul == null) return new double[]{0, 0, 0, 0};
         SoulBaseStats base = effectiveBaseStats(soul);

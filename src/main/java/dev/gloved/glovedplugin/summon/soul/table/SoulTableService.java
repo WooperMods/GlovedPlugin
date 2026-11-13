@@ -162,15 +162,15 @@ public final class SoulTableService {
                 if (soulCost == Integer.MAX_VALUE) throw new TableFailure("Reforge is not available for this soul");
                 if (!repository.spendEssence(owner, soulCost, cap)) throw new TableFailure(NOT_ENOUGH);
 
-                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(
-                        soul.getRarity(), soulService.soulConfig(), plugin.getSummonConfig(), soul.getEntityType());
-                double quality = SoulQuality.percent(soul.getRarity(), affixes);
                 SoulBaseStats baseStats =
                         SoulGenerator.rollBaseStats(soul.getEntityType(), soul.getRarity(), null, config());
+                String typeKey = soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey();
                 int groupCapacity = SoulGenerator.rollBaseGroupCapacity(
-                        soul.getRarity(), soul.getCategory(),
-                        soul.getEntityType() != null ? soul.getEntityType().name() : soul.getFamilyKey(),
-                        soulService.soulConfig());
+                        soul.getRarity(), soul.getCategory(), typeKey, soulService.soulConfig());
+                List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(
+                        soul.getRarity(), soulService.soulConfig(), plugin.getSummonConfig(),
+                        soul.getEntityType(), groupCapacity);
+                double quality = SoulQuality.percent(soul.getRarity(), affixes);
                 repository.updateSoulAffixes(soulId, affixes, quality);
                 repository.updateSoulBaseStats(soulId, baseStats);
                 repository.updateSoulGroupCapacity(soulId, groupCapacity);

@@ -1401,14 +1401,18 @@ public class SummonAI {
         int ownerLevel = EliteMobsIntegration.getCombatLevel(owner);
         boolean isElite = isEliteMob(target);
 
-        // Core base: soul's effective (enhanced) attack stat, falling back to the mob's attack attribute or legacy base.
+        // Core base: soul's effective (enhanced) attack stat, divided across the intended group size.
+        int groupSize = 1;
+        try {
+            if (soul != null && soulService != null) groupSize = Math.max(1, soulService.effectiveGroupCapacity(soul));
+        } catch (Throwable ignored) {}
         double soulBaseAtk;
         if (soul != null && soulService != null) {
-            soulBaseAtk = soulService.effectiveBaseStats(soul).attackDamage();
+            soulBaseAtk = soulService.effectiveBaseStats(soul).attackDamage() / groupSize;
         } else if (minion != null && minion.getAttribute(Attribute.ATTACK_DAMAGE) != null) {
             soulBaseAtk = minion.getAttribute(Attribute.ATTACK_DAMAGE).getBaseValue();
         } else {
-            soulBaseAtk = Math.max(0.5, rawBaseDamage);
+            soulBaseAtk = Math.max(0.5, rawBaseDamage) / groupSize;
         }
         // Elite-target bonus (preserves level scaling vs elite mobs).
         double eliteBonus = isElite ? Math.max(0.0, ownerLevel * 0.4) : 0.0;

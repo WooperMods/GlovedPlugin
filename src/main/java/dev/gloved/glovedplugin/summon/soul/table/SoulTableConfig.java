@@ -62,14 +62,18 @@ public final class SoulTableConfig {
                 SoulBaseStats.KEY_HEALTH,
                 SoulBaseStats.KEY_ATTACK_DAMAGE,
                 SoulBaseStats.KEY_MOVEMENT_SPEED,
-                SoulBaseStats.KEY_ATTACK_SPEED
+                SoulBaseStats.KEY_ATTACK_SPEED,
+                SoulBaseStats.KEY_DEFENSE
         );
         private static final double DEFAULT_OVERLAP = 0.06;
 
         private final Map<String, Double> boundsMin = new LinkedHashMap<>();
         private final Map<String, Double> boundsMax = new LinkedHashMap<>();
         private final double[] splitWeights = new double[SoulRarity.values().length];
+        private final Map<String, double[]> splitWeightsByStat = new LinkedHashMap<>();
+        private final Map<String, Double> rollSkewByStat = new LinkedHashMap<>();
         private double overlap = DEFAULT_OVERLAP;
+        private double defaultRollSkew = 1.0;
         private final Map<String, EnumMap<SoulRarity, Band>> bands = new LinkedHashMap<>();
         private boolean legacyWarned = false;
 
@@ -78,20 +82,42 @@ public final class SoulTableConfig {
             boundsMin.put(SoulBaseStats.KEY_ATTACK_DAMAGE, 4.0);
             boundsMin.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 1.0 / 43.17);
             boundsMin.put(SoulBaseStats.KEY_ATTACK_SPEED, SoulBaseStats.MIN_ATTACK_SPEED_APS);
+            boundsMin.put(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MIN_DEFENSE);
 
-            boundsMax.put(SoulBaseStats.KEY_HEALTH, 200.0);
+            boundsMax.put(SoulBaseStats.KEY_HEALTH, 100.0);
             boundsMax.put(SoulBaseStats.KEY_ATTACK_DAMAGE, 30.0);
             boundsMax.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 14.0 / 43.17);
             boundsMax.put(SoulBaseStats.KEY_ATTACK_SPEED, SoulBaseStats.MAX_ATTACK_SPEED_APS);
+            boundsMax.put(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MAX_DEFENSE);
 
             java.util.Arrays.fill(splitWeights, 1.0);
+            // HP: lower rarities get less of the range, higher rarities more, and high rolls are harder.
+            setDefaultSplit(SoulBaseStats.KEY_HEALTH, new double[]{0.45, 0.55, 0.80, 1.10, 1.60, 2.50});
+            rollSkewByStat.put(SoulBaseStats.KEY_HEALTH, 2.5);
             recomputeBands();
+        }
+
+        private void setDefaultSplit(String key, double[] weights) {
+            if (key == null || weights == null) return;
+            SoulRarity[] rarities = SoulRarity.values();
+            double[] copy = new double[rarities.length];
+            for (int i = 0; i < rarities.length; i++) {
+                copy[i] = i < weights.length ? Math.max(0.0001, weights[i]) : 1.0;
+            }
+            splitWeightsByStat.put(key, copy);
         }
 
         public double globalMin(String key) { return boundsMin.getOrDefault(key, 0.0); }
         public double globalMax(String key) { return boundsMax.getOrDefault(key, 0.0); }
         /** Back-compat alias: global ceiling for a stat. */
         public double cap(String key) { return globalMax(key); }
+
+        public double rollSkew(String key) {
+            Double v = key != null ? rollSkewByStat.get(key) : null;
+            double skew = v != null ? v : defaultRollSkew;
+            if (!Double.isFinite(skew) || skew <= 0.0) return 1.0;
+            return skew;
+        }
 
         public Band band(String key, SoulRarity rarity) {
             EnumMap<SoulRarity, Band> byRarity = bands.get(key);
@@ -114,6 +140,11 @@ public final class SoulTableConfig {
             }
         }
 
+        private double[] weightsFor(String key) {
+            double[] per = key != null ? splitWeightsByStat.get(key) : null;
+            return per != null ? per : splitWeights;
+        }
+
         private EnumMap<SoulRarity, Band> computeBandsFor(String key) {
             SoulRarity[] rarities = SoulRarity.values();
             double min = boundsMin.getOrDefault(key, 0.0);
@@ -121,15 +152,16 @@ public final class SoulTableConfig {
             if (!Double.isFinite(min)) min = 0.0;
             if (!Double.isFinite(max) || max < min) max = min;
             double range = max - min;
+            double[] weights = weightsFor(key);
             double weightSum = 0.0;
-            for (double w : splitWeights) weightSum += Math.max(0.0001, w);
+            for (double w : weights) weightSum += Math.max(0.0001, w);
             if (weightSum <= 0.0) weightSum = rarities.length;
             double[] coreMin = new double[rarities.length];
             double[] coreMax = new double[rarities.length];
             double cursor = min;
             for (int i = 0; i < rarities.length; i++) {
                 coreMin[i] = cursor;
-                double w = Math.max(0.0001, splitWeights[i]);
+                double w = Math.max(0.0001, weights[i]);
                 double width = (i == rarities.length - 1) ? (max - cursor) : (range * (w / weightSum));
                 coreMax[i] = cursor + width;
                 cursor = coreMax[i];
@@ -171,14 +203,58 @@ public final class SoulTableConfig {
             loadBound(yaml, "souls.stats.bounds.movement-speed", SoulBaseStats.KEY_MOVEMENT_SPEED, 0.0, Double.POSITIVE_INFINITY);
             loadBound(yaml, "souls.stats.bounds.attack-speed", SoulBaseStats.KEY_ATTACK_SPEED,
                     SoulBaseStats.MIN_ATTACK_SPEED_APS, SoulBaseStats.MAX_ATTACK_SPEED_APS);
+            loadBound(yaml, "souls.stats.bounds.defense", SoulBaseStats.KEY_DEFENSE,
+                    SoulBaseStats.MIN_DEFENSE, SoulBaseStats.MAX_DEFENSE);
 
             overlap = clamp(yaml.getDouble("souls.stats.ranges.overlap", DEFAULT_OVERLAP), 0.0, 0.45);
+
+            // Global split (back-compat): souls.stats.ranges.split.<RARITY>
             ConfigurationSection split = yaml.getConfigurationSection("souls.stats.ranges.split");
+            SoulRarity[] rarities = SoulRarity.values();
+            boolean hasGlobalSplitEntries = false;
             if (split != null) {
-                SoulRarity[] rarities = SoulRarity.values();
-                for (int i = 0; i < rarities.length; i++) {
-                    splitWeights[i] = Math.max(0.0001, split.getDouble(rarities[i].name(), splitWeights[i]));
+                for (SoulRarity r : rarities) {
+                    if (split.isSet(r.name()) && !split.isConfigurationSection(r.name())) {
+                        hasGlobalSplitEntries = true;
+                        break;
+                    }
                 }
+                if (hasGlobalSplitEntries) {
+                    for (int i = 0; i < rarities.length; i++) {
+                        if (!split.isConfigurationSection(rarities[i].name())) {
+                            splitWeights[i] = Math.max(0.0001, split.getDouble(rarities[i].name(), splitWeights[i]));
+                        }
+                    }
+                }
+                // Per-stat splits: souls.stats.ranges.split.<stat>.<RARITY>
+                for (String key : STAT_KEYS) {
+                    if (split.isConfigurationSection(key)) {
+                        ConfigurationSection sec = split.getConfigurationSection(key);
+                        if (sec == null) continue;
+                        double[] arr = new double[rarities.length];
+                        double[] base = weightsFor(key);
+                        for (int i = 0; i < rarities.length; i++) {
+                            arr[i] = Math.max(0.0001, sec.getDouble(rarities[i].name(), base[i]));
+                        }
+                        splitWeightsByStat.put(key, arr);
+                    }
+                }
+            }
+
+            // Roll skew: global default + per-stat overrides (souls.stats.ranges.roll-skew / roll-skew.<stat>)
+            String skewPath = "souls.stats.ranges.roll-skew";
+            if (yaml.isConfigurationSection(skewPath)) {
+                ConfigurationSection sec = yaml.getConfigurationSection(skewPath);
+                if (sec != null) {
+                    defaultRollSkew = Math.max(0.01, sec.getDouble("default", defaultRollSkew));
+                    for (String key : STAT_KEYS) {
+                        if (sec.isSet(key) && !sec.isConfigurationSection(key)) {
+                            rollSkewByStat.put(key, Math.max(0.01, sec.getDouble(key, rollSkew(key))));
+                        }
+                    }
+                }
+            } else if (yaml.isSet(skewPath)) {
+                defaultRollSkew = Math.max(0.01, yaml.getDouble(skewPath, defaultRollSkew));
             }
 
             // Keep bounds sane and respect hard floors/caps.
@@ -189,6 +265,13 @@ public final class SoulTableConfig {
                     SoulBaseStats.MIN_ATTACK_SPEED_APS, SoulBaseStats.MAX_ATTACK_SPEED_APS));
             boundsMax.put(SoulBaseStats.KEY_ATTACK_SPEED, clamp(boundsMax.get(SoulBaseStats.KEY_ATTACK_SPEED),
                     boundsMin.get(SoulBaseStats.KEY_ATTACK_SPEED), SoulBaseStats.MAX_ATTACK_SPEED_APS));
+
+            // DEF base/roll cap [1,13.75] (~55% base armor damage negation, toughness 0). Enhancement can exceed caps.
+            boundsMin.put(SoulBaseStats.KEY_DEFENSE, clamp(boundsMin.getOrDefault(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MIN_DEFENSE),
+                    SoulBaseStats.MIN_DEFENSE, SoulBaseStats.MAX_DEFENSE));
+            boundsMax.put(SoulBaseStats.KEY_DEFENSE, clamp(boundsMax.getOrDefault(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MAX_DEFENSE),
+                    boundsMin.get(SoulBaseStats.KEY_DEFENSE), SoulBaseStats.MAX_DEFENSE));
+
             for (String key : STAT_KEYS) {
                 if (boundsMax.getOrDefault(key, 0.0) < boundsMin.getOrDefault(key, 0.0)) {
                     boundsMax.put(key, boundsMin.getOrDefault(key, 0.0));
@@ -367,17 +450,28 @@ public final class SoulTableConfig {
         set(cfg, "souls.stats.enabled", true);
         set(cfg, "souls.stats.backfill-legacy", true);
         set(cfg, "souls.stats.bounds.health.min", 1.0);
-        set(cfg, "souls.stats.bounds.health.max", 200.0);
+        set(cfg, "souls.stats.bounds.health.max", 100.0);
         set(cfg, "souls.stats.bounds.attack-damage.min", 4.0);
         set(cfg, "souls.stats.bounds.attack-damage.max", 30.0);
         set(cfg, "souls.stats.bounds.movement-speed.min", 1.0 / 43.17);
         set(cfg, "souls.stats.bounds.movement-speed.max", 14.0 / 43.17);
         set(cfg, "souls.stats.bounds.attack-speed.min", SoulBaseStats.MIN_ATTACK_SPEED_APS);
         set(cfg, "souls.stats.bounds.attack-speed.max", SoulBaseStats.MAX_ATTACK_SPEED_APS);
+        // DEF (armor points): min 1; max 13.75 gives up to ~55% base armor damage negation (toughness 0). Enhancement can exceed caps.
+        set(cfg, "souls.stats.bounds.defense.min", SoulBaseStats.MIN_DEFENSE);
+        set(cfg, "souls.stats.bounds.defense.max", SoulBaseStats.MAX_DEFENSE);
         set(cfg, "souls.stats.ranges.overlap", 0.06);
         for (SoulRarity rarity : SoulRarity.values()) {
             set(cfg, "souls.stats.ranges.split." + rarity.name(), 1.0);
         }
+        // HP: smaller low-rarity bands, wider high-rarity bands, and harder-to-roll top-end HP.
+        set(cfg, "souls.stats.ranges.split.health.COMMON", 0.45);
+        set(cfg, "souls.stats.ranges.split.health.UNCOMMON", 0.55);
+        set(cfg, "souls.stats.ranges.split.health.RARE", 0.80);
+        set(cfg, "souls.stats.ranges.split.health.EPIC", 1.10);
+        set(cfg, "souls.stats.ranges.split.health.LEGENDARY", 1.60);
+        set(cfg, "souls.stats.ranges.split.health.MYTHIC", 2.50);
+        set(cfg, "souls.stats.ranges.roll-skew.health", 2.5);
     }
 
     private static void set(FileConfiguration cfg, String path, Object value) {

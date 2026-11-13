@@ -82,31 +82,50 @@ public final class SoulLoreBuilder {
         }
 
         SoulService service = plugin != null ? plugin.getSoulService() : null;
-        SoulBaseStats base = service != null
+        SoulBaseStats enhancedBase = service != null
                 ? service.effectiveBaseStats(soul)
                 : (soul.getBaseStats() != null ? soul.getBaseStats() : SoulBaseStats.defaults(soul.getEntityType()));
+        SoulBaseStats preEnhBase = service != null
+                ? service.baseStatsOf(soul)
+                : (soul.getBaseStats() != null ? soul.getBaseStats() : SoulBaseStats.defaults(soul.getEntityType()));
+        int enhLevel = Math.max(0, soul.getEnhanceLevel());
+        boolean showEnh = enhLevel > 0;
 
-        // HP breakdown: base (soul base + owner bonus) + VIGOROUS affix (only when affix applies)
+        SoulStatSnapshot snap = service != null ? service.getSnapshot(soul) : SoulStatSnapshot.fromSoul(soul);
+        int groupSize = Math.max(1, service != null ? service.effectiveGroupCapacity(soul) : soul.getGroupCapacity());
+
+        // HP breakdown: full soul stat (pre group-division). Runtime per-minion HP is divided on spawn.
         String hpLine;
-        if (service != null) {
-            double[] hb = service.computeSpawnedMaxHealthBreakdown(viewerId, soul);
+        double totalHp = service != null ? service.computeSpawnedMaxHealth(viewerId, soul) : enhancedBase.health();
+        {
             double vigorous = soul != null ? soul.affixValue(SoulAffixType.VIGOROUS) : 0.0;
-            if (Math.abs(hb[1]) >= 0.05 && Math.abs(vigorous) >= 0.00005) {
-                StringBuilder parts = new StringBuilder();
-                parts.append(fmt(hb[0], 2));
-                parts.append("+").append(fmtPercent(vigorous * 100.0));
-                hpLine = "§e" + fmt(hb[3], 2) + " §7HP §8(" + parts + ")";
-            } else {
-                hpLine = "§e" + fmt(hb[3], 2) + " §7HP";
+            double preEnhHp = preEnhBase.health();
+            double enhHpDelta = enhancedBase.health() - preEnhHp;
+            double ownerHealthBonus = 0.0;
+            if (service != null) {
+                double[] hb = service.computeSpawnedMaxHealthBreakdown(viewerId, soul);
+                ownerHealthBonus = Math.max(0.0, hb[2]);
+                totalHp = hb[3];
             }
-        } else {
-            hpLine = "§e" + fmt(base.health(), 2) + " §7HP";
+            boolean showHpBreakdown = showEnh || Math.abs(ownerHealthBonus) >= 0.005 || Math.abs(vigorous) >= 0.00005;
+            if (showHpBreakdown) {
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(fmt(preEnhHp + ownerHealthBonus, 2));
+                if (showEnh && Math.abs(enhHpDelta) >= 0.005) parts.append("§8+§d").append(fmt(enhHpDelta, 2));
+                if (Math.abs(vigorous) >= 0.00005) parts.append("§8+§a").append(fmtPercent(vigorous * 100.0));
+                hpLine = "§e" + fmt(totalHp, 2) + " §7HP §8(" + parts + "§8)";
+            } else {
+                hpLine = "§e" + fmt(totalHp, 2) + " §7HP";
+            }
         }
 
-        // ATK DMG: show base attack (soul base + owner strength bonus) and BRUTAL multiplier contribution
-        double avgDmg = service != null ? service.estimateAverageHitDamage(viewerId, soul) : base.attackDamage();
-        SoulStatSnapshot snap = service != null ? service.getSnapshot(soul) : SoulStatSnapshot.fromSoul(soul);
-        double baseAtk = base.attackDamage();
+        // DEF breakdown computed below in display order.
+
+        // ATK DMG: full soul stat (pre group-division). Runtime per-minion damage is divided on spawn/hit.
+        double avgDmg = service != null ? service.estimateAverageHitDamage(viewerId, soul) : enhancedBase.attackDamage();
+        double baseAtk = enhancedBase.attackDamage();
+        double preEnhAtk = preEnhBase.attackDamage();
+        double enhAtkDelta = baseAtk - preEnhAtk;
         double ownerStrengthBonus = 0.0;
         try {
             var summonCfg = plugin != null ? plugin.getSummonConfig() : null;
@@ -122,61 +141,107 @@ public final class SoulLoreBuilder {
         double baseWithOwner = baseAtk + ownerStrengthBonus;
         double dmgMult = Math.max(0.5, Math.min(3.0, snap.damageMultiplier()));
         String dmgLine;
-        if (Math.abs(dmgMult - 1.0) >= 0.0005) {
-            double brutal = soul != null ? soul.affixValue(SoulAffixType.BRUTAL) : 0.0;
-            if (Math.abs(brutal) >= 0.00005) {
-                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + fmt(baseWithOwner, 2) + "+" + fmtPercent(brutal * 100.0) + ")";
+        {
+            boolean hasDmgMod = Math.abs(dmgMult - 1.0) >= 0.0005 || Math.abs(ownerStrengthBonus) >= 0.005 || (showEnh && Math.abs(enhAtkDelta) >= 0.005);
+            if (hasDmgMod) {
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(fmt(preEnhAtk + ownerStrengthBonus, 2));
+                if (showEnh && Math.abs(enhAtkDelta) >= 0.005) parts.append("§8+§d").append(fmt(enhAtkDelta, 2));
+                if (Math.abs(dmgMult - 1.0) >= 0.0005) {
+                    double brutal = soul != null ? soul.affixValue(SoulAffixType.BRUTAL) : 0.0;
+                    if (Math.abs(brutal) >= 0.00005) {
+                        parts.append("§8+§a").append(fmtPercent(brutal * 100.0));
+                    } else {
+                        double atkFromAffix = baseWithOwner * (dmgMult - 1.0);
+                        String sign = atkFromAffix >= 0 ? "+" : "";
+                        String deltaColor = atkFromAffix >= 0 ? "§a" : "§c";
+                        parts.append("§8").append(sign).append(deltaColor).append(fmt(Math.abs(atkFromAffix), 2));
+                    }
+                }
+                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + parts + "§8)";
             } else {
-                double atkFromAffix = baseWithOwner * (dmgMult - 1.0);
-                String sign = atkFromAffix >= 0 ? "+" : "";
-                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + fmt(baseWithOwner, 2) + sign + fmt(atkFromAffix, 2) + ")";
+                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG";
             }
-        } else {
-            dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG";
         }
 
-        // MV SPD: show base speed and SWIFT contribution (bps), final is spawned/clamped
-        double moveBps = service != null ? service.computeSpawnedMovementBlocksPerSecond(soul) : (base.movementSpeed() * 43.17);
+        // ATK SPD: pre-enh + enhancement delta
+        double atkSpdAps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, enhancedBase.attackSpeed());
+        double preAtkSpd = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, preEnhBase.attackSpeed());
+        double enhAtkSpdDelta = atkSpdAps - preAtkSpd;
+        String atkSpdLine;
+        if (showEnh && Math.abs(enhAtkSpdDelta) >= 0.005) {
+            atkSpdLine = "§a" + fmt(atkSpdAps, 2) + " §7ATK SPD §8(§7" + fmt(preAtkSpd, 2) + "§8+§d" + fmt(enhAtkSpdDelta, 2) + "§8)";
+        } else {
+            atkSpdLine = "§a" + fmt(atkSpdAps, 2) + " §7ATK SPD";
+        }
+
+        // MV SPD: pre-enh + enhancement delta + affix contribution (bps)
+        double moveBps = service != null ? service.computeSpawnedMovementBlocksPerSecond(soul) : (enhancedBase.movementSpeed() * 43.17);
         double speedMult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
-        double baseMoveBps;
-        if (service != null) {
-            baseMoveBps = service.computeSpawnedMovementSpeed(soul, 1.0) * 43.17;
-        } else {
-            baseMoveBps = base.movementSpeed() * 43.17;
-        }
+        double preEnhMoveBps = Math.max(0.0, preEnhBase.movementSpeed() * 43.17);
+        double enhMoveBps = Math.max(0.0, enhancedBase.movementSpeed() * 43.17);
+        double enhMoveDeltaBps = enhMoveBps - preEnhMoveBps;
         String moveLine;
-        if (Math.abs(speedMult - 1.0) >= 0.0005 && Math.abs(moveBps - baseMoveBps) >= 0.005) {
-            double swift = soul != null ? soul.affixValue(SoulAffixType.SWIFT) : 0.0;
-            if (Math.abs(swift) >= 0.00005) {
-                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + fmt(baseMoveBps, 2) + "+" + fmtPercent(swift * 100.0) + ")";
+        {
+            boolean hasSwift = Math.abs(speedMult - 1.0) >= 0.0005 && Math.abs(moveBps - enhMoveBps) >= 0.005;
+            boolean showMvBreakdown = (showEnh && Math.abs(enhMoveDeltaBps) >= 0.005) || hasSwift;
+            if (showMvBreakdown) {
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(fmt(preEnhMoveBps, 2));
+                if (showEnh && Math.abs(enhMoveDeltaBps) >= 0.005) parts.append("§8+§d").append(fmt(enhMoveDeltaBps, 2));
+                if (hasSwift) {
+                    double swift = soul != null ? soul.affixValue(SoulAffixType.SWIFT) : 0.0;
+                    if (Math.abs(swift) >= 0.00005) {
+                        parts.append("§8+§a").append(fmtPercent(swift * 100.0));
+                    } else {
+                        double affixMoveBps = moveBps - enhMoveBps;
+                        String sign = affixMoveBps >= 0 ? "+" : "";
+                        String deltaColor = affixMoveBps >= 0 ? "§a" : "§c";
+                        parts.append("§8").append(sign).append(deltaColor).append(fmt(Math.abs(affixMoveBps), 2));
+                    }
+                }
+                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + parts + "§8)";
             } else {
-                double affixMoveBps = moveBps - baseMoveBps;
-                String sign = affixMoveBps >= 0 ? "+" : "";
-                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + fmt(baseMoveBps, 2) + sign + fmt(affixMoveBps, 2) + ")";
+                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD";
             }
-        } else {
-            moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD";
         }
 
-        double atkSpdAps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS,
-                Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, base.attackSpeed()));
         out.add(line(hpLine));
+        // DEF line (with enhancement breakdown when applicable)
+        {
+            double preDef = SoulBaseStats.clampDefense(preEnhBase.defense());
+            double effDef = Math.max(SoulBaseStats.MIN_DEFENSE, enhancedBase.defense());
+            double defDelta = effDef - preDef;
+            if (showEnh && Math.abs(defDelta) >= 0.005) {
+                out.add(line("§9" + fmt(effDef, 2) + " §7DEF §8(§7" + fmt(preDef, 2) + "§8+§d" + fmt(defDelta, 2) + "§8)"));
+            } else {
+                out.add(line("§9" + fmt(effDef, 2) + " §7DEF"));
+            }
+        }
         out.add(line(dmgLine));
-        out.add(line("§a" + fmt(atkSpdAps, 2) + " §7ATK SPD"));
+        out.add(line(atkSpdLine));
         out.add(line(moveLine));
 
-        // Summons (authoritative soul stat): base + enhancement + Summons affix %, capped.
-        int effectiveCap = service != null ? service.effectiveGroupCapacity(soul) : Math.max(1, soul.getGroupCapacity());
+        // Summons (authoritative soul stat): base + enhancement milestones + Summons affix %, capped.
+        int effectiveCap = groupSize;
         String capLine = "§7Summons §3" + effectiveCap;
         if (service != null) {
-            int[] cb = service.computeGroupCapacityBreakdown(soul);
+            int[] cb = service.computeGroupCapacityBreakdown(soul); // base, enhanceBonus, affixBonusCount, effective
             double capPct = soul != null ? soul.affixValue(SoulAffixType.CAPACITY) : 0.0;
-            StringBuilder parts = new StringBuilder();
-            parts.append(cb[0]);
-            if (cb[1] > 0) parts.append("+").append(cb[1]).append(" enh");
-            if (Math.abs(capPct) >= 0.00005) parts.append("+").append(fmtPercent(capPct * 100.0));
-            if (parts.length() > 0 && !parts.toString().equals(String.valueOf(cb[0])) || cb[3] != cb[0]) {
-                capLine = "§7Summons §3" + cb[3] + " §8(" + parts + ")";
+            boolean hasEnh = cb[1] > 0;
+            boolean hasAffix = Math.abs(capPct) >= 0.00005;
+            boolean differs = cb[3] != cb[0] || hasEnh || hasAffix;
+            if (differs) {
+                int beforeAffix = Math.max(1, cb[0] + cb[1]);
+                int expected = (int) Math.floor(beforeAffix * (1.0 + Math.max(0.0, capPct)) + 1e-9);
+                if (capPct > 0.0 && expected == beforeAffix) expected = beforeAffix + 1;
+                boolean capped = cb[3] < expected;
+                String effColor = capped ? "§c" : "§3";
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(cb[0]);
+                if (hasEnh) parts.append("§8+§d").append(cb[1]);
+                if (hasAffix) parts.append("§8+§a").append(fmtPercent(capPct * 100.0));
+                capLine = "§7Summons " + effColor + cb[3] + " §8(" + parts + "§8)";
             }
         }
         out.add(line(capLine));
@@ -186,11 +251,11 @@ public final class SoulLoreBuilder {
             var tableCfg = service != null ? service.tableConfig() : null;
             double perLevel = tableCfg != null ? tableCfg.getEnhancePerLevelBonus() : 0.025;
             double bonus = perLevel * 100.0 * level;
-            out.add(line("§dEnhancement: §fLv " + level + " §7(+" + fmt(bonus, 1) + "% base stats, next summon)"));
+            out.add(line("§dEnhancement §fLv " + level + " §8(§a+" + fmt(bonus, 1) + "%§8)"));
         }
 
         if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {
-            out.add(line("§7- No affixes"));
+            out.add(line("§8-"));
         } else {
             for (SoulAffixRoll affix : soul.getAffixes()) {
                 if (affix == null) continue;

@@ -52,6 +52,8 @@ import dev.gloved.glovedplugin.summon.soul.table.SoulTableManager;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableService;
+import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideListener;
+import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener;
 import dev.gloved.glovedplugin.summon.soul.trap.SoulTrapRecipeManager;
 
@@ -89,6 +91,7 @@ public final class GlovedPlugin extends JavaPlugin {
   private SoulTableService soulTableService;
   private SoulTablePackService soulTablePackService;
   private SoulTableRecipeManager soulTableRecipeManager;
+  private SoulGuideRecipeManager soulGuideRecipeManager;
   private SummonNMS summonNMS;
 
   {
@@ -205,6 +208,10 @@ public final class GlovedPlugin extends JavaPlugin {
     this.soulTableRecipeManager = new SoulTableRecipeManager(this);
     this.soulTableRecipeManager.registerRecipes();
     getServer().getPluginManager().registerEvents(this.soulTableRecipeManager, this);
+    this.soulGuideRecipeManager = new SoulGuideRecipeManager(this);
+    this.soulGuideRecipeManager.registerRecipes();
+    getServer().getPluginManager().registerEvents(this.soulGuideRecipeManager, this);
+    getServer().getPluginManager().registerEvents(new SoulGuideListener(this), this);
     this.soulTablePackService = new SoulTablePackService(this);
     // Write the pack immediately so ResourcePackManager (which enables after
     // GlovedPlugin) picks it
@@ -346,6 +353,9 @@ public final class GlovedPlugin extends JavaPlugin {
     }
     if (this.soulTableRecipeManager != null) {
       this.soulTableRecipeManager.registerRecipes();
+    }
+    if (this.soulGuideRecipeManager != null) {
+      this.soulGuideRecipeManager.registerRecipes();
     }
     if (this.soulTablePackService != null) {
       try {

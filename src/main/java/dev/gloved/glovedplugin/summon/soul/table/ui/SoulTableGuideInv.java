@@ -76,6 +76,10 @@ public final class SoulTableGuideInv implements InventoryHolder {
         player.openInventory(inventory);
     }
 
+    private boolean isStandalone() {
+        return tableId == null;
+    }
+
     private void build() {
         inventory.clear();
         for (int i = 45; i < 54; i++) inventory.setItem(i, filler());
@@ -87,8 +91,12 @@ public final class SoulTableGuideInv implements InventoryHolder {
             case TABLE -> buildTable();
         }
         if (page == Page.MAIN) {
-            inventory.setItem(SLOT_BACK, soulTableActionItem("§dBack to Soul Table", "back_table",
-                    List.of("§7Return to the Soul Table.")));
+            if (isStandalone()) {
+                inventory.setItem(SLOT_BACK, filler());
+            } else {
+                inventory.setItem(SLOT_BACK, soulTableActionItem("§dBack to Soul Table", "back_table",
+                        List.of("§7Return to the Soul Table.")));
+            }
         } else {
             inventory.setItem(SLOT_BACK, actionItem(Material.ARROW, "§eBack", "back_main",
                     List.of("§7Return to guide categories.")));
@@ -97,33 +105,37 @@ public final class SoulTableGuideInv implements InventoryHolder {
     }
 
     private void buildMain() {
-        inventory.setItem(10, actionItem(Material.NETHER_STAR, "§dTraits", "page:TRAITS", List.of(
-                "§7Special soul traits rolled by rarity.",
-                "§7Each trait gives unique combat effects.",
-                "§eClick to view details.")));
-        inventory.setItem(12, actionItem(Material.AMETHYST_SHARD, "§dAffixes", "page:AFFIXES", List.of(
-                "§7Stat-boosting affix rolls on souls.",
-                "§7Higher rarity allows stronger rolls.",
-                "§eClick to view details.")));
-        inventory.setItem(14, actionItem(Material.IRON_SWORD, "§dStats & Rarity", "page:STATS", List.of(
-                "§7Base stats, quality, rarity, enhancement.",
-                "§7How souls scale when summoned.",
-                "§eClick to view details.")));
-        inventory.setItem(16, soulTableActionItem("§dSoul Table Actions", "page:TABLE", List.of(
-                "§7Combine, Enhance, Reforge, Salvage.",
-                "§7Costs, rules, and Essence basics.",
-                "§eClick to view details.")));
-        inventory.setItem(22, infoItem(Material.BOOK, "§b§lSoul Guide", List.of(
-                "§7A quick reference for souls and the Soul Table.",
-                "§7Hover items in each section for details.",
-                "§7Only guide info is shown here; your souls are unchanged.")));
+        // Intro
+        inventory.setItem(13, infoItem(Material.BOOK, "§b§lSoul Guide", List.of(
+                "§7Learn what souls do and how to",
+                "§7make them stronger at the Soul Table.",
+                "",
+                "§ePick a topic below to read more.")));
+
+        // Categories in a centered row
+        inventory.setItem(28, actionItem(Material.NETHER_STAR, "§d§lTraits", "page:TRAITS", List.of(
+                "§7Special perks your summons can have.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(30, actionItem(Material.AMETHYST_SHARD, "§d§lAffixes", "page:AFFIXES", List.of(
+                "§7Bonus stats rolled onto a soul.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(32, actionItem(Material.IRON_SWORD, "§d§lStats & Rarity", "page:STATS", List.of(
+                "§7Health, damage, speed, and more.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(34, soulTableActionItem("§d§lSoul Table", "page:TABLE", List.of(
+                "§7Upgrade, reroll, and recycle souls.",
+                "",
+                "§eClick to view")));
     }
 
     private void buildTraits() {
-        inventory.setItem(4, infoItem(Material.NETHER_STAR, "§dTraits", List.of(
-                "§7Traits are special bonuses/modifiers rolled on souls.",
-                "§7Higher rarities can roll more traits.",
-                "§7Traits appear in the soul tooltip and affect your summons.")));
+        inventory.setItem(4, infoItem(Material.NETHER_STAR, "§d§lTraits", List.of(
+                "§7Traits are special perks a soul can have.",
+                "§7Better souls can roll more traits.")));
+
         int[] slots = {19, 20, 21, 22, 23, 24, 25};
         SoulTrait[] traits = SoulTrait.values();
         for (int i = 0; i < traits.length && i < slots.length; i++) {
@@ -136,33 +148,32 @@ public final class SoulTableGuideInv implements InventoryHolder {
         List<String> lore = new ArrayList<>();
         switch (trait) {
             case VAMPIRIC -> {
-                lore.add("§7Improves summon lifesteal/healing effects.");
-                lore.add("§7Synergizes with lifesteal ability healing.");
+                lore.add("§7Your summons heal a bit when");
+                lore.add("§7dealing damage.");
             }
             case FRENZIED -> {
-                lore.add("§7Increases summon damage output.");
-                lore.add("§7Grants bonus crit chance and crit damage.");
-                lore.add("§7Slightly boosts ability potency.");
+                lore.add("§7Hits harder and lands critical");
+                lore.add("§7strikes more often.");
             }
             case BULWARK -> {
-                lore.add("§7Tanky defensive trait for summons.");
-                lore.add("§7Reduces incoming damage taken by the summon.");
-                lore.add("§7Helps summons survive longer in combat.");
+                lore.add("§7Tougher summons that take");
+                lore.add("§7less damage in fights.");
             }
             case HEXING -> {
-                lore.add("§7Increases the chance to apply debuffs on hit.");
+                lore.add("§7More likely to weaken enemies");
+                lore.add("§7when your summons hit.");
             }
             case SPLINTERING -> {
-                lore.add("§7Improves cleave/AoE pressure.");
-                lore.add("§7Increases cleave chance and cleave damage ratio.");
+                lore.add("§7Better at hurting groups of");
+                lore.add("§7enemies at once.");
             }
             case UNSTABLE -> {
-                lore.add("§7Chance to unleash an unstable AoE burst on hit.");
-                lore.add("§7Can damage nearby valid targets around the impact.");
+                lore.add("§7Attacks can burst and damage");
+                lore.add("§7nearby enemies.");
             }
             case PACKBOUND -> {
-                lore.add("§7Stronger when fighting alongside allied summons.");
-                lore.add("§7Gains bonus damage based on nearby allied summons.");
+                lore.add("§7Fights stronger when other");
+                lore.add("§7summons are nearby.");
             }
         }
         return infoItem(Material.ENCHANTED_BOOK, "§d" + name, lore);
@@ -171,10 +182,10 @@ public final class SoulTableGuideInv implements InventoryHolder {
     private void buildAffixes() {
         boolean durationEnabled = isDurationEnabled();
         boolean costReductionEnabled = isCostReductionEnabled();
-        inventory.setItem(4, infoItem(Material.AMETHYST_SHARD, "§dAffixes", List.of(
-                "§7Affixes are rolled stat modifiers on souls.",
-                "§7Rarity controls how many and how strong they can be.",
-                "§7In Soul Table tooltips, each affix shows its roll quality §7[q%].")));
+        inventory.setItem(4, infoItem(Material.AMETHYST_SHARD, "§d§lAffixes", List.of(
+                "§7Affixes are bonus stats rolled onto a soul.",
+                "§7Better souls can get more and stronger bonuses.")));
+
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20};
         SoulAffixType[] types = SoulAffixType.values();
         int slotIndex = 0;
@@ -184,10 +195,8 @@ public final class SoulTableGuideInv implements InventoryHolder {
             if (slotIndex >= slots.length) break;
             inventory.setItem(slots[slotIndex++], affixItem(type));
         }
-        List<String> note = new ArrayList<>();
-        note.add("§7Enhancement increases a soul's base stats by level.");
-        note.add("§7Higher enhancement levels grant stronger summoned stats.");
-        inventory.setItem(22, infoItem(Material.EXPERIENCE_BOTTLE, "§bEnhancement", note));
+
+
     }
 
     private boolean isDurationEnabled() {
@@ -217,104 +226,107 @@ public final class SoulTableGuideInv implements InventoryHolder {
 
     private ItemStack affixItem(SoulAffixType type) {
         List<String> lore = new ArrayList<>();
-        lore.add("§7+" + type.friendlyName() + " affix roll.");
         switch (type) {
-            case BRUTAL -> lore.add("§7Increases summon damage dealt.");
-            case VIGOROUS -> lore.add("§7Increases summon max health.");
-            case SWIFT -> lore.add("§7Increases summon movement speed (capped for safety).");
-            case PRECISE -> lore.add("§7Increases summon critical hit chance.");
-            case DEADLY -> lore.add("§7Increases summon critical hit damage.");
-            case TENACIOUS -> lore.add("§7Improves summon durability/defensive scaling.");
-            case ENDURING -> {
-                lore.add("§7Increases summon lifetime/uptime.");
+            case BRUTAL -> {
+                lore.add("§7Makes your summons hit harder.");
             }
-            case RESONANT -> lore.add("§7Increases ability/proc potency.");
-            case COMMANDER -> lore.add("§7Improves cast efficiency (cooldown/mana/cost scaling).");
+            case VIGOROUS -> {
+                lore.add("§7Gives your summons more health.");
+            }
+            case SWIFT -> {
+                lore.add("§7Makes your summons move faster.");
+            }
+            case PRECISE -> {
+                lore.add("§7Helps your summons land critical");
+                lore.add("§7hits more often.");
+            }
+            case DEADLY -> {
+                lore.add("§7Makes your summons' critical");
+                lore.add("§7hits deal more damage.");
+            }
+            case TENACIOUS -> {
+                lore.add("§7Helps your summons take less damage.");
+            }
+            case ENDURING -> {
+                lore.add("§7Lets your summons stay around longer.");
+            }
+            case RESONANT -> {
+                lore.add("§7Makes your summons' special effects");
+                lore.add("§7stronger.");
+            }
+            case COMMANDER -> {
+                lore.add("§7Makes summoning cost a bit less.");
+            }
             case CAPACITY -> {
-                lore.add("§7Increases that soul's Summons by a mild percentage.");
-                lore.add("§7Lets a soul summon a larger group (within caps/ceilings).");
+                lore.add("§7Lets this soul call more summons");
+                lore.add("§7at once.");
             }
         }
-        lore.add("§8Shown with roll quality [q%] in Soul Table tooltips.");
         return infoItem(Material.PAPER, "§a" + type.friendlyName(), lore);
     }
 
     private void buildStats() {
-        SoulTableConfig cfg = plugin.getSoulService() != null ? plugin.getSoulService().tableConfig() : null;
-        int maxEnh = cfg != null ? cfg.getEnhanceMaxLevel() : 10;
-        double perLvl = cfg != null ? cfg.getEnhancePerLevelBonus() * 100.0 : 2.5;
-        inventory.setItem(4, infoItem(Material.IRON_SWORD, "§dStats & Rarity", List.of(
-                "§7Souls capture/roll base stats by family and rarity.",
-                "§7Displayed stats reflect effective summoned values",
-                "§7(base stats, enhancement, affixes, and owner bonuses where applicable).")));
+        inventory.setItem(4, infoItem(Material.IRON_SWORD, "§d§lStats & Rarity", List.of(
+                "§7Every soul has stats that decide how",
+                "§7strong its summons will be.")));
 
-        inventory.setItem(19, infoItem(Material.RED_DYE, "§cHealth (HP)", List.of(
-                "§7Minion maximum health when summoned.",
-                "§7Influenced by rolled base, enhancement, and affixes.")));
-        inventory.setItem(20, infoItem(Material.IRON_SWORD, "§cAttack Damage", List.of(
-                "§7Minion offensive power (shown as ATK/ATK DMG).",
-                "§7Influenced by base stats, enhancement, affixes, traits, and bonuses.")));
-        inventory.setItem(21, infoItem(Material.FEATHER, "§bMovement Speed", List.of(
-                "§7How fast the summon moves.",
-                "§7Subject to gameplay caps for stability.")));
-        inventory.setItem(22, infoItem(Material.CLOCK, "§aAttack Speed", List.of(
-                "§7How quickly the summon attacks (APS).",
-                "§7Rolled/capped within configured stat ranges.")));
-        inventory.setItem(23, infoItem(Material.NETHER_STAR, "§dQuality", List.of(
-                "§7Total quality reflects rarity band + affix roll strength.",
-                "§7Higher rarity sets a higher quality floor/range.",
-                "§7Soul Table shows total quality in the soul name.")));
-        inventory.setItem(24, infoItem(Material.EXPERIENCE_BOTTLE, "§dEnhancement", List.of(
-                "§7Enhance levels increase soul stats (max " + maxEnh + ").",
-                "§7Bonus: about §f+" + String.format(java.util.Locale.ROOT, "%.1f", perLvl) + "%§7 stats per level.",
-                "§7Milestones can increase Summons at higher levels.",
-                "§7Applied on next summon; active summons are not refreshed.")));
-
-        inventory.setItem(25, infoItem(Material.SLIME_BALL, "§3Summons", List.of(
-                "§7How many summons that soul can call in its group.",
-                "§7Rolled on the soul and scales with rarity (with caps/archetype tuning).",
-                "§7The §aSummons§7 affix can give a mild % bonus (not rolled on souls with a fixed max Summons).",
-                "§7Reforge can reroll base Summons; enhancement can increase it at milestones.",
-                "§7Hard per-type overrides remain absolute ceilings (e.g. Warden = 1).")));
+        inventory.setItem(19, infoItem(Material.RED_DYE, "§cHealth", List.of(
+                "§7How tough your summons are.",
+                "§7More health means they last longer.")));
+        inventory.setItem(20, infoItem(Material.SHIELD, "§9Defense", List.of(
+                "§7Helps your summons take less",
+                "§7damage from hits.")));
+        inventory.setItem(21, infoItem(Material.IRON_SWORD, "§cDamage", List.of(
+                "§7How hard your summons hit.",
+                "§7Higher rarity and upgrades boost it.")));
+        inventory.setItem(22, infoItem(Material.FEATHER, "§bMove Speed", List.of(
+                "§7How fast your summons move.")));
+        inventory.setItem(23, infoItem(Material.CLOCK, "§aAttack Speed", List.of(
+                "§7How quickly your summons attack.")));
+        inventory.setItem(24, infoItem(Material.SLIME_BALL, "§3Summons", List.of(
+                "§7How many allies this soul calls at once.",
+                "§7Better souls and upgrades can call more.")));
+        inventory.setItem(25, infoItem(Material.EXPERIENCE_BOTTLE, "§dEnhancing", List.of(
+                "§7Enhancing a soul improves its stats",
+                "§7and can let it call more summons.",
+                "§7Changes apply on your next summon.")));
 
         List<String> rar = new ArrayList<>();
-        rar.add("§7Rarity affects rolls, caps, and progression value.");
+        rar.add("§7Higher rarity means better potential.");
+        rar.add("");
         for (SoulRarity r : SoulRarity.values()) {
-            rar.add(r.coloredNameLegacy() + " §7- higher tiers allow stronger outcomes.");
+            rar.add(" " + r.coloredNameLegacy());
         }
-        inventory.setItem(31, infoItem(Material.DIAMOND, "§bRarities", rar));
+        inventory.setItem(31, infoItem(Material.DIAMOND, "§bRarity Tiers", rar));
     }
 
     private void buildTable() {
-        SoulTableConfig cfg = plugin.getSoulService() != null ? plugin.getSoulService().tableConfig() : new SoulTableConfig();
-        inventory.setItem(4, soulTableInfoItem("§dSoul Table", List.of(
-                "§7Use the Soul Table to manage and upgrade souls.",
-                "§7All mutations are validated and transactional.")));
+        inventory.setItem(4, soulTableInfoItem("§d§lSoul Table", List.of(
+                "§7Upgrade and manage your souls here.",
+                "§7Most upgrades cost §bEssence§7.")));
 
-        inventory.setItem(19, infoItem(Material.ANVIL, "§dCombine", List.of(
-                "§7Combine §f3§7 souls of the same family and rarity.",
-                "§7Result: next rarity (Mythic cannot be combined).",
-                "§7Consumes Essence based on target rarity.")));
-        inventory.setItem(20, infoItem(Material.EXPERIENCE_BOTTLE, "§dEnhance", List.of(
-                "§7Raise one soul's enhancement level.",
-                "§7Max level: §f" + cfg.getEnhanceMaxLevel(),
-                "§7Cost scales by current level and consumes Essence.")));
-        inventory.setItem(21, infoItem(Material.GRINDSTONE, "§dReforge", List.of(
-                "§7Reroll affixes, base stats, and Summons capacity at the same rarity.",
-                "§7Keeps family, rarity, enhancement level, and identity.",
-                "§7Consumes Essence by rarity.")));
-        inventory.setItem(22, infoItem(Material.HOPPER, "§dSalvage", List.of(
-                "§7Convert selected souls into Essence.",
-                "§7Bulk action with confirmation timer (if configured).",
-                "§7Destroyed souls are removed from your vault.")));
+        inventory.setItem(19, infoItem(Material.ANVIL, "§aCombine", List.of(
+                "§7Merge §f3§7 souls of the same type",
+                "§7and rarity into a higher rarity.",
+                "",
+                "§8Mythic souls can't be combined.")));
+        inventory.setItem(20, infoItem(Material.EXPERIENCE_BOTTLE, "§aEnhance", List.of(
+                "§7Level up a soul to improve its stats.",
+                "§7Pick §f1§7 soul, then confirm.")));
+        inventory.setItem(21, infoItem(Material.GRINDSTONE, "§aReforge", List.of(
+                "§7Reroll a soul's stats and bonuses",
+                "§7while keeping its type and rarity.",
+                "§7Pick §f1§7 soul, then confirm.")));
+        inventory.setItem(22, infoItem(Material.HOPPER, "§aSalvage", List.of(
+                "§7Break down souls you don't need",
+                "§7to get §bEssence§7 back.",
+                "§7You can salvage several at once.")));
         inventory.setItem(23, infoItem(Material.AMETHYST_SHARD, "§bEssence", List.of(
-                "§7Currency used for Combine, Enhance, and Reforge.",
-                "§7Gained from salvage and (when configured) vault overflow.",
-                "§7Check your balance in the Soul Table/vault UI.")));
-        inventory.setItem(24, infoItem(Material.BOOK, "§bSelection Tips", List.of(
-                "§7Click souls to select/deselect in the table grid.",
-                "§7Combine needs 3 matching souls; Enhance/Reforge need 1.",
-                "§7Salvage can select multiple souls.")));
+                "§7Used to combine, enhance, and reforge.",
+                "§7Earn it by salvaging souls.")));
+        inventory.setItem(24, infoItem(Material.BOOK, "§eHow to Use", List.of(
+                "§7Click souls in the grid to select them.",
+                "§7Check the button at the bottom to confirm.")));
     }
 
     public void handleClick(Player player, int rawSlot, org.bukkit.event.inventory.ClickType clickType) {
@@ -344,9 +356,13 @@ public final class SoulTableGuideInv implements InventoryHolder {
     }
 
     private void openSoulTable(Player player) {
+        if (tableId == null) {
+            player.closeInventory();
+            return;
+        }
         try {
             var tableMgr = plugin.getSoulTableManager();
-            if (tableMgr != null && tableId != null) {
+            if (tableMgr != null) {
                 var row = tableMgr.get(tableId);
                 if (row != null) {
                     Bukkit.getScheduler().runTask(plugin, () -> new SoulTableInv(plugin, player, row).open(player));
@@ -354,15 +370,7 @@ public final class SoulTableGuideInv implements InventoryHolder {
                 }
             }
         } catch (Throwable ignored) {}
-        // Fallback: reopen a fresh table view bound to this context-less player if possible.
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            try {
-                var tableMgr = plugin.getSoulTableManager();
-                if (tableMgr == null) { player.closeInventory(); return; }
-                // No known row; just close (table can be reopened by interacting with block).
-                player.closeInventory();
-            } catch (Throwable ignored) { player.closeInventory(); }
-        });
+        Bukkit.getScheduler().runTask(plugin, () -> player.closeInventory());
     }
 
     private String readAction(ItemStack item) {

@@ -213,7 +213,7 @@ souls:
     bounds:
       health:
         min: 1.0
-        max: 200.0
+        max: 100.0
       attack-damage:
         min: 4.0
         max: 30.0
@@ -223,8 +223,13 @@ souls:
       attack-speed:
         min: 0.20
         max: 1.20
+      # DEF (armor points). Min 1; max 13.75 gives up to ~55% base armor damage negation (toughness 0). Enhancement can exceed caps.
+      defense:
+        min: 1.0
+        max: 13.75
     ranges:
       overlap: 0.06
+      # Global/default rarity split weights (used unless a per-stat split is defined).
       split:
         COMMON: 1.0
         UNCOMMON: 1.0
@@ -232,6 +237,17 @@ souls:
         EPIC: 1.0
         LEGENDARY: 1.0
         MYTHIC: 1.0
+        # HP: smaller low-rarity bands, wider high-rarity bands.
+        health:
+          COMMON: 0.45
+          UNCOMMON: 0.55
+          RARE: 0.80
+          EPIC: 1.10
+          LEGENDARY: 1.60
+          MYTHIC: 2.50
+      # Roll skew (>1 biases toward lower values within a band; 1.0 = uniform).
+      roll-skew:
+        health: 2.5
 
 progression:
   enabled: true

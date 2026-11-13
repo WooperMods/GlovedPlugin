@@ -232,9 +232,11 @@ public final class SoulTableInv implements InventoryHolder {
         inventory.setItem(SLOT_CONFIRM, confirmItem());
         inventory.setItem(SLOT_CLEAR, actionItem(Material.BARRIER, "§cClear Selection", "clear",
                 List.of("§7Removes every selected soul.")));
-        inventory.setItem(SLOT_GUIDE, actionItem(Material.BOOK, "§bSoul Guide", "guide",
-                List.of("§7View traits, affixes, stats, and table info.",
-                        "§eClick to open.")));
+        inventory.setItem(SLOT_GUIDE, actionItem(Material.BOOK, "§b§lSoul Guide", "guide",
+                List.of("§7Learn about traits, bonuses, stats,",
+                        "§7and what each table action does.",
+                        "",
+                        "§eClick to open")));
         inventory.setItem(SLOT_NEXT, actionItem(Material.ARROW, "§eNext Page", "next", List.of(
                 "§7Page §f" + (page + 1) + "§7/§f" + (maxPage + 1))));
     }
@@ -407,11 +409,12 @@ public final class SoulTableInv implements InventoryHolder {
                             SoulBaseStats pBase = ss.effectiveBaseStats(preview);
                             double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS,
                                     Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, pBase.attackSpeed()));
+                            double def = SoulBaseStats.clampDefense(pBase.defense());
                             int cap = ss.effectiveGroupCapacity(preview);
                             lore.add("§7Preview (next summon):");
-                            lore.add("§e " + SoulLoreBuilder.fmt(hp, 2) + " §7HP  §c" + SoulLoreBuilder.fmt(atk, 2) + " §7ATK");
-                            lore.add("§b " + SoulLoreBuilder.fmt(mv, 2) + " bps §7MV  §a" + SoulLoreBuilder.fmt(aps, 2) + " §7APS");
-                            lore.add("§7 Summons: §3" + cap);
+                            lore.add("§e " + SoulLoreBuilder.fmt(hp, 2) + " §7HP  §9" + SoulLoreBuilder.fmt(def, 2) + " §7DEF");
+                            lore.add("§c " + SoulLoreBuilder.fmt(atk, 2) + " §7ATK  §b" + SoulLoreBuilder.fmt(mv, 2) + " bps §7MV");
+                            lore.add("§a " + SoulLoreBuilder.fmt(aps, 2) + " §7APS  §3" + cap + " §7Summons");
                         }
                         lore.add("§7Cost: §b" + costLabel(cost));
                         if (essence < cost) lore.add("§cNot enough Essence");

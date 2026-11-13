@@ -53,22 +53,56 @@ public final class SoulGenerator {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
-        boolean allowCount = !hasHardCountCap(cfg, type);
         boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
-        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
+        String typeKey = type != null ? type.name() : null;
+        int groupCapacity = rollBaseGroupCapacity(rarity, cat, typeKey, cfg);
+        boolean allowCapacityAffix = canRollCapacityAffix(rarity, groupCapacity, typeKey, cfg);
+        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCapacityAffix, allowCommander);
         List<SoulTrait> traits = rollTraits(rarity, rng);
         double quality = SoulQuality.percent(rarity, affixes);
         SoulBaseStats baseStats = rollBaseStats(type, rarity, source, tableCfg);
-        int groupCapacity = rollBaseGroupCapacity(rarity, cat, type != null ? type.name() : null, cfg);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
                 System.currentTimeMillis(), maxHealth, false, baseStats, 0, groupCapacity);
     }
 
-    /** Rolls base group capacity (rarity-scaled, type/category-aware, capped). Hard per-type overrides are absolute ceilings. */
+    /** Per-rarity base group-size band [min,max]. Higher rarities can overlap far down into lower bands. */
+    public static int[] groupCapacityBand(SoulRarity rarity) {
+        SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
+        return switch (r) {
+            case COMMON -> new int[]{1, 2};
+            case UNCOMMON -> new int[]{1, 3};
+            case RARE -> new int[]{1, 4};
+            case EPIC -> new int[]{1, 6};
+            case LEGENDARY -> new int[]{1, 7};
+            case MYTHIC -> new int[]{1, 8};
+        };
+    }
+
+    /** Max base group size rollable for the rarity (top of its band). */
+    public static int groupCapacityBandMax(SoulRarity rarity) {
+        return groupCapacityBand(rarity)[1];
+    }
+
+    /** True if the Summons/CAPACITY affix is allowed for this soul context. */
+    public static boolean canRollCapacityAffix(SoulRarity rarity, int rolledGroupCapacity, String typeKey, SoulConfig cfg) {
+        Integer hard = null;
+        try {
+            if (cfg != null && typeKey != null && !typeKey.isBlank()) {
+                hard = cfg.getTypeMaxActiveOverride(typeKey);
+            }
+        } catch (Throwable ignored) {}
+        if (hard != null && hard <= 1) return false; // boss hard per-type override of 1
+        return rolledGroupCapacity < groupCapacityBandMax(rarity); // rolled max for rarity band => no Summons affix
+    }
+
+    /**
+     * Rolls base group capacity (rarity-scaled). Hard per-type overrides are absolute exceptions.
+     * Base count is driven by rarity bands (with heavy downward overlap); category/config hints do not
+     * constrain the roll. Final effective size is still subject to exceptions/ceilings elsewhere.
+     */
     public static int rollBaseGroupCapacity(SoulRarity rarity, EntityCategory category, String typeKey, SoulConfig cfg) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
-        EntityCategory cat = category != null ? category : EntityCategory.SPECIAL;
 
         Integer hardOverride = null;
         try {
@@ -80,43 +114,10 @@ public final class SoulGenerator {
             return Math.max(1, hardOverride);
         }
 
-        // Rarity-scaled bands (modest) to avoid "huge army of top-stat mythics"
-        int min;
-        int max;
-        switch (r) {
-            case COMMON -> { min = 1; max = 1; }
-            case UNCOMMON -> { min = 1; max = 2; }
-            case RARE -> { min = 1; max = 2; }
-            case EPIC -> { min = 2; max = 3; }
-            case LEGENDARY -> { min = 2; max = 3; }
-            case MYTHIC -> { min = 2; max = 4; }
-            default -> { min = 1; max = 1; }
-        }
-
-        // Category archetype bias (subtle; final hard overrides/caps enforced elsewhere)
-        int catAdj = switch (cat) {
-            case PASSIVE, AMBIENT -> 1;
-            case HOSTILE, FLYING, AQUATIC, NEUTRAL -> 0;
-            case BOSS, SPECIAL -> -1;
-        };
-        // Apply bias mostly to upper bound for variety, keep floors sane
-        max = Math.max(min, max + (catAdj > 0 ? 1 : 0));
-        min = Math.max(1, min + (catAdj < 0 && min > 1 ? -1 : 0));
-
+        int[] band = groupCapacityBand(r);
+        int min = Math.max(1, band[0]);
+        int max = Math.max(min, band[1]);
         int rolled = (min >= max) ? min : rng.nextInt(min, max + 1);
-
-        // Soft ceiling guidance from current per-type/category cap hints when available (not hard override)
-        try {
-            if (cfg != null) {
-                var cd = cfg.getCategoryDefaults(cat);
-                if (cd != null) {
-                    int catCap = Math.max(1, cd.maxActivePerType());
-                    rolled = Math.min(rolled, Math.max(1, catCap + 1)); // allow slight variance above category default but bounded
-                }
-            }
-        } catch (Throwable ignored) {}
-
-        // Absolute safety bounds
         if (rolled < 1) rolled = 1;
         if (rolled > 8) rolled = 8;
         return rolled;
@@ -155,8 +156,23 @@ public final class SoulGenerator {
                                                            EntityType type) {
         if (rarity == null) return List.of();
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
-        boolean allowCount = !hasHardCountCap(cfg, type);
         boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
+        // Without rolled group capacity context we can only exclude hard per-type override == 1.
+        boolean allowCount = !hasHardCountCapOfOne(cfg, type);
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
+        return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
+    }
+
+    /** Rerolls affixes with full CAPACITY eligibility context (rolled group capacity known). */
+    public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg,
+                                                           dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
+                                                           EntityType type, int rolledGroupCapacity) {
+        if (rarity == null) return List.of();
+        boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
+        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
+        String typeKey = type != null ? type.name() : null;
+        boolean allowCount = canRollCapacityAffix(rarity, rolledGroupCapacity, typeKey, cfg);
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
@@ -171,6 +187,18 @@ public final class SoulGenerator {
         return rollAffixes(rarity, affixCount, rng, allowDuration, true, true);
     }
 
+    /** True if this type has a hard per-type override forcing group size to 1. */
+    public static boolean hasHardCountCapOfOne(SoulConfig cfg, EntityType type) {
+        if (cfg == null || type == null) return false;
+        try {
+            Integer hard = cfg.getTypeMaxActiveOverride(type.name());
+            return hard != null && hard <= 1;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Deprecated(forRemoval = false)
     public static boolean hasHardCountCap(SoulConfig cfg, EntityType type) {
         if (cfg == null || type == null) return false;
         try {

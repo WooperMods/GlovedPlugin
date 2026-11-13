@@ -625,13 +625,14 @@ public class SoulRepository {
     }
 
     /**
-     * Rewrites {@code base_stats_json} rows that still carry stat fields retired from the soul
-     * system (armor, armor toughness, knockback resistance, attack knockback). Idempotent: only
-     * rows whose JSON still mentions a removed key are touched.
+     * Normalizes {@code base_stats_json}: migrates missing/legacy DEF (armor) into the soul DEF stat,
+     * and strips truly retired fields (armor toughness, knockback resistance, attack knockback).
+     * Idempotent: only rows that need normalization/migration are touched.
      */
     public synchronized int stripRemovedBaseStats() throws SQLException {
         String sel = "SELECT soul_id, base_stats_json FROM souls WHERE " +
-                "base_stats_json LIKE '%\"armor\"%' OR " +
+                "base_stats_json IS NULL OR base_stats_json = '' OR " +
+                "base_stats_json NOT LIKE '%\"defense\"%' OR " +
                 "base_stats_json LIKE '%\"armorToughness\"%' OR " +
                 "base_stats_json LIKE '%\"knockbackResistance\"%' OR " +
                 "base_stats_json LIKE '%\"attackKnockback\"%'";
@@ -648,15 +649,18 @@ public class SoulRepository {
         String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
         try (PreparedStatement ps = conn().prepareStatement(upd)) {
             for (String[] row : rows) {
-                SoulBaseStats stats = SoulBaseStats.fromJson(row[1]);
+                String oldJson = row[1];
+                SoulBaseStats stats = SoulBaseStats.fromJson(oldJson);
                 if (stats == null) continue;
-                ps.setString(1, stats.toJson());
+                String newJson = stats.toJson();
+                if (oldJson != null && oldJson.equals(newJson)) continue;
+                ps.setString(1, newJson);
                 ps.setString(2, row[0]);
                 updated += ps.executeUpdate();
             }
         }
         if (updated > 0) {
-            GlovedPlugin.logDebug("[Souls] Stripped retired stat fields from " + updated + " soul(s)");
+            GlovedPlugin.logDebug("[Souls] Normalized/migrated base_stats_json for " + updated + " soul(s)");
         }
         return updated;
     }
