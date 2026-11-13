@@ -28,7 +28,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
  * Warden summon using Gloved's custom SummonBrain (CombatPets-style brained setup).
  * No vanilla Warden AI/sonic: customServerAiStep only ticks the brain and updates activity.
  * Follow/targeting and melee combat (including our attack speed/cooldown and damage pipeline)
- * are driven by SummonBrain behaviors (SummonAI/SummonBrainAI/CombatTargetRules).
+ * are driven by SummonBrain behaviors (SummonCombatService/SummonBrainAI/CombatTargetRules).
  */
 public class WardenSummon extends Warden implements SummonEntity {
 
@@ -143,7 +143,7 @@ public class WardenSummon extends Warden implements SummonEntity {
             if (!DebugLog.isEnabled()) return;
             if ((tickCount % 40L) != 0L) return;
             String id = "?"; try { id = getBukkitEntity().getUniqueId().toString().substring(0,8); } catch (Throwable ignored) {}
-            GlovedPlugin.logDebug("[WardenSummonAI] " + id + " " + msg);
+            GlovedPlugin.logDebug("[WardenSummon] " + id + " " + msg);
         } catch (Throwable ignored) {}
     }
 

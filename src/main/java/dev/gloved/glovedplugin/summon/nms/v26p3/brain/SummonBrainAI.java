@@ -3,7 +3,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.brain;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
-import dev.gloved.glovedplugin.summon.ai.movement.SummonAIUtils;
+import dev.gloved.glovedplugin.summon.ai.movement.SummonTargetingUtils;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.server.level.ServerLevel;
@@ -170,7 +170,7 @@ public final class SummonBrainAI {
 
     /**
      * Gloved-adapted target finding: scans owner/minion nearby entities and recent damagers,
-     * filters by CombatTargetRules + SoulService combat mode, and scores with SummonAIUtils.
+     * filters by CombatTargetRules + SoulService combat mode, and scores with SummonTargetingUtils.
      */
     @Nullable
     public static LivingEntity findTarget(@NotNull GlovedPlugin plugin, @NotNull Mob mob) {
@@ -218,7 +218,7 @@ public final class SummonBrainAI {
                 }
             } catch (Throwable ignored) { lastBukkit = null; }
         }
-        org.bukkit.entity.LivingEntity best = SummonAIUtils.selectBestTarget(owner, bSummon, candidates, recentDamagerIds, lastBukkit);
+        org.bukkit.entity.LivingEntity best = SummonTargetingUtils.selectBestTarget(owner, bSummon, candidates, recentDamagerIds, lastBukkit);
         debugEvent(mob, "findTarget mode=" + mode + " defensive=" + defensive
                 + " recent=" + recentDamagerIds.size() + " candPreLeash=" + beforeLeash
                 + " cand=" + candidates.size() + " best=" + (best != null ? best.getType() : "null"));

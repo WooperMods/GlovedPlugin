@@ -42,7 +42,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Frog summon brained like CombatPets FrogPet (core/idle/fight/swim, croak, tongue),
- * but using Gloved 32-block range/targeting and SummonAI soul-stats/damage pipeline in tongue behavior.
+ * but using Gloved 32-block range/targeting and SummonCombatService soul-stats/damage pipeline in tongue behavior.
  */
 public class FrogSummon extends Frog implements SummonEntity {
     private static final UniformInt TIME_BETWEEN_LONG_JUMPS = UniformInt.of(100, 140);
@@ -130,7 +130,7 @@ public class FrogSummon extends Frog implements SummonEntity {
         try {
             SummonBrainReflect.addActivityPairs(brain, Activity.FIGHT, ImmutableList.of(
                     Pair.of(10, SummonFightBehaviors.stopAttackIfTargetInvalid(plugin)),
-                    Pair.of(10, new ShootTongueBehavior(plugin)) // Gloved SummonAI/cooldown+soul damage pipeline
+                    Pair.of(10, new ShootTongueBehavior(plugin)) // Gloved SummonCombatService cooldown/soul damage pipeline
             ));
         } catch (Throwable ignored) {}
 

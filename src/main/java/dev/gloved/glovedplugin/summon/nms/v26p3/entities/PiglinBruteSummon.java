@@ -30,7 +30,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * PiglinBrute summon brained like CombatPets PiglinBrutePet, adapted to Gloved 32-block range
- * and SummonAI/soul-stats damage pipeline.
+ * and SummonCombatService/soul-stats damage pipeline.
  */
 public class PiglinBruteSummon extends PiglinBrute implements SummonEntity {
     private final SummonSharedData sharedData;

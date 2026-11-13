@@ -26,7 +26,7 @@ import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 /**
  * Gloved-adapted brain wiring for summon entities (modeled closely on CombatPets PetBrain).
  * Uses Gloved owner resolution, SoulService combat mode, CombatTargetRules/32-block targeting,
- * and SummonAI cooldown/damage pipeline (soul stats & calculations) through behavior helpers.
+ * and SummonCombatService cooldown/damage pipeline (soul stats & calculations) through behavior helpers.
  *
  * <p>Wiring prefers direct 26.3 API calls (like CombatPets) and falls back reflectively for
  * mapping variance. Failures are logged when debug is enabled.</p>
@@ -212,7 +212,7 @@ public final class SummonBrain {
             ));
         }
 
-        // Fight: validate, chase, and melee via SummonAI cooldown/damage pipeline (soul stats/calcs).
+        // Fight: validate, chase, and melee via SummonCombatService cooldown/damage pipeline (soul stats/calcs).
         ImmutableList fight = ImmutableList.of(
                 SummonFightBehaviors.stopAttackIfTargetInvalid(plugin),
                 SummonFightBehaviors.reachTargetWhenOutOfRange(),

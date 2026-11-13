@@ -287,7 +287,7 @@ public final class GlovedPlugin extends JavaPlugin {
       }, this);
     }
     getServer().getPluginManager()
-        .registerEvents(new SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker), this);
+        .registerEvents(new SummonListener(this, this.summonTracker), this);
     this.summonAbilityIndicator = new SummonAbilityIndicator(this, this.summonConfig);
     getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
     getServer().getPluginManager().registerEvents(new DamageProxy(this.summonTracker, this.summonCombatService), this);

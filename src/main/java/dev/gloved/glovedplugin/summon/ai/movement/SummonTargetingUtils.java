@@ -13,11 +13,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
- * Target scoring utilities for the NMS goal-based summon AI.
- * Ports the HP-aware priority stack from the legacy SummonAI runnable logic.
+ * Target scoring utilities for NMS/goal-based summon AI (HP-aware priority, owner-defense and swarm heuristics).
  */
-public final class SummonAIUtils {
-    private SummonAIUtils() {}
+public final class SummonTargetingUtils {
+    private SummonTargetingUtils() {}
 
     public static final double TARGET_SWITCH_THRESHOLD = 1.25;
     public static final long ASSIGNMENT_TTL_MS = 10_000L;

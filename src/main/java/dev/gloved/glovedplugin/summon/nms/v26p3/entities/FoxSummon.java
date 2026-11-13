@@ -44,7 +44,7 @@ public class FoxSummon extends Fox implements SummonEntity {
         this.goalSelector.getAvailableGoals().clear();
         this.targetSelector.getAvailableGoals().clear();
         // CombatPets-inspired fox behavior: float/state handling, stalk, pounce/leap feel,
-        // and state-gated attack routed through SummonAI pipeline.
+        // and state-gated attack routed through SummonCombatService pipeline.
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
         this.goalSelector.addGoal(0, new FoxFloatGoal(this));
         this.goalSelector.addGoal(2, new SummonFollowGoal(this, plugin));

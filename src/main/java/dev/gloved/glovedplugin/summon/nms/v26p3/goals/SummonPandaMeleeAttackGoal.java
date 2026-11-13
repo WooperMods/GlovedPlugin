@@ -7,7 +7,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * CombatPets-style action-gated panda attack, routed through Gloved's SummonMeleeAttackGoal
- * so damage/cooldowns/credits stay in the SummonAI pipeline.
+ * so damage/cooldowns/credits stay in the SummonCombatService pipeline.
  */
 public class SummonPandaMeleeAttackGoal extends SummonMeleeAttackGoal {
     private final Panda panda;

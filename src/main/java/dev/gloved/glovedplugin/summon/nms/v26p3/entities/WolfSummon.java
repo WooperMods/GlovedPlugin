@@ -61,7 +61,7 @@ public class WolfSummon extends Wolf implements SummonEntity {
 
     /**
      * CombatPets parity: wolf summon may attack valid targets as directed by summon targeting.
-     * (Does not bypass SummonAI/CombatTargetRules; those still govern actual damage/selection.)
+     * (Does not bypass SummonCombatService/CombatTargetRules; those still govern actual damage/selection.)
      */
     public boolean wantsToAttack(LivingEntity target, LivingEntity owner) {
         return true;

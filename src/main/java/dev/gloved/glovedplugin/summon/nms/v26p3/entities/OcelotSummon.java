@@ -40,7 +40,7 @@ public class OcelotSummon extends Ocelot implements SummonEntity {
     public void setGoals() {
         this.goalSelector.getAvailableGoals().clear();
         this.targetSelector.getAvailableGoals().clear();
-        // CombatPets-style ocelot combat: leap + attack (damage routed through SummonAI pipeline).
+        // CombatPets-style ocelot combat: leap + attack (damage routed through SummonCombatService pipeline).
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(2, new SummonFollowGoal(this, plugin));

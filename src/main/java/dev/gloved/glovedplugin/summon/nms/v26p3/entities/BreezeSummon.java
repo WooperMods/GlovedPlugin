@@ -40,7 +40,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Breeze summon brained like CombatPets BreezePet (core/idle/fight + shoot/long-jump),
- * adapted to Gloved 32-block range/targeting and SummonAI-driven cooldown/damage integration.
+ * adapted to Gloved 32-block range/targeting and SummonCombatService-driven cooldown/damage integration.
  */
 public class BreezeSummon extends Breeze implements SummonEntity {
     private final SummonSharedData sharedData;

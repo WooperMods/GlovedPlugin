@@ -3,7 +3,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
-import dev.gloved.glovedplugin.summon.ai.movement.SummonAIUtils;
+import dev.gloved.glovedplugin.summon.ai.movement.SummonTargetingUtils;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.world.entity.LivingEntity;
@@ -15,7 +15,7 @@ import org.bukkit.entity.Player;
 import java.util.*;
 
 /**
- * NMS target selector goal using SummonAIUtils HP-aware scoring.
+ * NMS target selector goal using SummonTargetingUtils HP-aware scoring.
  */
 public class SummonAutoTargetGoal extends TargetGoal {
     private final GlovedPlugin plugin;
@@ -46,7 +46,7 @@ public class SummonAutoTargetGoal extends TargetGoal {
         } catch (Throwable ignored) {}
         boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
 
-        // Build candidates similar to legacy SummonAI scan
+        // Build candidates (owner/minion/recent-damager scan)
         Set<UUID> recentDamagerIds = new HashSet<>(SummonCombatService.getRecentDamagers(owner));
         recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(bukkitSummon));
         List<org.bukkit.entity.LivingEntity> candidates = new ArrayList<>();
@@ -93,7 +93,7 @@ public class SummonAutoTargetGoal extends TargetGoal {
                 }
             } catch (Throwable ignored) { lastBukkit = null; }
         }
-        org.bukkit.entity.LivingEntity best = SummonAIUtils.selectBestTarget(owner, bukkitSummon, candidates, recentDamagerIds, lastBukkit);
+        org.bukkit.entity.LivingEntity best = SummonTargetingUtils.selectBestTarget(owner, bukkitSummon, candidates, recentDamagerIds, lastBukkit);
         if (best == null) return false;
         try {
             this.nmsTarget = ((org.bukkit.craftbukkit.entity.CraftLivingEntity) best).getHandle();

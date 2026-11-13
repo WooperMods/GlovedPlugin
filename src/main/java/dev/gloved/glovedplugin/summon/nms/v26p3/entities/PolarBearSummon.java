@@ -38,7 +38,7 @@ public class PolarBearSummon extends PolarBear implements SummonEntity {
     public void setGoals() {
         this.goalSelector.getAvailableGoals().clear();
         this.targetSelector.getAvailableGoals().clear();
-        // CombatPets-style polar bear: warning/stand attack behavior, damage via SummonAI pipeline.
+        // CombatPets-style polar bear: warning/stand attack behavior, damage via SummonCombatService pipeline.
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(1, new SummonPolarBearMeleeAttackGoal(this, plugin));

@@ -34,7 +34,7 @@ public class BreezeShootBehavior extends Behavior<Breeze> {
     private static final float PROJECTILE_MOVEMENT_SCALE = 0.7F;
     private static final int SHOOT_INITIAL_DELAY_TICKS = 15;
     private static final int SHOOT_RECOVER_DELAY_TICKS = 4;
-    private static final int SHOOT_COOLDOWN_TICKS = 10; // memory cooldown between volleys; gated by SummonAI APS
+    private static final int SHOOT_COOLDOWN_TICKS = 10; // memory cooldown between volleys; gated by SummonCombatService APS
 
     private final GlovedPlugin plugin;
 
@@ -59,7 +59,7 @@ public class BreezeShootBehavior extends Behavior<Breeze> {
             breeze.getBrain().eraseMemory(MemoryModuleType.BREEZE_SHOOT);
             return false;
         }
-        // Gate by SummonAI cooldown/APS so wind shots integrate with soul stats/APS.
+        // Gate by SummonCombatService cooldown/APS so wind shots integrate with soul stats/APS.
         Player owner = SummonBrainUtil.resolveOwner(breeze);
         SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
         if (owner == null || ai == null) return false;
@@ -107,7 +107,7 @@ public class BreezeShootBehavior extends Behavior<Breeze> {
         boolean recovering = brain.getMemory(MemoryModuleType.BREEZE_SHOOT_RECOVERING).isPresent();
         if (charging || recovering) return;
 
-        // Consume SummonAI cooldown at actual fire time for APS/cooldown integration.
+        // Consume SummonCombatService cooldown at actual fire time for APS/cooldown integration.
         Player owner = SummonBrainUtil.resolveOwner(breeze);
         SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
         if (owner == null || ai == null) return;

@@ -20,7 +20,6 @@ import java.util.logging.Level;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.ai.EngagedOwnerTargetGoal;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
-import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 
 /**
@@ -28,20 +27,11 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
  */
 public class SummonListener implements Listener {
     private final GlovedPlugin plugin;
-    @SuppressWarnings("unused") private final SummonConfig config;
-    @SuppressWarnings("unused") private final SummonManager manager;
     private final SummonInstanceTracker tracker;
 
-    public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager,
-                          SummonInstanceTracker tracker) {
+    public SummonListener(GlovedPlugin plugin, SummonInstanceTracker tracker) {
         this.plugin = plugin;
-        this.config = config;
-        this.manager = manager;
         this.tracker = tracker;
-    }
-
-    public SummonListener(GlovedPlugin plugin, SummonConfig config, SummonManager manager) {
-        this(plugin, config, manager, null);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -102,14 +92,15 @@ public class SummonListener implements Listener {
                 double totalReduction = 0.0;
 
                 // Owner's AuraSkills Toughness stat
-                if (config.isToughnessDamageReductionEnabled()) {
+                var summonConfig = plugin.getSummonConfig();
+                if (summonConfig != null && summonConfig.isToughnessDamageReductionEnabled()) {
                     UUID ownerId = tracker.getOwner(victim.getUniqueId());
                     if (ownerId != null) {
                         var stats = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
                         if (stats.available() && stats.toughnessStatLevel() > 0.0) {
                             double reduction = Math.min(
-                                    stats.toughnessStatLevel() * config.getToughnessDamageReductionPerPoint(),
-                                    config.getToughnessDamageReductionMaxBonus()
+                                    stats.toughnessStatLevel() * summonConfig.getToughnessDamageReductionPerPoint(),
+                                    summonConfig.getToughnessDamageReductionMaxBonus()
                             );
                             if (reduction > 0.0) totalReduction += reduction;
                         }

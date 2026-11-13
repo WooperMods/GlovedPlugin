@@ -24,8 +24,8 @@ import java.util.Optional;
 
 /**
  * CombatPets ShootTongue parity adapted for Gloved summon pipeline:
- * - Uses SummonAI attack cooldown (APS/soul stats) to gate tongue shots.
- * - Applies damage via SummonAI.applySummonHit for owner credit/progression/hooks.
+ * - Uses SummonCombatService attack cooldown (APS/soul stats) to gate tongue shots.
+ * - Applies damage via SummonCombatService.applySummonHit for owner credit/progression/hooks.
  * - No vanilla entity removal side effects on kill.
  */
 public class ShootTongueBehavior extends Behavior<Frog> {

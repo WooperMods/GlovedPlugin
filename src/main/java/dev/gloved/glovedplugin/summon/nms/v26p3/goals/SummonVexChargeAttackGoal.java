@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * CombatPets-like vex charge/attack goal integrated with Gloved summon damage pipeline.
- * Replaces vanilla/inner vex charge behavior so hits are owner-credited via SummonAI and cooldown-gated.
+ * Replaces vanilla/inner vex charge behavior so hits are owner-credited via SummonCombatService and cooldown-gated.
  */
 public class SummonVexChargeAttackGoal extends Goal {
     private final Vex vex;

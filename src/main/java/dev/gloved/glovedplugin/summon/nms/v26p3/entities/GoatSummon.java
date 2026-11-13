@@ -49,7 +49,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Goat summon brained like CombatPets GoatPet (core/idle/fight/ram),
- * adapted to Gloved 32-block range/targeting and SummonAI soul-stats/damage pipeline.
+ * adapted to Gloved 32-block range/targeting and SummonCombatService soul-stats/damage pipeline.
  */
 public class GoatSummon extends Goat implements SummonEntity {
     public static final UniformInt TIME_BETWEEN_RAMS = UniformInt.of(100, 300);
@@ -149,7 +149,7 @@ public class GoatSummon extends Goat implements SummonEntity {
             } catch (Throwable ignored) {}
         }
 
-        // Fight fallback melee (SummonAI-integrated) in addition to RAM activity
+        // Fight fallback melee (SummonCombatService-integrated) in addition to RAM activity
         try {
             SummonBrainReflect.addActivityPairs(brain, Activity.FIGHT, ImmutableList.of(
                     Pair.of(10, SummonFightBehaviors.stopAttackIfTargetInvalid(plugin)),
@@ -220,7 +220,7 @@ public class GoatSummon extends Goat implements SummonEntity {
             if (!DebugLog.isEnabled()) return;
             if ((tickCount % 40L) != 0L) return;
             String id = "?"; try { id = getBukkitEntity().getUniqueId().toString().substring(0,8); } catch (Throwable ignored) {}
-            GlovedPlugin.logDebug("[GoatSummonAI] " + id + " " + msg);
+            GlovedPlugin.logDebug("[GoatSummon] " + id + " " + msg);
         } catch (Throwable ignored) {}
     }
 
@@ -247,7 +247,7 @@ public class GoatSummon extends Goat implements SummonEntity {
 
     /**
      * Route vanilla ram/melee hurt through Gloved summon pipeline for owner credit/progression and APS/cooldowns.
-     * RamTarget/vanilla attacks call doHurtTarget; we gate with SummonAI cooldown and protections.
+     * RamTarget/vanilla attacks call doHurtTarget; we gate with SummonCombatService cooldown and protections.
      */
     @Override
     public boolean doHurtTarget(ServerLevel level, Entity entity) {

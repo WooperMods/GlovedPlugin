@@ -6,7 +6,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Fox attack goal gated by fox states (no attack while sitting/sleeping/crouching/faceplanted),
- * mirroring CombatPets FoxPet.FoxAttackGoal while using Gloved's SummonAI damage pipeline.
+ * mirroring CombatPets FoxPet.FoxAttackGoal while using Gloved's SummonCombatService damage pipeline.
  */
 public class SummonFoxMeleeAttackGoal extends SummonMeleeAttackGoal {
     private final Fox fox;

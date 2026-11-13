@@ -42,7 +42,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Piglin summon brained like CombatPets PiglinPet (core/idle/fight + crossbow/melee),
- * adapted to Gloved 32-block range and SummonAI/soul-stats damage pipeline.
+ * adapted to Gloved 32-block range and SummonCombatService/soul-stats damage pipeline.
  * Vanilla bartering/admiring/hunt/dance/zombification side effects are suppressed.
  */
 public class PiglinSummon extends Piglin implements SummonEntity {

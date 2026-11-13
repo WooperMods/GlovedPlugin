@@ -13,12 +13,12 @@ import net.minecraft.world.entity.ai.memory.WalkTarget;
 import org.jetbrains.annotations.NotNull;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.movement.SummonAIUtils;
+import dev.gloved.glovedplugin.summon.ai.movement.SummonTargetingUtils;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 
 /**
  * Idle behaviors for brained summons: look at owner, follow owner (Gloved 32-block teleport semantics),
- * and auto-target via SummonBrainAI/SummonAIUtils + SoulService combat mode + CombatTargetRules.
+ * and auto-target via SummonBrainAI/SummonTargetingUtils + SoulService combat mode + CombatTargetRules.
  */
 public final class SummonIdleBehaviors {
     private static final int FOLLOW_MIN_DIST = 2;

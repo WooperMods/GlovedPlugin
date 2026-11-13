@@ -14,7 +14,7 @@ import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 
 /**
  * CombatPets-style polar bear warning/stand attack, but damage/credit/cooldowns go through
- * Gloved's SummonAI pipeline (no direct NMS hurt calls).
+ * Gloved's SummonCombatService pipeline (no direct NMS hurt calls).
  */
 public class SummonPolarBearMeleeAttackGoal extends SummonMeleeAttackGoal {
     private final PolarBear bear;

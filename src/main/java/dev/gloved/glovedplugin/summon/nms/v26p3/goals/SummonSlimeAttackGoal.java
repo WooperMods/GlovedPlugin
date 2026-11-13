@@ -103,7 +103,7 @@ public class SummonSlimeAttackGoal extends Goal {
             this.mob.getMoveControl().setWantedPosition(target.getX(), target.getY(), target.getZ(), 1.0D);
         } catch (Throwable ignored) {}
 
-        // Contact damage (equivalent to push/playerTouch collision): cooldown-gated through SummonAI pipeline.
+        // Contact damage (equivalent to push/playerTouch collision): cooldown-gated through SummonCombatService pipeline.
         tryContactDamage(owner, target);
     }
 

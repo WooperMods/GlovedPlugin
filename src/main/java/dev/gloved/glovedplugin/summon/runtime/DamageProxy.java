@@ -166,7 +166,7 @@ public class DamageProxy implements Listener {
                 return;
             }
 
-            // Direct non-projectile summon melee/contact: cancel vanilla and let SummonAI-driven systems apply.
+            // Direct non-projectile summon melee/contact: cancel vanilla and let the summon combat pipeline apply it.
             if (projectile == null && !(rawDamager instanceof EvokerFangs) && !(rawDamager instanceof AreaEffectCloud)) {
                 event.setCancelled(true);
                 if (DebugLogSafe.isEnabled()) {

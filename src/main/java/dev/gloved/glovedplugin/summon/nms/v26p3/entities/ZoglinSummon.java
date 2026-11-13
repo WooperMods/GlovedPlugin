@@ -29,7 +29,7 @@ import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Zoglin summon brained like CombatPets ZoglinPet, adapted to Gloved 32-block range
- * and SummonAI/soul-stats damage pipeline.
+ * and SummonCombatService/soul-stats damage pipeline.
  */
 public class ZoglinSummon extends Zoglin implements SummonEntity {
     private final SummonSharedData sharedData;

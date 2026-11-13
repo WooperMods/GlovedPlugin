@@ -85,7 +85,7 @@ public class EndermanSummon extends Enderman implements SummonEntity {
         this.targetSelector.getAvailableGoals().clear();
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
         this.goalSelector.addGoal(2, new SummonFollowGoal(this, plugin));
-        // Melee attack is cooldown/credit-aware via SummonMeleeAttackGoal -> SummonAI.
+        // Melee attack is cooldown/credit-aware via SummonMeleeAttackGoal -> SummonCombatService.
         this.goalSelector.addGoal(2, new SummonMeleeAttackGoal(this, plugin));
     }
 

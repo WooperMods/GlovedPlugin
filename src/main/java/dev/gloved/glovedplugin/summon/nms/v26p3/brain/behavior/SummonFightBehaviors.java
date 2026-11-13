@@ -25,7 +25,7 @@ import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 
 /**
  * Fight behaviors for brained summons. Targeting respects CombatTargetRules and SoulService combat mode;
- * melee damage flows through SummonAI cooldown + applySummonHit pipeline.
+ * melee damage flows through SummonCombatService cooldown + applySummonHit pipeline.
  */
 public final class SummonFightBehaviors {
     private SummonFightBehaviors() {}

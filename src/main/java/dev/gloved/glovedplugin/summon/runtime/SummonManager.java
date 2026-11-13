@@ -62,37 +62,7 @@ public class SummonManager {
         soulCastCooldowns.put(playerId, System.currentTimeMillis() + Math.max(0, cooldownMs));
     }
 
-    public boolean canSummon(Player player, SummonProfile profile, SummonTrigger trigger) {
-        if (!config.isEnabled() || player == null || profile == null) return false;
-        long now = System.currentTimeMillis();
-        Map<String, Long> playerCooldowns = cooldowns.getOrDefault(player.getUniqueId(), Collections.emptyMap());
-        String key = trigger.name() + ":" + profile.name;
-        Long last = playerCooldowns.get(key);
-        long required = SummonProfile.COOLDOWN_TICKS * 50L;
-        if (last != null && now - last < required) return false;
-        EffectiveSummonStats stats = EffectiveSummonStats.resolve(player, profile, config, plugin.getSummonProgression());
-        int typeCount = tracker.getActiveCount(player.getUniqueId(), profile.name);
-        if (typeCount >= stats.maxActive) return false;
-        // Global cap (dynamic soul system)
-        SoulConfig sc = config.getSoulConfig();
-        if (sc != null) {
-            int level = 0;
-            try { if (plugin.getSummonProgression() != null) level = Math.max(0, plugin.getSummonProgression().getSummoningLevel(player.getUniqueId())); } catch (Throwable ignored) {}
-            int globalMax = sc.computeGlobalMaxActive(level);
-            int globalCount = tracker.getActiveMinions(player.getUniqueId()).size();
-            if (globalCount >= globalMax) return false;
-        }
-        return true;
-    }
-
-    public void setCooldown(Player player, SummonProfile profile, SummonTrigger trigger) {
-        if (player == null || profile == null) return;
-        String key = trigger.name() + ":" + profile.name;
-        cooldowns.computeIfAbsent(player.getUniqueId(), k -> new ConcurrentHashMap<>())
-                .put(key, System.currentTimeMillis());
-    }
-
-    /** Spawn from dynamic soul/profile template; tags summon_soul_id/summon_family when soul provided. */
+        /** Spawn from dynamic soul/profile template; tags summon_soul_id/summon_family when soul provided. */
     public int spawnFromSoul(Player player, SummonProfile profile, SoulInstance soul, LivingEntity target) {
         return spawnFromSoul(player, profile, soul, target, false);
     }

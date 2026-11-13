@@ -32,7 +32,7 @@ public class VexSummon extends Vex implements SummonEntity {
         this.goalSelector.getAvailableGoals().clear();
         this.targetSelector.getAvailableGoals().clear();
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
-        // Custom charge/attack integrated with SummonAI cooldown/damage/owner credit.
+        // Custom charge/attack integrated with SummonCombatService cooldown/damage/owner credit.
         this.goalSelector.addGoal(4, new SummonVexChargeAttackGoal(this, plugin));
         // CombatPets-like follow/hover positioning when idle.
         this.goalSelector.addGoal(8, new SummonVexFollowOwnerGoal(this));

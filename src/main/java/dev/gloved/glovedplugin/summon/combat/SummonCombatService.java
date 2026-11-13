@@ -36,7 +36,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Non-legacy summon combat/support service (extracted from legacy SummonAI).
+ * Non-legacy summon combat/support service (extracted from legacy summon AI control code).
  * Provides shared APIs used by NMS goals/brains/runtime: attack cooldowns, attack execution,
  * hit pipeline, recent-damager tracking, and unreachable caching. Does NOT control summons
  * (no monitor loop, no targeting/movement/follow control).

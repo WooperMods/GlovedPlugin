@@ -23,7 +23,7 @@ import dev.gloved.glovedplugin.summon.runtime.DamageProxy;
  * Wither summon with CombatPets-style head/boss safety parity and summon-safe behavior:
  * - Hides boss bar and prevents invulnerability/spawn state leaks.
  * - Freezes/controls head update hooks where mappings allow so heads stay aligned with the summon target.
- * - Uses GlovedPlugin cooldown-gated ranged firing; projectile hits are converted/credited by DamageProxy/SummonAI.
+ * - Uses GlovedPlugin cooldown-gated ranged firing; projectile hits are converted/credited by DamageProxy/SummonCombatService.
  * - Suppresses destructive world effects (no blue/dangerous skulls, no block destruction hooks when available).
  */
 public class WitherBossSummon extends WitherBoss implements SummonEntity {

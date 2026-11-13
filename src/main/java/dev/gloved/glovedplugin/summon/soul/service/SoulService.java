@@ -1059,7 +1059,7 @@ public class SoulService {
 
     /**
      * Estimate the average melee hit damage this soul would deal (non-elite baseline),
-     * mirroring SummonAI.applyMinionHit/SummonAbilityService crit resolution as closely as
+     * mirroring SummonCombatService.applyMinionHit/SummonAbilityService crit resolution as closely as
      * possible without target-specific context. Packbound is omitted (ally-dependent).
      * Returns the soul's full (pre group-division) damage stat for display/tooltips.
      */
