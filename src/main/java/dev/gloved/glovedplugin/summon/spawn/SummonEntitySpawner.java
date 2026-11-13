@@ -199,9 +199,6 @@ public final class SummonEntitySpawner {
             }
             tracker.track(player.getUniqueId(), mob, lifetimeTicks);
             spawned.add(mob.getUniqueId());
-            if (!spawnedViaNms) {
-                summonAI.monitorSummon(mob, player, profile);
-            }
         }
         if (!spawned.isEmpty()) {
             manager.playSummonEffects(player, baseSpawnLoc, spawned.size());
