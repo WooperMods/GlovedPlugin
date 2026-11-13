@@ -1,7 +1,14 @@
 package dev.gloved.glovedplugin.summon.soul.ui;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.*;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.*;
+import dev.gloved.glovedplugin.summon.soul.service.*;
+import dev.gloved.glovedplugin.summon.soul.item.*;
+import dev.gloved.glovedplugin.summon.soul.db.*;
+import dev.gloved.glovedplugin.summon.soul.ui.*;
+import dev.gloved.glovedplugin.summon.soul.table.*;
+import dev.gloved.glovedplugin.summon.soul.table.ui.*;
+import dev.gloved.glovedplugin.summon.soul.trap.*;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -23,6 +30,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulQuality;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
+import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 
 /**
  * Simple paginated vault GUI for dynamic souls.

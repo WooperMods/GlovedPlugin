@@ -1,0 +1,166 @@
+package dev.gloved.glovedplugin.lootr.service;
+
+import dev.gloved.glovedplugin.lootr.model.ContainerId;
+import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.UUID;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+
+public class PlayerLootService {
+    private final Connection conn;
+
+    public PlayerLootService(Connection conn) {
+        this.conn = conn;
+    }
+
+    public boolean hasOpened(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT opened FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() && rs.getInt("opened") == 1;
+            }
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
+    public void markOpened(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT OR REPLACE INTO player_loot(container_id, player_uuid, opened) VALUES(?,?,1)")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+
+    public byte[] getInventoryBlob(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT inventory_blob FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getBytes("inventory_blob");
+            }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    public void saveInventory(ContainerId id, UUID player, Inventory inv) {
+        byte[] data = InventorySerializer.serialize(inv);
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO player_loot(container_id, player_uuid, inventory_blob, opened) VALUES(?,?,?,1) ON CONFLICT(container_id, player_uuid) DO UPDATE SET inventory_blob = excluded.inventory_blob, opened = 1")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            ps.setBytes(3, data);
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+
+    public int getEliteFlag(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT elite_flag FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt("elite_flag");
+            }
+        } catch (SQLException ignored) {}
+        return 0;
+    }
+
+    public Long getFirstOpened(ContainerId id, UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT first_opened FROM player_loot WHERE container_id = ? AND player_uuid = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.setString(2, player.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    long v = rs.getLong("first_opened");
+                    if (!rs.wasNull()) return v;
+                }
+            }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    public void setFirstOpened(ContainerId id, UUID player, long timestamp) {
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE player_loot SET first_opened = ? WHERE container_id = ? AND player_uuid = ?")) {
+                ps.setLong(1, timestamp);
+                ps.setString(2, id.toStringKey());
+                ps.setString(3, player.toString());
+                int updated = ps.executeUpdate();
+                if (updated == 0) {
+                    try (PreparedStatement ins = conn.prepareStatement(
+                            "INSERT INTO player_loot(container_id, player_uuid, first_opened, opened) VALUES(?,?,?,0)")) {
+                        ins.setString(1, id.toStringKey());
+                        ins.setString(2, player.toString());
+                        ins.setLong(3, timestamp);
+                        ins.executeUpdate();
+                    }
+                }
+            }
+        } catch (SQLException ignored) {}
+    }
+
+    public void setEliteFlag(ContainerId id, UUID player, int flag) {
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE player_loot SET elite_flag = ? WHERE container_id = ? AND player_uuid = ?")) {
+                ps.setInt(1, flag);
+                ps.setString(2, id.toStringKey());
+                ps.setString(3, player.toString());
+                int updated = ps.executeUpdate();
+                GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag UPDATE updated=" + updated + " id=" + id.toStringKey() + " player=" + player);
+                if (updated == 0) {
+                    try (PreparedStatement ins = conn.prepareStatement(
+                            "INSERT INTO player_loot(container_id, player_uuid, elite_flag, opened) VALUES(?,?,?,0)")) {
+                        ins.setString(1, id.toStringKey());
+                        ins.setString(2, player.toString());
+                        ins.setInt(3, flag);
+                        ins.executeUpdate();
+                        GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag INSERTED id=" + id.toStringKey() + " player=" + player);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("Lootr PlayerLootService.setEliteFlag SQLException " + e.getMessage() + " id=" + id.toStringKey() + " player=" + player);
+        }
+    }
+
+    public int countAll() {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM player_loot");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException ignored) {}
+        return 0;
+    }
+
+    public void deleteByPlayer(UUID player) {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_loot WHERE player_uuid = ?")) {
+            ps.setString(1, player.toString());
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+
+    /**
+     * Clears loot and opened state for all players at a container but preserves elite_flag,
+     * matching {@code /lootr reset} semantics.
+     */
+    public void resetContainerLoot(ContainerId id) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE player_loot SET inventory_blob = NULL, opened = 0, first_opened = NULL WHERE container_id = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+}

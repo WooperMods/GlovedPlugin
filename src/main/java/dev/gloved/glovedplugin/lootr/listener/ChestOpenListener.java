@@ -1,10 +1,10 @@
 package dev.gloved.glovedplugin.lootr.listener;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.lootr.manager.LootrManager;
-import dev.gloved.glovedplugin.lootr.manager.PlayerLootService;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.lootr.LootrModule;
+import dev.gloved.glovedplugin.lootr.service.PlayerLootService;
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
-import dev.gloved.glovedplugin.lootr.util.EliteMobsIntegration;
+import dev.gloved.glovedplugin.lootr.integration.EliteMobsIntegration;
 import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
@@ -30,12 +30,12 @@ import java.util.UUID;
 
 public class ChestOpenListener implements Listener {
     private final GlovedPlugin plugin;
-    private final LootrManager manager;
+    private final LootrModule manager;
     private final PlayerLootService lootService;
     private final java.util.concurrent.ConcurrentHashMap<Inventory, ContainerId> inventoryMap = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentHashMap<Inventory, UUID> playerMap = new java.util.concurrent.ConcurrentHashMap<>();
 
-    public ChestOpenListener(GlovedPlugin plugin, LootrManager manager) {
+    public ChestOpenListener(GlovedPlugin plugin, LootrModule manager) {
         this.plugin = plugin;
         this.manager = manager;
         this.lootService = new PlayerLootService(manager.getDatabase().getConnection());

@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.damagehologram.integration;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import org.bukkit.entity.Player;
 
 import java.lang.reflect.Method;

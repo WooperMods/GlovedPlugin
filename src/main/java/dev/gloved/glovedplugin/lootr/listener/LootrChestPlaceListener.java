@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.lootr.listener;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.lootr.manager.LootrManager;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.lootr.LootrModule;
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Container;
@@ -15,12 +15,12 @@ import org.bukkit.persistence.PersistentDataType;
 
 public class LootrChestPlaceListener implements Listener {
     private final GlovedPlugin plugin;
-    private final LootrManager manager;
+    private final LootrModule manager;
     private final NamespacedKey keyMode;
     private final NamespacedKey keyLoot;
     private final NamespacedKey keyId;
 
-    public LootrChestPlaceListener(GlovedPlugin plugin, LootrManager manager) {
+    public LootrChestPlaceListener(GlovedPlugin plugin, LootrModule manager) {
         this.plugin = plugin;
         this.manager = manager;
         this.keyMode = new NamespacedKey(plugin, "lootr_mode");

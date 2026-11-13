@@ -1,6 +1,6 @@
 name: GlovedPlugin
 version: '0.1.0'
-main: dev.gloved.glovedplugin.GlovedPlugin
+main: dev.gloved.glovedplugin.core.GlovedPlugin
 api-version: '26.3'
 load: STARTUP
 dependencies:

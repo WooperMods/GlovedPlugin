@@ -1,8 +1,8 @@
 package dev.gloved.glovedplugin.summon.progression;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.SummonConfig;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;

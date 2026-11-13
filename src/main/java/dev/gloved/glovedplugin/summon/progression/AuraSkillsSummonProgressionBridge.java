@@ -8,8 +8,8 @@ import dev.aurelium.auraskills.api.registry.NamespacedRegistry;
 import dev.aurelium.auraskills.api.skill.CustomSkill;
 import dev.aurelium.auraskills.api.skill.Skill;
 import dev.aurelium.auraskills.api.user.SkillsUser;
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.SummonConfig;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import org.bukkit.Bukkit;
 
 import java.io.File;

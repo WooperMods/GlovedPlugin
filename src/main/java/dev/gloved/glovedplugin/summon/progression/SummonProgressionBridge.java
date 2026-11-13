@@ -1,10 +1,11 @@
 package dev.gloved.glovedplugin.summon.progression;
 
-import dev.gloved.glovedplugin.summon.SummonConfig;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
 import java.util.UUID;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 
 /**
  * Progression hook: v1 XP grants + v2 scaling/ability unlock queries.
@@ -31,7 +32,7 @@ public interface SummonProgressionBridge {
     default OwnerCombatStats resolveOwnerCombatStats(UUID ownerId) { return OwnerCombatStats.unavailable(); }
 
     default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey) {}
-    default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey, dev.gloved.glovedplugin.summon.soul.SoulRarity rarity) {
+    default void onSoulCaptured(Player owner, LivingEntity victim, String familyKey, SoulRarity rarity) {
         onSoulCaptured(owner, victim, familyKey);
     }
     default void onSoulCast(Player owner, String familyKey) {}

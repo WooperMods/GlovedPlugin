@@ -1,13 +1,13 @@
 package dev.gloved.glovedplugin.summon.soul.trap;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.SummonConfig;
-import dev.gloved.glovedplugin.summon.soul.SoulInstance;
-import dev.gloved.glovedplugin.summon.soul.SoulConfig;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
-import dev.gloved.glovedplugin.summon.soul.SoulService;
-import dev.gloved.glovedplugin.summon.soul.SoulGenerator;
-import dev.gloved.glovedplugin.summon.nms.SummonEntityInjector;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulGenerator;
+import dev.gloved.glovedplugin.summon.nms.api.SummonEntityInjector;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;

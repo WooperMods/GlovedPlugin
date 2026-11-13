@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.enchant;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 import org.bukkit.Bukkit;

@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.trap;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Material;

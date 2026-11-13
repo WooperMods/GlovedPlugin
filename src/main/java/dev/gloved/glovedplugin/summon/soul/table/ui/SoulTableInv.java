@@ -1,14 +1,14 @@
 package dev.gloved.glovedplugin.summon.soul.table.ui;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.SoulAffixRoll;
-import dev.gloved.glovedplugin.summon.soul.SoulAffixType;
-import dev.gloved.glovedplugin.summon.soul.SoulDropItem;
-import dev.gloved.glovedplugin.summon.soul.SoulInstance;
-import dev.gloved.glovedplugin.summon.soul.SoulLoreBuilder;
-import dev.gloved.glovedplugin.summon.soul.SoulQuality;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
-import dev.gloved.glovedplugin.summon.soul.SoulService;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixRoll;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
+import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulQuality;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableService;
@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository;
 
 /**
  * 54-slot Soul Table GUI with Combine / Enhance / Reforge / Bulk Salvage tabs.

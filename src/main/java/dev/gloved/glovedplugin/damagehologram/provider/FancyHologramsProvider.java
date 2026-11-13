@@ -5,7 +5,7 @@ import de.oliver.fancyholograms.api.HologramManager;
 import de.oliver.fancyholograms.api.data.TextHologramData;
 import de.oliver.fancyholograms.api.events.HologramsLoadedEvent;
 import de.oliver.fancyholograms.api.hologram.Hologram;
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Display;

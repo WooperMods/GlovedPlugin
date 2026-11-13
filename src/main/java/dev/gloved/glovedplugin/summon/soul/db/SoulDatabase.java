@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.db;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 
 import java.io.File;
 import java.sql.Connection;

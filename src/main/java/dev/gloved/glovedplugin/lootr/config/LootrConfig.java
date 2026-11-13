@@ -1,6 +1,9 @@
 package dev.gloved.glovedplugin.lootr.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.File;
 
 public class LootrConfig {
     public boolean enabled;
@@ -66,5 +69,38 @@ public class LootrConfig {
         c.eliteUpJitterMax = cfg.getInt("elite.up-jitter-max", 3);
         c.autoSaveInterval = cfg.getInt("storage.auto-save-interval", 5);
         return c;
+    }
+
+    /**
+     * Backfills missing Lootr elite keys into an existing {@code lootr.yml} without overwriting
+     * admin-set values. Preserves the original bootstrap behavior and defaults.
+     *
+     * @return {@code true} if the file was modified and saved, {@code false} otherwise
+     */
+    public static boolean backfillMissingEliteKeys(File lootrFile) throws Exception {
+        FileConfiguration lootrBackfill = YamlConfiguration.loadConfiguration(lootrFile);
+        boolean changed = false;
+        if (!lootrBackfill.isSet("elite.regular-chance")) {
+            lootrBackfill.set("elite.regular-chance", 0.65);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.regular-max-items")) {
+            lootrBackfill.set("elite.regular-max-items", 6);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.extra-chance")) {
+            lootrBackfill.set("elite.extra-chance", 0.65);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.up-jitter-chance")) {
+            lootrBackfill.set("elite.up-jitter-chance", 0.65);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.up-jitter-max")) {
+            lootrBackfill.set("elite.up-jitter-max", 3);
+            changed = true;
+        }
+        if (changed) lootrBackfill.save(lootrFile);
+        return changed;
     }
 }

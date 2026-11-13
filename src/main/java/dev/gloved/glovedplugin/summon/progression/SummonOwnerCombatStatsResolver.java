@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.summon.progression;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.SummonConfig;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 

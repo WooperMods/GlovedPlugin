@@ -1,18 +1,30 @@
 name: GlovedPlugin
 version: '0.1.0'
-main: dev.gloved.glovedplugin.GlovedPlugin
+main: dev.gloved.glovedplugin.core.GlovedPlugin
 api-version: '26.3'
-softdepend: [FreeMinecraftModels, ResourcePackManager, PacketEvents, NpcPlugin-Paper, LuckPerms, TAB, CMI, AuraSkills]
+softdepend: [FreeMinecraftModels, ResourcePackManager, PacketEvents, NpcPlugin-Paper, LuckPerms, TAB, CMI, AuraSkills, EliteMobs, FancyHolograms, WorldGuard]
 permissions:
-  gloved.edit:
-    description: Edit the server menu in-game
-    default: op
-  gloved.reload:
-    description: Reload the GlovedPlugin config
+  gloved.emreset:
+    description: Reset a held EliteMobs custom item to its config default
     default: op
   gloved.reset:
-    description: Reset the GlovedPlugin config to defaults
+    description: Reset GlovedPlugin config to defaults
+    default: op
+  gloved.reload:
+    description: Reload GlovedPlugin config
+    default: op
+  gloved.edit:
+    description: Edit the Gloved menu
+    default: op
+  gloved.debug:
+    description: Toggle Gloved debug logging
     default: op
   gloved.rankglyphs:
     description: Generate/apply LuckPerms rank glyph prefixes via ResourcePackManager
+    default: op
+  gloved.soul.table.give:
+    description: Give Soul Table station items and list placed tables
+    default: op
+  gloved.soul.table.break:
+    description: Break Soul Tables owned by other players
     default: op

@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.lootr.listener;
 
-import dev.gloved.glovedplugin.lootr.manager.LootrManager;
+import dev.gloved.glovedplugin.lootr.LootrModule;
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
 import org.bukkit.block.Container;
 import org.bukkit.loot.Lootable;
@@ -10,9 +10,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.world.ChunkLoadEvent;
 
 public class ChestAutoRegisterListener implements Listener {
-    private final LootrManager manager;
+    private final LootrModule manager;
 
-    public ChestAutoRegisterListener(LootrManager manager) {
+    public ChestAutoRegisterListener(LootrModule manager) {
         this.manager = manager;
     }
 

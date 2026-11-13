@@ -1,11 +1,11 @@
 package dev.gloved.glovedplugin.summon.progression;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.combat.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.SummonConfig;
-import dev.gloved.glovedplugin.summon.soul.SoulInstance;
-import dev.gloved.glovedplugin.summon.soul.SoulStatSnapshot;
-import dev.gloved.glovedplugin.summon.soul.SoulTrait;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 import org.bukkit.Bukkit;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import dev.gloved.glovedplugin.summon.runtime.DamageProxy;
 
 /**
  * Crit + multi-level abilities (Debuff L2, Cleave L4, Life-Steal L6; archery/fighting-like pacing).
@@ -201,10 +202,10 @@ public class SummonAbilityService {
                     .withCausingEntity(minion != null ? minion : owner)
                     .build();
             try {
-                dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                DamageProxy.beginPipelineDamage();
                 target.damage(cr.damage, src);
             } finally {
-                dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+                DamageProxy.endPipelineDamage();
             }
             double healthAfter = target.isDead() ? 0.0 : target.getHealth();
             if (!target.isDead() && healthAfter >= healthBefore - 1.0e-6) {
@@ -218,10 +219,10 @@ public class SummonAbilityService {
                 // One retry after forcing no-damage ticks clear in case event pipeline/state interfered.
                 try { target.setNoDamageTicks(0); } catch (Throwable ignored) {}
                 try {
-                    dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                    DamageProxy.beginPipelineDamage();
                     target.damage(cr.damage, src);
                 } finally {
-                    dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+                    DamageProxy.endPipelineDamage();
                 }
                 double retryAfter = target.isDead() ? 0.0 : target.getHealth();
                 if (!target.isDead() && retryAfter >= healthAfter - 1.0e-6) {
@@ -298,10 +299,10 @@ public class SummonAbilityService {
                                     .withCausingEntity(minion != null ? minion : owner)
                                     .build();
                             try {
-                                dev.gloved.glovedplugin.summon.DamageProxy.beginPipelineDamage();
+                                DamageProxy.beginPipelineDamage();
                                 victim.damage(cleaveDamage, src);
                             } finally {
-                                dev.gloved.glovedplugin.summon.DamageProxy.endPipelineDamage();
+                                DamageProxy.endPipelineDamage();
                             }
                         } catch (Throwable t) {
                             GlovedPlugin.logDebug("[SummonAbility] Cleave damage failed: " + t);

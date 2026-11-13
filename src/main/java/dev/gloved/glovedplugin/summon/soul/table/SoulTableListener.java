@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.table;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv;
 import net.kyori.adventure.text.Component;
@@ -26,6 +26,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 import java.sql.SQLException;
+import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository;
 
 /**
  * Block / interaction plumbing for placed Soul Tables.

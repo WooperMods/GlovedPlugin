@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.table;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulDatabase;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;

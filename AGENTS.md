@@ -8,11 +8,12 @@
 - Release: `bun scripts/release.ts [major|minor|patch|X.Y.Z]` – bumps version, changelog, tag, GitHub release.
 
 ## Structure
-- Entry: `GlovedPlugin.java`
-- Menu: `MenuConfig.java` – centered layout engine; `Menus/MenuInv.java`; `commands/GlovedCommand.java`; `handlers/MenuHandler.java`
-- Combat: `combat/` package. Runtime config `combat.yml`. Arc hit detection in `ArcHitbox.java`, listener in `CombatListener.java`, registry in `WeaponRegistry.java`
-- Lootr: `lootr/` package. Runtime config `lootr.yml`. `LootrManager` (particle + orphan-cleanup scan), `ContainerRegistry`, `PlayerLootService` (SQLite `lootr.db`), `ChestOpenListener`, `EliteMobsIntegration` (reflection)
-- Summon: `summon/` package. Runtime config `summon.yml`. Profile-based minion spawns triggered by EliteMobs enchants. `SummonConfig`, `SummonProfile`, `SummonManager`, `SummonEnchant`, `MinionAI`, `DamageProxy`, `SummonInstanceTracker`, `SummonListener`
+- Entry: `core/GlovedPlugin.java` (`dev.gloved.glovedplugin.core.GlovedPlugin`)
+- Menu: `menu/config/MenuConfig.java` – centered layout engine; `menu/inventory/MenuInv.java`; `menu/command/MenuCommand.java`, `menu/command/MenuOpenService.java`; `menu/listener/MenuHandler.java`; `menu/editor/*`
+- Commands: `commands/GlovedRootCommand.java` (`/gloved`), `commands/gloved/GlovedSoulSubcommandHandler.java`, `menu/command/MenuCommand.java` (`/menu`), `lootr/command/LootrCommand.java` (`/lootr`)
+- Combat: `combat/` package. Runtime config `combat.yml`. `combat/config/WeaponRegistry.java`, `combat/runtime/CombatListener.java`, `combat/targeting/ArcHitbox.java`
+- Lootr: `lootr/` package. Runtime config `lootr.yml`. `lootr/LootrModule.java` (runtime facade, particle + orphan-cleanup scan via `lootr/task/*`), `lootr/repository/ContainerRegistry.java`, `lootr/service/PlayerLootService.java` (SQLite `lootr.db`), `lootr/listener/ChestOpenListener.java`, `lootr/integration/EliteMobsIntegration.java` (reflection)
+- Summon: `summon/` package. Runtime config `summon.yml`. `summon/config/{SummonConfig,SummonProfile}.java`, `summon/runtime/{SummonManager,SummonEnchant,SummonListener,SummonInstanceTracker,DamageProxy}.java`, `summon/ai/legacy/SummonAI.java`, `summon/spawn/*`, `summon/nms/api/*`, `summon/nms/v26p3/*`, `summon/soul/{domain,service,db,item,ui,table,trap}/*`
 - Config: `config.yml` – menu items with `anchor`/`offset-x`/`offset-y`/`slot`, opener item. `combat.yml` – weapon presets, `spare_tamed`, `spare_named`, `min_attack_strength`, `adventure_mode_while_armed`, `sneak_bypass`
 
 ## Commands

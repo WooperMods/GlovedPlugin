@@ -1,12 +1,12 @@
 package dev.gloved.glovedplugin.summon.soul.table;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.SoulAffixRoll;
-import dev.gloved.glovedplugin.summon.soul.SoulGenerator;
-import dev.gloved.glovedplugin.summon.soul.SoulInstance;
-import dev.gloved.glovedplugin.summon.soul.SoulQuality;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
-import dev.gloved.glovedplugin.summon.soul.SoulService;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixRoll;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulGenerator;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulQuality;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 import dev.gloved.glovedplugin.summon.soul.db.SoulDatabase;
 import dev.gloved.glovedplugin.summon.soul.db.SoulRepository;
 
@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
 
 /**
  * Combine / enhance / reforge / salvage transactions for the Soul Table.
@@ -163,7 +164,7 @@ public final class SoulTableService {
 
                 List<SoulAffixRoll> affixes = SoulGenerator.rollAffixesForRarity(soul.getRarity(), soulService.soulConfig(), soul.getEntityType());
                 double quality = SoulQuality.percent(soul.getRarity(), affixes);
-                dev.gloved.glovedplugin.summon.soul.SoulBaseStats baseStats =
+                SoulBaseStats baseStats =
                         SoulGenerator.rollBaseStats(soul.getEntityType(), soul.getRarity(), null, config());
                 int groupCapacity = SoulGenerator.rollBaseGroupCapacity(
                         soul.getRarity(), soul.getCategory(),

@@ -1,0 +1,40 @@
+enabled: true
+auto-convert: true
+containers: [CHEST, BARREL, SHULKER_BOX, MINECART_CHEST]
+per-player-loot: true
+max-tracked-chests: 50000
+disabled-worlds: []
+protection:
+  prevent-break: true
+  prevent-hopper: true
+  prevent-explosion: true
+  prevent-piston: true
+  break-confirm-time: 3
+  bypass-protection: true
+visuals:
+  particles-enabled: true
+  particle-type: VILLAGER_HAPPY
+  particles-only-unlooted: true
+inventory:
+  title: "&8[&6✦&8] &eLoot Chest"
+  play-sound: true
+elite:
+  enabled: true
+  chance: 0.08
+  luck-multiplier: 0.02
+  # Elite chest (rare lootbox) item generation: guaranteed minimum, then one
+  # coin toss per extra item at extra-chance until a miss or max-items.
+  min-items: 3
+  max-items: 12
+  extra-chance: 0.65
+  # Upward level jitter for elite chest items: chance per step to go +1 level,
+  # up to up-jitter-max steps. Applied after mob-drop jitter.
+  up-jitter-chance: 0.65
+  up-jitter-max: 3
+  title-suffix: "&6[Elite]"
+  # Elite items can also hide in regular chests
+  # Chance per elite item roll in a regular chest (coin toss per item)
+  regular-chance: 0.65
+  regular-max-items: 6
+storage:
+  auto-save-interval: 5

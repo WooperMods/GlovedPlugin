@@ -1,7 +1,14 @@
 package dev.gloved.glovedplugin.summon.soul.db;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.*;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.*;
+import dev.gloved.glovedplugin.summon.soul.service.*;
+import dev.gloved.glovedplugin.summon.soul.item.*;
+import dev.gloved.glovedplugin.summon.soul.db.*;
+import dev.gloved.glovedplugin.summon.soul.ui.*;
+import dev.gloved.glovedplugin.summon.soul.table.*;
+import dev.gloved.glovedplugin.summon.soul.table.ui.*;
+import dev.gloved.glovedplugin.summon.soul.trap.*;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.bukkit.World;
@@ -13,6 +20,15 @@ import java.lang.reflect.Type;
 import java.sql.*;
 import java.util.*;
 import java.util.Locale;
+import dev.gloved.glovedplugin.summon.soul.domain.EntityCategory;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixRoll;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 
 /**
  * JDBC repository for souls.db. Synchronous DB access; callers should avoid main-thread heavy use when possible.
@@ -456,7 +472,7 @@ public class SoulRepository {
      *
      * @return number of backfilled rows
      */
-    public synchronized int backfillLegacyBaseStats(dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig.SoulStatConfig statCfg)
+    public synchronized int backfillLegacyBaseStats(SoulTableConfig.SoulStatConfig statCfg)
             throws SQLException {
         String sel = "SELECT soul_id, entity_type, rarity, max_health FROM souls " +
                 "WHERE base_stats_json IS NULL OR base_stats_json = ''";

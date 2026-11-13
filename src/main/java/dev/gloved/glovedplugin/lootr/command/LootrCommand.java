@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.lootr.command;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.command.CommandSender;
@@ -8,6 +8,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.List;
+import dev.gloved.glovedplugin.lootr.LootrModule;
+import dev.gloved.glovedplugin.lootr.model.ContainerId;
+import dev.gloved.glovedplugin.lootr.service.PlayerLootService;
 
 public class LootrCommand implements BasicCommand {
     private final GlovedPlugin plugin;
@@ -19,7 +22,7 @@ public class LootrCommand implements BasicCommand {
     @Override
     public void execute(@NotNull CommandSourceStack stack, @NotNull String[] args) {
         CommandSender sender = stack.getSender();
-        if (plugin.getLootrManager() == null) {
+        if (plugin.getLootrModule() == null) {
             sender.sendMessage("§cLootr module not enabled");
             return;
         }
@@ -33,7 +36,9 @@ public class LootrCommand implements BasicCommand {
             sender.sendMessage("§cNo permission");
             return;
         }
-        dev.gloved.glovedplugin.lootr.manager.LootrManager manager = plugin.getLootrManager();
+        LootrModule manager = plugin.getLootrModule();
+        PlayerLootService playerLootService =
+                new PlayerLootService(manager.getDatabase().getConnection());
         switch (sub) {
             case "reload":
                 java.io.File lootrFile = new java.io.File(plugin.getDataFolder(), "lootr.yml");
@@ -43,12 +48,12 @@ public class LootrCommand implements BasicCommand {
             case "info":
                 sender.sendMessage("§eLootr info:");
                 sender.sendMessage("§7Enabled: " + manager.getConfig().enabled);
-                sender.sendMessage("§7Containers tracked: " + getContainerCount(manager));
+                sender.sendMessage("§7Containers tracked: " + manager.getRegistry().count());
                 return;
             case "stats":
                 sender.sendMessage("§eLootr stats:");
-                sender.sendMessage("§7Containers: " + getContainerCount(manager));
-                sender.sendMessage("§7Player loot entries: " + getPlayerLootCount(manager));
+                sender.sendMessage("§7Containers: " + manager.getRegistry().count());
+                sender.sendMessage("§7Player loot entries: " + playerLootService.countAll());
                 return;
             case "clear":
                 if (args.length < 2) {
@@ -60,11 +65,11 @@ public class LootrCommand implements BasicCommand {
                     sender.sendMessage("§cPlayer not found");
                     return;
                 }
-                clearPlayerLoot(manager, target.getUniqueId());
+                playerLootService.deleteByPlayer(target.getUniqueId());
                 sender.sendMessage("§aCleared loot for " + target.getName());
                 return;
             case "reset":
-                dev.gloved.glovedplugin.lootr.model.ContainerId resetId = null;
+                ContainerId resetId = null;
                 if (args.length == 1) {
                     if (!(sender instanceof org.bukkit.entity.Player player)) {
                         sender.sendMessage("§cOnly players can reset by looking at a container");
@@ -75,7 +80,7 @@ public class LootrCommand implements BasicCommand {
                         sender.sendMessage("§cLook at a container to reset");
                         return;
                     }
-                    resetId = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                    resetId = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
                 } else if (args.length >= 5) {
                     try {
                         String worldName = args[1];
@@ -87,7 +92,7 @@ public class LootrCommand implements BasicCommand {
                             sender.sendMessage("§cWorld not found");
                             return;
                         }
-                        resetId = new dev.gloved.glovedplugin.lootr.model.ContainerId(world.getUID(), x, y, z);
+                        resetId = new ContainerId(world.getUID(), x, y, z);
                     } catch (NumberFormatException ex) {
                         sender.sendMessage("§cInvalid coordinates");
                         return;
@@ -96,7 +101,7 @@ public class LootrCommand implements BasicCommand {
                     sender.sendMessage("§cUsage: /lootr reset [world x y z] or look at a container and run /lootr reset");
                     return;
                 }
-                resetContainerLoot(manager, resetId);
+                playerLootService.resetContainerLoot(resetId);
                 sender.sendMessage("§aReset loot for container at " + resetId.x() + "," + resetId.y() + "," + resetId.z() + " §7(elite status preserved)");
                 return;
             case "convert":
@@ -109,7 +114,7 @@ public class LootrCommand implements BasicCommand {
                     sender.sendMessage("§cLook at a container to convert");
                     return;
                 }
-                dev.gloved.glovedplugin.lootr.model.ContainerId cid = new dev.gloved.glovedplugin.lootr.model.ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+                ContainerId cid = new ContainerId(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
                 String lootTableKey = "";
                 if (block.getState() instanceof org.bukkit.loot.Lootable lootable) {
                     org.bukkit.loot.LootTable table = lootable.getLootTable();
@@ -153,7 +158,7 @@ public class LootrCommand implements BasicCommand {
                 );
                 // blank = empty chest with no loot table at all
                 String chosen = mode.equals("blank") ? "" : tables.get(new java.util.Random().nextInt(tables.size()));
-                dev.gloved.glovedplugin.GlovedPlugin.logDebug("Lootr generate mode=" + mode + " chosen=" + chosen);
+                GlovedPlugin.logDebug("Lootr generate mode=" + mode + " chosen=" + chosen);
                 // Create Lootr chest item
                 org.bukkit.inventory.ItemStack item = new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHEST);
                 org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
@@ -187,7 +192,14 @@ public class LootrCommand implements BasicCommand {
                 return;
             case "list":
                 sender.sendMessage("§eRegistered containers:");
-                listContainers(sender, manager);
+                java.util.List<ContainerId> containers = manager.getRegistry().list(50);
+                int count = 0;
+                for (ContainerId id : containers) {
+                    if (count >= 10) break;
+                    sender.sendMessage("§7- " + id.world() + " " + id.x() + "," + id.y() + "," + id.z());
+                    count++;
+                }
+                if (count == 0) sender.sendMessage("§7No containers registered");
                 return;
             default:
                 sender.sendMessage("§cUnknown subcommand");
@@ -204,53 +216,5 @@ public class LootrCommand implements BasicCommand {
             return plugin.getServer().getOnlinePlayers().stream().map(org.bukkit.entity.Player::getName).toList();
         }
         return List.of();
-    }
-
-    private int getContainerCount(dev.gloved.glovedplugin.lootr.manager.LootrManager manager) {
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement("SELECT COUNT(*) FROM containers");
-             java.sql.ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) return rs.getInt(1);
-        } catch (Exception ignored) {}
-        return 0;
-    }
-
-    private int getPlayerLootCount(dev.gloved.glovedplugin.lootr.manager.LootrManager manager) {
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement("SELECT COUNT(*) FROM player_loot");
-             java.sql.ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) return rs.getInt(1);
-        } catch (Exception ignored) {}
-        return 0;
-    }
-
-    private void clearPlayerLoot(dev.gloved.glovedplugin.lootr.manager.LootrManager manager, java.util.UUID player) {
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement("DELETE FROM player_loot WHERE player_uuid = ?")) {
-            ps.setString(1, player.toString());
-            ps.executeUpdate();
-        } catch (Exception ignored) {}
-    }
-
-    private void resetContainerLoot(dev.gloved.glovedplugin.lootr.manager.LootrManager manager, dev.gloved.glovedplugin.lootr.model.ContainerId id) {
-        // Clear loot and opened state but keep elite_flag, so players who had an
-        // elite chest get a fresh elite chest on next open instead of re-rolling
-        // the normal-chest elite chance.
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement(
-                "UPDATE player_loot SET inventory_blob = NULL, opened = 0, first_opened = NULL WHERE container_id = ?")) {
-            ps.setString(1, id.toStringKey());
-            ps.executeUpdate();
-        } catch (Exception ignored) {}
-    }
-
-    private void listContainers(CommandSender sender, dev.gloved.glovedplugin.lootr.manager.LootrManager manager) {
-        try (java.sql.PreparedStatement ps = manager.getDatabase().getConnection().prepareStatement("SELECT id, world, x, y, z FROM containers LIMIT 50");
-             java.sql.ResultSet rs = ps.executeQuery()) {
-            int count = 0;
-            while (rs.next() && count < 10) {
-                sender.sendMessage("§7- " + rs.getString("world") + " " + rs.getInt("x") + "," + rs.getInt("y") + "," + rs.getInt("z"));
-                count++;
-            }
-            if (count == 0) sender.sendMessage("§7No containers registered");
-        } catch (Exception ignored) {
-            sender.sendMessage("§cError listing containers");
-        }
     }
 }

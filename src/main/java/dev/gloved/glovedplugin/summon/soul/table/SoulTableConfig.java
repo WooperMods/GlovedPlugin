@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.summon.soul.table;
 
-import dev.gloved.glovedplugin.summon.soul.SoulBaseStats;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;

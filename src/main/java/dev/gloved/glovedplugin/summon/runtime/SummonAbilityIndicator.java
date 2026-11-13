@@ -1,0 +1,93 @@
+package dev.gloved.glovedplugin.summon.runtime;
+
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulConfig;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.Listener;
+import org.bukkit.scheduler.BukkitTask;
+
+import java.util.Locale;
+import dev.gloved.glovedplugin.summon.config.SummonConfig;
+import dev.gloved.glovedplugin.summon.soul.item.SoulItem;
+
+/**
+ * Action-bar indicator for dynamic soul summoning: selected soul + cast readiness (cooldown/mana/cap hints).
+ */
+public class SummonAbilityIndicator implements Listener {
+    private final GlovedPlugin plugin;
+    private final SummonConfig config;
+    private BukkitTask task;
+
+    public SummonAbilityIndicator(GlovedPlugin plugin, SummonConfig config) {
+        this.plugin = plugin;
+        this.config = config;
+        start();
+    }
+
+    private void start() {
+        stop();
+        try {
+            task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                try {
+                    SoulService souls = plugin.getSoulService();
+                    if (souls == null) return;
+                    SummonManager mgr = plugin.getSummonManager();
+                    SummonInstanceTracker tracker = plugin.getSummonTracker();
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (p == null || !p.isOnline()) continue;
+                        // Only show while holding the Soul Focus
+                        if (!SoulItem.isSoulItem(p.getInventory().getItemInMainHand())
+                                && !SoulItem.isSoulItem(p.getInventory().getItemInOffHand())) {
+                            continue;
+                        }
+                        SoulInstance sel = souls.getSelectedSoul(p.getUniqueId());
+                        if (sel == null) continue;
+                        SoulConfig scfg = souls.soulConfig();
+                        String base = "§dSoul§7: §f" + SoulService.describe(sel);
+                        String status = "§aReady";
+                        try {
+                            if (mgr != null) {
+                                long rem = mgr.getSoulCastCooldownRemainingMs(p.getUniqueId());
+                                if (rem > 0) {
+                                    status = "§cCD " + String.format(Locale.ROOT, "%.1fs", rem / 1000.0);
+                                } else {
+                                    boolean activeSameSoul = false;
+                                    try {
+                                        if (tracker != null && sel.getSoulId() != null) {
+                                            java.util.UUID activeSoulId = mgr.getActiveSoulId(p.getUniqueId());
+                                            activeSameSoul = sel.getSoulId().equals(activeSoulId);
+                                        }
+                                    } catch (Throwable ignored) {}
+                                    if (activeSameSoul) {
+                                        status = "§eRecall";
+                                    } else {
+                                        double manaCost = souls.computeCastManaCost(sel, scfg);
+                                        boolean manaOn = scfg != null && scfg.isCastManaEnabled() && manaCost > 0.0
+                                                && config != null && config.isManaEnabled();
+                                        if (manaOn) {
+                                            status = "§aReady §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
+                                        } else {
+                                            status = "§aReady";
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Throwable ignored) {}
+                        try {
+                            p.sendActionBar(Component.text(base + " §8| " + status));
+                        } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
+            }, 2L, 2L);
+        } catch (Throwable ignored) {}
+    }
+
+    public void stop() {
+        try { if (task != null) task.cancel(); } catch (Throwable ignored) {}
+        task = null;
+    }
+}

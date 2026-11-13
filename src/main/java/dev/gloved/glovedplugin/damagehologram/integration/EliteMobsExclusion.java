@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.damagehologram.integration;
 
 import com.magmaguy.elitemobs.entitytracker.EntityTracker;
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import org.bukkit.entity.Entity;
 
 public final class EliteMobsExclusion {

@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.damagehologram;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.damagehologram.integration.AuraSkillsCompat;
 import dev.gloved.glovedplugin.damagehologram.integration.EliteMobsExclusion;
 import dev.gloved.glovedplugin.damagehologram.provider.HologramProvider;

@@ -1,6 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.trap;
 
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;

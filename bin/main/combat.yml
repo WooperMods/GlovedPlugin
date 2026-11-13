@@ -18,10 +18,31 @@ dual_wield: true
 dual_wield_speed_bonus: 0.2
 # Non-primary arc targets take damage * this unless you have Sweeping Edge.
 sweep_falloff_multiplier: 0.5
-# Attack through zero-hardness blocks (grass/torches) instead of mining them.
-swing_thru_grass: false
+# No mining with weapons: holding a weapon suppresses block damage/break
+# (axes can't fell trees either) unless sneaking or in creative.
+suppress_mining_with_weapons: true
+# Sneaking with a weapon re-enables mining (crouch bypass to force-mine).
+sneak_bypass: true
+# Silently move armed survival players to adventure mode (no mining or
+# placing, but doors/chests/buttons/levers keep working). Sneaking restores
+# survival (crouch bypass). Creative/spectator are never touched.
+adventure_mode_while_armed: true
+# Never hit tamed mobs (dogs, cats, parrots, horses) with arcs, no matter
+# who tamed them. Untamed mobs are still hittable.
+spare_tamed: true
+# Never hit mobs named with a name tag. Detected via custom name + persistent.
+# Plugins that only set custom names without persistence are still hittable.
+spare_named: true
+# Companion-mod bridge (custom payload channel gloved:combat): handshake,
+# modded hold-repeat input, and server-driven HUD timing for GlovedMod.
+mod_bridge: true
 # Idle ticks before the combo restarts at stage 1.
 combo_reset_ticks: 40
+# Minimum vanilla attack strength (0.0-1.0) required for an arc swing.
+# Clicks below this are ignored with no FX and no damage.
+min_attack_strength: 0.9
+# Extra mace reach (blocks) while falling. Total arc reach is ~3 + bonus.
+mace_falling_range_bonus: 3.0
 
 fallback:
   range_bonus: 0.0
@@ -56,6 +77,12 @@ presets:
     angle: 35.0
     hitbox: FORWARD_BOX
     two_handed: true
+  mace:
+    range_bonus: 0.5
+    angle: 180.0
+    hitbox: HORIZONTAL_PLANE
+    attacks:
+      - { damage_multiplier: 1.0, range_multiplier: 1.0, angle: 180.0, swing_sound: ENTITY_MACE_SMASH_GROUND, particles: GUST }
   dagger:
     range_bonus: -0.5
     angle: 70.0
@@ -72,6 +99,4 @@ weapons:
   DIAMOND_AXE: axe
   NETHERITE_AXE: axe
   TRIDENT: spear
-  MACE:
-    preset: spear
-    range_bonus: 0.5
+  MACE: mace

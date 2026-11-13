@@ -1,9 +1,9 @@
 package dev.gloved.glovedplugin.summon.soul.table.ui;
 
-import dev.gloved.glovedplugin.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.SoulAffixType;
-import dev.gloved.glovedplugin.summon.soul.SoulRarity;
-import dev.gloved.glovedplugin.summon.soul.SoulTrait;
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
+import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableItem;
 import net.kyori.adventure.text.Component;

@@ -1,0 +1,337 @@
+# GlovedPlugin - Dynamic Soul Summoning
+# Fully dynamic soul system: souls are captured from eligible living mobs (entity type = family).
+# No static profile catalog is required. Keep this config minimal; use defaults unless tuning.
+
+enabled: true
+
+# Soul Traps: craftable items to capture mob souls without killing them
+soulTraps:
+  enabled: true
+  eliteResistance: 0.25
+  bossResistance: 1.0
+  minHpToTrap: 5.0
+  trapExhaustionTicks: 12000
+
+# Clumped nametags: when too many minions cluster, hide individual tags and show one shared label.
+clumped-nametags:
+  enabled: true
+  min-count: 4
+  radius: 2.0
+  update-ticks: 10
+  format: "{nametag} x{count}"
+
+souls:
+  enabled: true
+  dynamic:
+    allow-all-living: true
+    allow-bosses: true
+    default-batch: 1
+    # Base minion lifetime in ticks. Set to 0 or -1 to disable timed despawn.
+    lifetime-ticks: 1200
+    # Delay after engaging a target before a Warden summon can start charging sonic boom (ticks). Vanilla-like: 200 (10s).
+    warden-sonic-engage-delay-ticks: 200
+    default-nametag-format: "{player}'s {mob}"
+    blacklist: []
+    # Explicit per-entity-type max active summon caps (hard caps; overrides category defaults and scaling).
+    max-active-by-type:
+      WARDEN: 1
+      ENDER_DRAGON: 1
+      WITHER: 1
+      ELDER_GUARDIAN: 1
+  nametag:
+    # Custom LM-style summon nametag (rarity + base name). Health indicator removed.
+    enabled: true
+
+  categories:
+    PASSIVE:
+      max-active-per-type: 3
+      cost-mult: 0.8
+      hp-mult: 0.9
+      enabled: true
+    NEUTRAL:
+      max-active-per-type: 2
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    HOSTILE:
+      max-active-per-type: 2
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    FLYING:
+      max-active-per-type: 3
+      cost-mult: 1.1
+      hp-mult: 0.9
+      enabled: true
+    AQUATIC:
+      max-active-per-type: 3
+      cost-mult: 1.0
+      hp-mult: 1.0
+      enabled: true
+    AMBIENT:
+      max-active-per-type: 2
+      cost-mult: 0.6
+      hp-mult: 0.7
+      enabled: true
+    BOSS:
+      max-active-per-type: 1
+      cost-mult: 3.0
+      hp-mult: 1.5
+      enabled: true
+    SPECIAL:
+      max-active-per-type: 1
+      cost-mult: 1.2
+      hp-mult: 1.0
+      enabled: true
+
+  capture:
+    base-chance: 0.08
+    luck-per-level: 0.0015
+    luck-max-bonus: 0.06
+    minion-kills:
+      enabled: true
+      chance-multiplier: 0.5
+    by-category-mult:
+      PASSIVE: 0.8
+      NEUTRAL: 1.0
+      HOSTILE: 1.0
+      FLYING: 1.0
+      AQUATIC: 1.0
+      AMBIENT: 0.7
+      BOSS: 0.5
+      SPECIAL: 1.0
+    dr:
+      enabled: true
+      window-seconds: 600
+      radius: 48.0
+    pity:
+      enabled: true
+      rare-threshold: 40
+      epic-threshold: 120
+      legendary-threshold: 350
+
+  rarity:
+    weights:
+      COMMON: 5000
+      UNCOMMON: 2800
+      RARE: 1400
+      EPIC: 600
+      LEGENDARY: 180
+      MYTHIC: 20
+    min-levels:
+      COMMON: 0
+      UNCOMMON: 0
+      RARE: 5
+      EPIC: 15
+      LEGENDARY: 30
+      MYTHIC: 50
+
+  essence:
+    values:
+      COMMON: 1
+      UNCOMMON: 3
+      RARE: 8
+      EPIC: 18
+      LEGENDARY: 42
+      MYTHIC: 95
+    overflow-multiplier: 1.0
+
+  vault:
+    base-capacity: 30
+    max-capacity: 0 # <= 0 means unlimited
+    capacity-per-level: 2.0
+    overflow: CONVERT_TO_ESSENCE
+    overflow-mode: CONVERT_TO_ESSENCE
+    overflow-multiplier: 1.0
+    loadout:
+      base-slots: 1
+      levels-per-slot: 10
+      max-slots: 5
+
+  cast:
+    shared-gcd-ticks: 0
+    base-cooldown-ticks: 0
+    mana-enabled: true
+    base-mana-cost: 12.0
+    replace-policy: BLOCK_IF_CAPPED
+
+  caps:
+    global-max-active-base: 2
+    global-max-active-per-level: 0.15
+    global-max-active-max: 8
+
+  debug-telemetry: true
+
+  table:
+    enabled: true
+    base-block: SMITHING_TABLE
+    use-public: true
+    break-owner-only: true
+    costs:
+      combine:
+        UNCOMMON: 8
+        RARE: 20
+        EPIC: 55
+        LEGENDARY: 150
+        MYTHIC: 425
+      enhance:
+        base: 8.0
+        exponent: 1.8
+        offset: 1
+        min-cost: 1
+        max-cost: 0
+        max-level: 10
+        per-level-bonus: 0.025
+      reforge:
+        COMMON: 12
+        UNCOMMON: 20
+        RARE: 40
+        EPIC: 80
+        LEGENDARY: 150
+        MYTHIC: 275
+      salvage:
+        confirmation-seconds: 5
+    recipe:
+      enabled: true
+      pattern:
+        - "SSS"
+        - "PLP"
+        - "ONO"
+      ingredients:
+        S: SOUL_SAND
+        P: POLISHED_BLACKSTONE
+        L: SOUL_LANTERN
+        O: OBSIDIAN
+        N: NETHERITE_SCRAP
+
+  # Rolled soul base stats (auto-partitioned absolute bands). Follow/target range is intentionally
+  # absent: it is a fixed SummonProfile AI limit, never a soul stat.
+  # Legacy souls.stats.rarity-multipliers/variance are deprecated and ignored.
+  stats:
+    enabled: true
+    backfill-legacy: true
+    bounds:
+      health:
+        min: 1.0
+        max: 200.0
+      attack-damage:
+        min: 4.0
+        max: 30.0
+      movement-speed:
+        min: 0.02316678234931691
+        max: 0.32436
+      attack-speed:
+        min: 0.20
+        max: 1.20
+    ranges:
+      overlap: 0.06
+      split:
+        COMMON: 1.0
+        UNCOMMON: 1.0
+        RARE: 1.0
+        EPIC: 1.0
+        LEGENDARY: 1.0
+        MYTHIC: 1.0
+
+progression:
+  enabled: true
+  auraskills:
+    enabled: true
+    skill-id: summoning
+    apply-multipliers: true
+    # Best-effort backfill: generate/migrate AuraSkills content files (skills/abilities/rewards) when safe.
+    generate-content-files: true
+  mana:
+    # Consumes AuraSkills mana per summon trigger (batch). AuraSkills shows its own "not enough mana" feedback.
+    enabled: true
+    cost-per-trigger: 3.0
+    allow-when-auraskills-missing: true
+  xp:
+    minion-hit:
+      enabled: true
+      amount: 4.0
+      owner-cooldown-ticks: 10
+      per-target-cooldown-ticks: 40
+      max-per-minute: 600.0
+    minion-kill:
+      enabled: true
+      amount: 40.0
+      attribution-window-ticks: 200
+      max-per-minute: 400.0
+    soul-capture:
+      enabled: true
+      amount: 10.0
+      max-per-minute: 300.0
+    soul-cast:
+      enabled: false
+      amount: 6.0
+      max-per-minute: 200.0
+  scaling:
+    enabled: true
+    chance:
+      per-level: 0.005
+      max: 0.95
+    minions-per-hit:
+      per-level: 0.10
+      max: 12
+    max-active:
+      per-level: 0.25
+      max: 30
+  crit:
+    enabled: true
+    source: auraskills
+    max-chance: 0.40
+    min-damage-multiplier: 1.0
+    max-damage-multiplier: 3.0
+  minion-damage:
+    owner-strength:
+      enabled: true
+      per-attack-damage-trait: 0.20
+      max-bonus: 12.0
+    owner-toughness:
+      enabled: true
+      per-point: 0.02
+      max-bonus: 0.50
+  abilities:
+    enabled: true
+    use-auraskills-ability-levels: true
+    debuff:
+      enabled: true
+      unlock-level: 2
+      base-chance: 0.15
+      chance-per-level: 0.015
+      max-chance: 0.45
+      cooldown-ticks: 60
+      effect: SLOWNESS
+      duration-ticks: 60
+      duration-per-level: 4
+      max-duration-ticks: 120
+      amplifier: 0
+      synergy-any-common-debuff: true
+    cleave:
+      enabled: true
+      unlock-level: 4
+      base-chance: 0.12
+      chance-per-level: 0.012
+      max-chance: 0.40
+      cooldown-ticks: 80
+      base-radius: 2.0
+      radius-per-level: 0.10
+      max-radius: 4.0
+      max-targets: 3
+      base-damage-ratio: 0.25
+      damage-ratio-per-level: 0.015
+      max-damage-ratio: 0.60
+      max-damage: 8.0
+      damage-ratio-uses-base-damage: false
+      spread-debuff: true
+      max-damage-per-minute: 180.0
+    lifesteal:
+      enabled: true
+      unlock-level: 6
+      base-heal-percent-max-hp: 0.0075
+      heal-percent-per-level: 0.0010
+      max-heal-percent-max-hp: 0.03
+      debuffed-bonus-multiplier: 1.25
+      per-hit-heal-cap: 2.5
+      max-heal-per-minute: 40.0
