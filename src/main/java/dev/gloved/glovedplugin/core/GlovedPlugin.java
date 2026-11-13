@@ -24,7 +24,7 @@ import java.util.logging.Logger;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
 import dev.gloved.glovedplugin.lootr.LootrModule;
 import dev.gloved.glovedplugin.menu.config.MenuConfig;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.nms.api.SummonNMS;
 import dev.gloved.glovedplugin.summon.nms.v26p3.SummonNMSBootstrap;
@@ -78,7 +78,7 @@ public final class GlovedPlugin extends JavaPlugin {
   private SummonConfig summonConfig;
   private SummonManager summonManager;
   private SummonInstanceTracker summonTracker;
-  private SummonAI summonAI;
+  private SummonCombatService summonCombatService;
   private SummonProgressionBridge summonProgression;
   private SummonAbilityService summonAbilityService;
   private SoulDatabase soulDatabase;
@@ -255,19 +255,19 @@ public final class GlovedPlugin extends JavaPlugin {
     getServer().getPluginManager().registerEvents(new SoulPickupListener(this), this);
     getServer().getPluginManager().registerEvents(new SoulItemListener(this), this);
     this.summonTracker = new SummonInstanceTracker(this);
-    this.summonAI = new SummonAI(this, this.summonTracker);
-    this.summonManager = new SummonManager(this, this.summonConfig, this.summonTracker, this.summonAI);
-    this.summonAI.setSummon(this.summonConfig, this.summonManager);
+    this.summonCombatService = new SummonCombatService(this, this.summonTracker);
+    this.summonManager = new SummonManager(this, this.summonConfig, this.summonTracker, this.summonCombatService);
+    this.summonCombatService.setSummon(this.summonConfig, this.summonManager);
     this.summonProgression = createSummonProgressionBridge();
-    this.summonAI.setProgression(this.summonProgression);
+    this.summonCombatService.setProgression(this.summonProgression);
     this.summonAbilityService = new SummonAbilityService(this, this.summonProgression);
-    this.summonAI.setAbilityService(this.summonAbilityService);
+    this.summonCombatService.setAbilityService(this.summonAbilityService);
     this.summonNMS = SummonNMSBootstrap.create(this);
     if (this.summonNMS != null) {
       logInfo("Summon NMS backend initialized: " + this.summonNMS.getSupportedEntities().size()
           + " supported entity types");
     } else {
-      logWarning("Summon NMS backend unavailable; falling back to legacy Bukkit summon AI");
+      logWarning("Summon NMS backend unavailable; falling back to basic Bukkit summon behavior");
     }
     this.summonProgression.onEnable();
     // Auto-reload AuraSkills skill into menu after first player joins if it is
@@ -290,7 +290,7 @@ public final class GlovedPlugin extends JavaPlugin {
         .registerEvents(new SummonListener(this, this.summonConfig, this.summonManager, this.summonTracker), this);
     this.summonAbilityIndicator = new SummonAbilityIndicator(this, this.summonConfig);
     getServer().getPluginManager().registerEvents(this.summonAbilityIndicator, this);
-    getServer().getPluginManager().registerEvents(new DamageProxy(this.summonTracker, this.summonAI), this);
+    getServer().getPluginManager().registerEvents(new DamageProxy(this.summonTracker, this.summonCombatService), this);
     getServer().getPluginManager()
         .registerEvents(new SummonKillAttributionListener(() -> this.summonProgression, () -> this.summonConfig), this);
     // Clean up orphaned summon entities (e.g. leftover after restart/crash or owner
@@ -368,11 +368,11 @@ public final class GlovedPlugin extends JavaPlugin {
     }
     if (this.summonProgression != null) {
       this.summonProgression = refreshSummonProgressionBridge(this.summonProgression);
-      if (this.summonAI != null)
-        this.summonAI.setProgression(this.summonProgression);
+      if (this.summonCombatService != null)
+        this.summonCombatService.setProgression(this.summonProgression);
       this.summonAbilityService = new SummonAbilityService(this, this.summonProgression);
-      if (this.summonAI != null)
-        this.summonAI.setAbilityService(this.summonAbilityService);
+      if (this.summonCombatService != null)
+        this.summonCombatService.setAbilityService(this.summonAbilityService);
       this.summonProgression.onReload(this.summonConfig);
     }
     if (this.damageHologramModule != null) {
@@ -454,8 +454,8 @@ public final class GlovedPlugin extends JavaPlugin {
     return soulTableRecipeManager;
   }
 
-  public SummonAI getSummonAI() {
-    return summonAI;
+  public SummonCombatService getSummonCombatService() {
+    return summonCombatService;
   }
 
   public SummonNMS getSummonNMS() {

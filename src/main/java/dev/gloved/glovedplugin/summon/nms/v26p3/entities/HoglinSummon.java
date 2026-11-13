@@ -29,7 +29,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
 
 import java.util.UUID;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Hoglin summon brained like CombatPets HoglinPet, adapted to Gloved 32-block range and
@@ -156,12 +156,12 @@ public class HoglinSummon extends Hoglin implements SummonEntity {
             try {
                 // Route damage through Gloved summon pipeline (soul stats/cooldowns/owner credit/progression).
                 org.bukkit.entity.Player owner = SummonBrainAI.resolveOwnerBukkit(this);
-                var ai = plugin != null ? plugin.getSummonAI() : null;
+                var ai = plugin != null ? plugin.getSummonCombatService() : null;
                 if (owner == null || ai == null) return false;
                 org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.getBukkitEntity();
                 org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();
                 long now = org.bukkit.Bukkit.getCurrentTick();
-                return ai.performSummonAttack(bSummon, owner, bTarget, now, SummonAI.AttackOptions.meleePipeline()) > 0.0;
+                return ai.performSummonAttack(bSummon, owner, bTarget, now, SummonCombatService.AttackOptions.meleePipeline()) > 0.0;
             } catch (Throwable t) {
                 // Best-effort fallback keeps knockback/impact feel if pipeline unavailable.
                 try { return HoglinBase.hurtAndThrowTarget(level, this, target); } catch (Throwable ignored) { return false; }

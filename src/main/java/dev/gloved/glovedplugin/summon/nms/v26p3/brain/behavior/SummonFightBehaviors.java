@@ -3,7 +3,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.brain.behavior;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.nms.v26p3.brain.SummonBrainAI;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -199,7 +199,7 @@ public final class SummonFightBehaviors {
                 return true;
             }
 
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             if (ai == null) return false;
             long now = Bukkit.getCurrentTick();
             if (!ai.canAttackNow(bSummon, owner, now)) {
@@ -210,7 +210,7 @@ public final class SummonFightBehaviors {
             try { lookTarget.set(new EntityTracker(target, true)); } catch (Throwable ignored) {}
             try { mob.lookAt(target, 30.0F, 30.0F); } catch (Throwable ignored) {}
             // Unified per-summon attack helper: cooldown, soul stats/calc, procs/abilities, pipeline damage.
-            double dealt = ai.performSummonAttack(bSummon, owner, bTarget, now, SummonAI.AttackOptions.meleePipeline());
+            double dealt = ai.performSummonAttack(bSummon, owner, bTarget, now, SummonCombatService.AttackOptions.meleePipeline());
             dbgAtk(mob, "attack dealt=" + fmt(dealt) + " tgt=" + safeType(target) + " canNowAfter=" + ai.canAttackNow(bSummon, owner, Bukkit.getCurrentTick()));
             return dealt > 0.0 || !ai.canAttackNow(bSummon, owner, Bukkit.getCurrentTick());
         }));

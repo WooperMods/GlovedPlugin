@@ -1,4 +1,4 @@
-package dev.gloved.glovedplugin.summon.ai.legacy;
+package dev.gloved.glovedplugin.summon.ai;
 
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
@@ -41,8 +41,6 @@ public class EngagedOwnerTargetGoal implements Goal<Mob> {
         if (mob == null || mob.isDead() || ownerId == null) return false;
         Player owner = Bukkit.getPlayer(ownerId);
         if (owner == null || !owner.isOnline() || !owner.getWorld().equals(mob.getWorld())) return false;
-        // Only active while owner has summons and mob is engaged context (tracked externally),
-        // but keep cheap validity checks.
         return !tracker.getActiveMinions(ownerId).isEmpty() || mob.getTarget() instanceof Player p && p.getUniqueId().equals(ownerId);
     }
 
@@ -58,7 +56,6 @@ public class EngagedOwnerTargetGoal implements Goal<Mob> {
 
     @Override
     public void stop() {
-        // let vanilla/other goals decide; do not force-clear target here
     }
 
     @Override
@@ -74,13 +71,11 @@ public class EngagedOwnerTargetGoal implements Goal<Mob> {
                     || !isValidChoice(owner, current)) {
                 try { mob.setTarget(best); } catch (Throwable ignored) {}
             } else {
-                // Occasionally retarget to allow vanilla-like switching between owner and minions
                 if (mob.getTicksLived() % 40 == 0) {
                     try { mob.setTarget(best); } catch (Throwable ignored) {}
                 }
             }
         } else {
-            // Fall back to owner if valid
             if (isValidChoice(owner, owner)) {
                 try { mob.setTarget(owner); } catch (Throwable ignored) {}
             }
@@ -91,13 +86,11 @@ public class EngagedOwnerTargetGoal implements Goal<Mob> {
         LivingEntity best = null;
         double bestDist = Double.MAX_VALUE;
         Location ml = mob.getLocation();
-        // Consider owner
         if (isValidChoice(owner, owner) && owner.getWorld().equals(ml.getWorld())) {
             double d = ml.distanceSquared(owner.getLocation());
             best = owner;
             bestDist = d;
         }
-        // Consider owner's summons
         List<LivingEntity> minions = tracker.getActiveMinions(ownerId);
         if (minions != null) {
             for (LivingEntity minion : minions) {
@@ -117,9 +110,7 @@ public class EngagedOwnerTargetGoal implements Goal<Mob> {
         if (target == null || target.isDead()) return false;
         if (!target.getWorld().equals(mob.getWorld())) return false;
         if (target.getUniqueId().equals(mob.getUniqueId())) return false;
-        // Use combat protection rules for owner-target checks; minions are valid targets for enemies
         if (target instanceof Player p && p.getUniqueId().equals(ownerId)) {
-            // allow targeting owner unless somehow protected in a way that blocks engagement; generally valid
             return true;
         }
         if (tracker != null && tracker.isSummoned(target.getUniqueId())) {

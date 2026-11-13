@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.nms.v26p3.brain.SummonBrainUtil;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -98,7 +98,7 @@ public class ShootTongueBehavior extends Behavior<Frog> {
 
         Player owner = SummonBrainUtil.resolveOwner(frog);
         if (owner == null || plugin == null) return;
-        SummonAI ai = plugin.getSummonAI();
+        SummonCombatService ai = plugin.getSummonCombatService();
         if (ai == null) return;
         try {
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) frog.getBukkitEntity();
@@ -125,7 +125,7 @@ public class ShootTongueBehavior extends Behavior<Frog> {
                     frog.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 
                     Player owner = SummonBrainUtil.resolveOwner(frog);
-                    SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+                    SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
                     org.bukkit.entity.LivingEntity bSummon = null;
                     try { bSummon = (org.bukkit.entity.LivingEntity) frog.getBukkitEntity(); } catch (Throwable ignored) {}
                     boolean canShoot = owner != null && ai != null && bSummon != null

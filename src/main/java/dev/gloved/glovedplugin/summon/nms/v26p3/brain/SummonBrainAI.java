@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.brain;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.ai.movement.SummonAIUtils;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
@@ -189,15 +189,15 @@ public final class SummonBrainAI {
         String mode = resolveCombatMode(plugin, mob);
         boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
 
-        Set<UUID> recentDamagerIds = new HashSet<>(SummonAI.getRecentDamagers(owner));
-        try { recentDamagerIds.addAll(SummonAI.getRecentDamagers(bSummon)); } catch (Throwable ignored) {}
+        Set<UUID> recentDamagerIds = new HashSet<>(SummonCombatService.getRecentDamagers(owner));
+        try { recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(bSummon)); } catch (Throwable ignored) {}
         List<org.bukkit.entity.LivingEntity> candidates = new ArrayList<>();
         double scanDist = SummonProfile.FOLLOW_RANGE;
 
         collectCandidates(plugin, owner, bSummon, owner.getNearbyEntities(scanDist, scanDist, scanDist), candidates, defensive, recentDamagerIds);
         collectCandidates(plugin, owner, bSummon, bSummon.getNearbyEntities(scanDist, scanDist, scanDist), candidates, defensive, recentDamagerIds);
-        collectRecentDamagers(plugin, owner, owner.getWorld(), SummonAI.getRecentDamagers(owner), candidates);
-        collectRecentDamagers(plugin, owner, bSummon.getWorld(), SummonAI.getRecentDamagers(bSummon), candidates);
+        collectRecentDamagers(plugin, owner, owner.getWorld(), SummonCombatService.getRecentDamagers(owner), candidates);
+        collectRecentDamagers(plugin, owner, bSummon.getWorld(), SummonCombatService.getRecentDamagers(bSummon), candidates);
 
         int beforeLeash = candidates.size();
         // Do not target enemies past 32 blocks from the owner.

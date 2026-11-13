@@ -16,7 +16,7 @@ import net.minecraft.world.level.Level;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.UUID;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.runtime.DamageProxy;
 
 /**

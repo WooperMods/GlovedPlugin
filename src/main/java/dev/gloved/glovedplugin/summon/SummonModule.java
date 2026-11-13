@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.summon;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.runtime.SummonInstanceTracker;
 import dev.gloved.glovedplugin.summon.runtime.SummonManager;
@@ -14,10 +14,10 @@ public final class SummonModule {
     private final GlovedPlugin plugin;
     private final SummonConfig config;
     private final SummonInstanceTracker tracker;
-    private final SummonAI summonAI;
+    private final SummonCombatService summonAI;
     private final SummonManager manager;
 
-    public SummonModule(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, SummonAI summonAI, SummonManager manager) {
+    public SummonModule(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, SummonCombatService summonAI, SummonManager manager) {
         this.plugin = plugin;
         this.config = config;
         this.tracker = tracker;
@@ -28,6 +28,6 @@ public final class SummonModule {
     public GlovedPlugin plugin() { return plugin; }
     public SummonConfig config() { return config; }
     public SummonInstanceTracker tracker() { return tracker; }
-    public SummonAI summonAI() { return summonAI; }
+    public SummonCombatService summonAI() { return summonAI; }
     public SummonManager manager() { return manager; }
 }

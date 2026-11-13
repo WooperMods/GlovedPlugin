@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -119,11 +119,11 @@ public class SummonSlimeAttackGoal extends Goal {
             if (this.mob.distanceToSqr(nmsTarget) > reachSq) return;
 
             long now = Bukkit.getCurrentTick();
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             if (ai == null) return;
             // Unified per-summon attack helper (cooldown, soul stats/calc, procs/abilities, pipeline damage).
             ai.performSummonAttack(bSummon, owner, bTarget, now,
-                    SummonAI.AttackOptions.meleePipeline().swingAnimation(false));
+                    SummonCombatService.AttackOptions.meleePipeline().swingAnimation(false));
         } catch (Throwable ignored) {}
     }
 

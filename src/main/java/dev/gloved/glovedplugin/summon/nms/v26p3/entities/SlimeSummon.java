@@ -6,7 +6,7 @@ import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonAutoTargetGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonFollowGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonLookAtOwnerGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonSlimeAttackGoal;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.data.SummonSharedData;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.server.level.ServerLevel;
@@ -67,7 +67,7 @@ public class SlimeSummon extends Slime implements SummonEntity {
             if (CombatTargetRules.isProtected(plugin, owner, bTarget)) return;
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.getBukkitEntity();
             long now = Bukkit.getCurrentTick();
-            SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+            SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
             if (ai == null || !ai.tryConsumeAttackCooldown(bSummon, owner, now)) return;
             ai.applySummonHit(bSummon, owner, bTarget, 0.0, now, null);
         } catch (Throwable ignored) {}

@@ -3,7 +3,7 @@ package dev.gloved.glovedplugin.summon.spawn;
 import com.destroystokyo.paper.entity.ai.MobGoals;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.ai.movement.SummonMoveGoal;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.data.SummonSharedData;
 import dev.gloved.glovedplugin.summon.nms.api.SummonNMS;
@@ -59,7 +59,7 @@ public final class SummonEntitySpawner {
             SummonConfig config,
             SummonManager manager,
             SummonInstanceTracker tracker,
-            SummonAI summonAI,
+            SummonCombatService combatService,
             Player player,
             SummonProfile profile,
             SoulInstance soul,

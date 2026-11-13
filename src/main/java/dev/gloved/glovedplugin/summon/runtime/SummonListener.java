@@ -18,8 +18,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import java.util.UUID;
 import java.util.logging.Level;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.EngagedOwnerTargetGoal;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.ai.EngagedOwnerTargetGoal;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 
@@ -144,12 +144,12 @@ public class SummonListener implements Listener {
             // Track who damages minions so they can prioritize hitting back
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
                     && tracker.isSummoned(victim.getUniqueId()) && damager != null) {
-                SummonAI.recordRecentDamager(victim, damager);
+                SummonCombatService.recordRecentDamager(victim, damager);
             }
 
             // Track recent damagers for minion AI and engagement
             if (event.getEntity() instanceof Player player) {
-                if (damager != null) SummonAI.recordRecentDamager(player, damager);
+                if (damager != null) SummonCombatService.recordRecentDamager(player, damager);
                 if (damager instanceof Mob mob) {
                     ensureEngagedTargetGoal(mob, player.getUniqueId());
                 }

@@ -22,7 +22,7 @@ import net.minecraft.world.level.Level;
 import javax.annotation.Nullable;
 import java.util.UUID;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Warden summon using Gloved's custom SummonBrain (CombatPets-style brained setup).

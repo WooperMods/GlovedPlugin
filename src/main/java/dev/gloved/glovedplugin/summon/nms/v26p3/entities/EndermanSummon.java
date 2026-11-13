@@ -16,7 +16,7 @@ import net.minecraft.world.level.Level;
 import java.lang.reflect.Field;
 import java.util.UUID;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Enderman summon with controlled teleport policy (CombatPets parity):

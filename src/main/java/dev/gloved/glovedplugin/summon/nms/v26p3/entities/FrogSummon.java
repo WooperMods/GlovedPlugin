@@ -38,7 +38,7 @@ import net.minecraft.world.level.ServerLevelAccessor;
 
 import java.util.UUID;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Frog summon brained like CombatPets FrogPet (core/idle/fight/swim, croak, tongue),

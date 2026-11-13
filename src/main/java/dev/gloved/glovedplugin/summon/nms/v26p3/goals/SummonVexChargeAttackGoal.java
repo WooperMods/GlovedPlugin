@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -93,13 +93,13 @@ public class SummonVexChargeAttackGoal extends Goal {
         try { vex.setIsCharging(near || distSq < 16.0D); } catch (Throwable ignored) {}
 
         if (near) {
-            SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+            SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
             long now = Bukkit.getCurrentTick();
             try {
                 org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) vex.getBukkitEntity();
                 org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();
                 if (ai != null) {
-                    ai.performSummonAttack(bSummon, owner, bTarget, now, SummonAI.AttackOptions.meleePipeline());
+                    ai.performSummonAttack(bSummon, owner, bTarget, now, SummonCombatService.AttackOptions.meleePipeline());
                 }
             } catch (Throwable ignored) {}
         }

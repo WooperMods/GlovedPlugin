@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 
 /**

@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.util.TimeUtil;
@@ -146,14 +146,14 @@ public class SummonCrossbowAttackGoal extends Goal {
             }
         } else if (this.state == State.CHARGED) {
             // wait for cooldown window / LOS before firing
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
             long now = Bukkit.getCurrentTick();
             if (hasLos && (ai == null || ai.canAttackNow(bSummon, owner, now))) {
                 this.state = State.READY_TO_ATTACK;
             }
         } else if (this.state == State.READY_TO_ATTACK && hasLos) {
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
             long now = Bukkit.getCurrentTick();
             // Gate by cooldown; consume on projectile impact in DamageProxy for consistent conversion.

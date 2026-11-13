@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.ai.movement.SummonAIUtils;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
@@ -47,8 +47,8 @@ public class SummonAutoTargetGoal extends TargetGoal {
         boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
 
         // Build candidates similar to legacy SummonAI scan
-        Set<UUID> recentDamagerIds = new HashSet<>(SummonAI.getRecentDamagers(owner));
-        recentDamagerIds.addAll(SummonAI.getRecentDamagers(bukkitSummon));
+        Set<UUID> recentDamagerIds = new HashSet<>(SummonCombatService.getRecentDamagers(owner));
+        recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(bukkitSummon));
         List<org.bukkit.entity.LivingEntity> candidates = new ArrayList<>();
         double scanDist = SummonProfile.FOLLOW_RANGE;
         for (org.bukkit.entity.Entity e : owner.getNearbyEntities(scanDist, scanDist, scanDist)) {
@@ -65,13 +65,13 @@ public class SummonAutoTargetGoal extends TargetGoal {
             if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
             if (isRelevant(le, owner, bukkitSummon, defensive, recentDamagerIds) && !candidates.contains(le)) candidates.add(le);
         }
-        for (UUID damagerId : SummonAI.getRecentDamagers(owner)) {
+        for (UUID damagerId : SummonCombatService.getRecentDamagers(owner)) {
             org.bukkit.entity.Entity e = owner.getWorld().getEntity(damagerId);
             if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && !CombatTargetRules.isProtected(plugin, owner, le)) {
                 if (!candidates.contains(le)) candidates.add(le);
             }
         }
-        for (UUID damagerId : SummonAI.getRecentDamagers(bukkitSummon)) {
+        for (UUID damagerId : SummonCombatService.getRecentDamagers(bukkitSummon)) {
             org.bukkit.entity.Entity e = bukkitSummon.getWorld().getEntity(damagerId);
             if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && !CombatTargetRules.isProtected(plugin, owner, le)) {
                 if (!candidates.contains(le)) candidates.add(le);

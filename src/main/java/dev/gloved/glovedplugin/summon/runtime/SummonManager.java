@@ -24,7 +24,7 @@ import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.ai.movement.SummonMoveGoal;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
@@ -37,16 +37,16 @@ public class SummonManager {
     private final GlovedPlugin plugin;
     private final SummonConfig config;
     private final SummonInstanceTracker tracker;
-    private final SummonAI summonAI;
+    private final SummonCombatService combatService;
     private final Map<UUID, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
     // Soul cast cooldowns (per-player), ms timestamps
     private final Map<UUID, Long> soulCastCooldowns = new ConcurrentHashMap<>();
 
-    public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, SummonAI summonAI) {
+    public SummonManager(GlovedPlugin plugin, SummonConfig config, SummonInstanceTracker tracker, SummonCombatService combatService) {
         this.plugin = plugin;
         this.config = config;
         this.tracker = tracker;
-        this.summonAI = summonAI;
+        this.combatService = combatService;
     }
 
     public long getSoulCastCooldownRemainingMs(UUID playerId) {
@@ -134,7 +134,7 @@ public class SummonManager {
         GlovedPlugin.logDebug("[Summon] Spawning " + toSpawn + "/" + stats.minionsPerHit + " x " + profile.mobType
                 + " for " + player.getName() + " at " + spawnLoc + " (typeActive " + activeType + "/" + stats.maxActive + ", lvl " + stats.summoningLevel + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
         var result = SummonEntitySpawner.spawnConfiguredGroup(
-                plugin, config, this, tracker, summonAI, player, profile, soul, target, spawnLoc, toSpawn,
+                plugin, config, this, tracker, combatService, player, profile, soul, target, spawnLoc, toSpawn,
                 null);
         if (result.spawnedCount > 0) {
             GlovedPlugin.logDebug("[Summon] Spawned " + result.spawnedCount + " minions for " + player.getName() + " (soul-cast=" + (soul != null) + ")");
@@ -553,7 +553,7 @@ public class SummonManager {
                 + " for " + player.getName() + " at " + spawnLoc + " (target " + targetCount + ", typeActive " + activeType
                 + ", lvl " + stats.summoningLevel + ", soul=" + (soul != null ? soul.getSoulId() : "none") + ")");
         var result = SummonEntitySpawner.spawnConfiguredGroup(
-                plugin, config, this, tracker, summonAI, player, profile, soul, target, spawnLoc, toSpawn,
+                plugin, config, this, tracker, combatService, player, profile, soul, target, spawnLoc, toSpawn,
                 null);
         if (result.spawnedCount > 0) {
             GlovedPlugin.logDebug("[Summon] Spawned soul group " + result.spawnedCount + " for " + player.getName() + " (soul=" + (soul != null ? soul.getSoulId() : "none") + ")");

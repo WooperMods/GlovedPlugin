@@ -3,7 +3,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.animal.panda.Panda;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * CombatPets-style action-gated panda attack, routed through Gloved's SummonMeleeAttackGoal

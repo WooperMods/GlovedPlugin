@@ -36,7 +36,7 @@ import net.minecraft.world.level.ServerLevelAccessor;
 import java.util.List;
 import java.util.UUID;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Breeze summon brained like CombatPets BreezePet (core/idle/fight + shoot/long-jump),

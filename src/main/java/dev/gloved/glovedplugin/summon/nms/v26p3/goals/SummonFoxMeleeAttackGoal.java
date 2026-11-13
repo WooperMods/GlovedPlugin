@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import net.minecraft.world.entity.animal.fox.Fox;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Fox attack goal gated by fox states (no attack while sitting/sleeping/crouching/faceplanted),

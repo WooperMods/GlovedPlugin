@@ -45,7 +45,7 @@ import java.util.UUID;
 import java.util.function.ToIntFunction;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Goat summon brained like CombatPets GoatPet (core/idle/fight/ram),
@@ -254,7 +254,7 @@ public class GoatSummon extends Goat implements SummonEntity {
         try {
             if (!(entity instanceof net.minecraft.world.entity.LivingEntity target)) return false;
             org.bukkit.entity.Player owner = SummonBrainAI.resolveOwnerBukkit(this);
-            var ai = plugin != null ? plugin.getSummonAI() : null;
+            var ai = plugin != null ? plugin.getSummonCombatService() : null;
             if (owner == null || ai == null) return false;
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.getBukkitEntity();
             org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();

@@ -1,7 +1,7 @@
 package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.animal.polarbear.PolarBear;
@@ -73,7 +73,7 @@ public class SummonPolarBearMeleeAttackGoal extends SummonMeleeAttackGoal {
         if (distSq < warnRangeSq) {
             long now = Bukkit.getCurrentTick();
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) bear.getBukkitEntity();
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             if (ai != null && ai.canAttackNow(bSummon, owner, now)) {
                 try { bear.setStanding(true); } catch (Throwable ignored) {}
                 playWarningSoundSafe();
@@ -90,9 +90,9 @@ public class SummonPolarBearMeleeAttackGoal extends SummonMeleeAttackGoal {
         long now = Bukkit.getCurrentTick();
         org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) bear.getBukkitEntity();
         org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();
-        SummonAI ai = plugin.getSummonAI();
+        SummonCombatService ai = plugin.getSummonCombatService();
         if (ai != null) {
-            ai.performSummonAttack(bSummon, owner, bTarget, now, SummonAI.AttackOptions.meleePipeline());
+            ai.performSummonAttack(bSummon, owner, bTarget, now, SummonCombatService.AttackOptions.meleePipeline());
         }
     }
 

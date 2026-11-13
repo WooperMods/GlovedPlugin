@@ -5,7 +5,7 @@ import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonAutoTargetGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonFollowGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonLookAtOwnerGoal;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.data.SummonSharedData;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.server.level.ServerLevel;
@@ -118,7 +118,7 @@ public class BlazeSummon extends Blaze implements SummonEntity {
                 if (!hasLos) return;
                 if (this.attackTime <= 0) {
                     this.attackTime = 20;
-                    SummonAI ai = plugin.getSummonAI();
+                    SummonCombatService ai = plugin.getSummonCombatService();
                     org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) blaze.getBukkitEntity();
                     long now = Bukkit.getCurrentTick();
                     if (ai == null || ai.tryConsumeAttackCooldown(bSummon, owner, now)) {
@@ -145,7 +145,7 @@ public class BlazeSummon extends Blaze implements SummonEntity {
                     }
 
                     if (this.attackStep > 1) {
-                        SummonAI ai = plugin.getSummonAI();
+                        SummonCombatService ai = plugin.getSummonCombatService();
                         org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) blaze.getBukkitEntity();
                         long now = Bukkit.getCurrentTick();
                         if (ai == null || ai.tryConsumeAttackCooldown(bSummon, owner, now)) {

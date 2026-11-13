@@ -27,7 +27,7 @@ import net.minecraft.world.level.ServerLevelAccessor;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 public class FoxSummon extends Fox implements SummonEntity {
     private final SummonSharedData sharedData;

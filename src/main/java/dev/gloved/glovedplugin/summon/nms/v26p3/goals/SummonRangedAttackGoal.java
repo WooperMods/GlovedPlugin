@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -96,7 +96,7 @@ public class SummonRangedAttackGoal extends Goal {
         this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
 
         if (--this.attackTime <= 0 && hasLos) {
-            SummonAI ai = plugin.getSummonAI();
+            SummonCombatService ai = plugin.getSummonCombatService();
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
             long now = Bukkit.getCurrentTick();
             // Consume at fire time and let projectile launch tagging mark the spawned projectile as cd_consumed.

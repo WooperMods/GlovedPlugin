@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Target scoring utilities for the NMS goal-based summon AI.
@@ -71,7 +71,7 @@ public final class SummonAIUtils {
         double closeToMinionBonus = Math.max(0.0, 8.0 - Math.sqrt(Math.max(0.0, d2Minion))) / 8.0;
         score += closeToMinionBonus * 12_000_000.0;
 
-        if (SummonAI.getRecentDamagers(summon).contains(tid)) {
+        if (SummonCombatService.getRecentDamagers(summon).contains(tid)) {
             score += 5_000_000.0 * (0.5 + selfWeight);
         }
 

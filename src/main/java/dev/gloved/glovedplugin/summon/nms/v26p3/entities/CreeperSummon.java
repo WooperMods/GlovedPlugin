@@ -6,7 +6,7 @@ import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonAutoTargetGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonChaseTargetGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonFollowGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonLookAtOwnerGoal;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.data.SummonSharedData;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
@@ -175,7 +175,7 @@ public class CreeperSummon extends Creeper implements SummonEntity {
         } catch (Throwable ignored) {}
 
         Player owner = resolveOwner();
-        SummonAI ai = plugin.getSummonAI();
+        SummonCombatService ai = plugin.getSummonCombatService();
         org.bukkit.entity.LivingEntity bukkitSummon = (org.bukkit.entity.LivingEntity) this.getBukkitEntity();
         Location center = bukkitSummon.getLocation();
         if (center.getWorld() == null) return;

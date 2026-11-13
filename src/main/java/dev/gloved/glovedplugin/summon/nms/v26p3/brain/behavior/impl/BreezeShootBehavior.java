@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.nms.v26p3.brain.SummonBrainUtil;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -61,7 +61,7 @@ public class BreezeShootBehavior extends Behavior<Breeze> {
         }
         // Gate by SummonAI cooldown/APS so wind shots integrate with soul stats/APS.
         Player owner = SummonBrainUtil.resolveOwner(breeze);
-        SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+        SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
         if (owner == null || ai == null) return false;
         try {
             org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) breeze.getBukkitEntity();
@@ -109,7 +109,7 @@ public class BreezeShootBehavior extends Behavior<Breeze> {
 
         // Consume SummonAI cooldown at actual fire time for APS/cooldown integration.
         Player owner = SummonBrainUtil.resolveOwner(breeze);
-        SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+        SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
         if (owner == null || ai == null) return;
         org.bukkit.entity.LivingEntity bSummon;
         org.bukkit.entity.LivingEntity bTarget;

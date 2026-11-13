@@ -23,14 +23,14 @@ import org.bukkit.persistence.PersistentDataType;
 import java.util.UUID;
 import java.util.logging.Level;
 import dev.gloved.glovedplugin.core.logging.DebugLog;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 
 /**
  * Hardens summon projectile/special-effect attribution:
  * <ul>
  *   <li>Resolves the credited minion/owner from direct damager, projectile shooter, or PDC tags
  *       ({@code summon_owner}, {@code summon_minion}) for cases where shooter is missing/rewritten.</li>
- *   <li>Cancels vanilla summon-sourced damage and converts it through {@link SummonAI#applyMinionHit}
+ *   <li>Cancels vanilla summon-sourced damage and converts it through {@link SummonCombatService#applyMinionHit}
  *       so soul stats, cooldown cadence, progression/ability hooks, and protections apply consistently.</li>
  *   <li>Supports fire-time cooldown consumption via projectile PDC ({@code summon_cd_consumed}) to avoid
  *       double-consume/rate-limit drops while preventing duplicate conversion of the same projectile hit.</li>
@@ -46,9 +46,9 @@ public class DamageProxy implements Listener {
     private static final ThreadLocal<Boolean> PIPELINE_DAMAGE = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     private final SummonInstanceTracker tracker;
-    private final SummonAI minionAI;
+    private final SummonCombatService minionAI;
 
-    public DamageProxy(SummonInstanceTracker tracker, SummonAI minionAI) {
+    public DamageProxy(SummonInstanceTracker tracker, SummonCombatService minionAI) {
         this.tracker = tracker;
         this.minionAI = minionAI;
     }
@@ -229,7 +229,7 @@ public class DamageProxy implements Listener {
             // Unified per-summon attack/damage helper: computes soul-stat damage, crits/abilities/procs,
             // progression hooks, and applies pipeline-marked summon-sourced damage.
             minionAI.performSummonAttack(attr.minion, owner, target, now,
-                    SummonAI.AttackOptions.defaults()
+                    SummonCombatService.AttackOptions.defaults()
                             .profileName(null)
                             .rawBaseDamage(0.0));
             if (DebugLogSafe.isEnabled()) {

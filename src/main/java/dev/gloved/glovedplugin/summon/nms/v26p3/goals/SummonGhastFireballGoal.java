@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.nms.v26p3.goals;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
-import dev.gloved.glovedplugin.summon.ai.legacy.SummonAI;
+import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.entity.SummonEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -97,7 +97,7 @@ public class SummonGhastFireballGoal extends Goal {
             if (this.chargeTime == 20) {
                 // Gate and consume at fire time for reliable cooldown/APS behavior.
                 // Impact conversion is marked consumed so DamageProxy applies computed damage without re-consuming.
-                SummonAI ai = plugin != null ? plugin.getSummonAI() : null;
+                SummonCombatService ai = plugin != null ? plugin.getSummonCombatService() : null;
                 org.bukkit.entity.LivingEntity bSummon = null;
                 try { bSummon = (org.bukkit.entity.LivingEntity) ghast.getBukkitEntity(); } catch (Throwable ignored) {}
                 long now = Bukkit.getCurrentTick();
