@@ -32,6 +32,7 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
     private volatile org.bukkit.scheduler.BukkitTask activationRetryTask;
     private volatile int activationAttempts;
     private volatile boolean activationReadyLogged;
+    private volatile boolean autoReloadRequested;
 
     private record LevelCache(int level, long expiresAtMs) {}
 
@@ -52,6 +53,7 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
         statResolver.clear();
         activationAttempts = 0;
         activationReadyLogged = false;
+        autoReloadRequested = false;
         scheduleActivateRetry(true);
     }
 
@@ -60,7 +62,38 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
         cancelActivationRetry();
         levelCache.clear();
         statResolver.clear();
+        autoReloadRequested = false;
         super.onDisable();
+    }
+
+    private void requestAuraSkillsReloadIfNeeded() {
+        try {
+            if (autoReloadRequested) return;
+            if (plugin == null || !plugin.isEnabled()) return;
+            if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) return;
+            if (config == null || !config.isProgressionEnabled() || !config.isProgressionAuraSkillsEnabled()) return;
+            autoReloadRequested = true;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                try {
+                    if (!plugin.isEnabled()) return;
+                    if (Bukkit.getPluginManager().getPlugin("AuraSkills") == null) return;
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skills reload");
+                    GlovedPlugin.logInfo("[SummonXP] Auto-reloaded AuraSkills to load summoning progression content.");
+                    // Re-resolve skill/ability references after AuraSkills finishes reloading
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        try {
+                            activationAttempts = 0;
+                            cachedSkill = null;
+                            scheduleActivateRetry(false);
+                        } catch (Throwable ignored) {}
+                    }, 60L);
+                } catch (Throwable t) {
+                    GlovedPlugin.logDebug("[SummonXP] Auto-reload after activation failed: " + t);
+                }
+            }, 20L); // 1s delay to let registration/content settle
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[SummonXP] Could not schedule AuraSkills auto-reload: " + t);
+        }
     }
 
     @Override
@@ -216,6 +249,7 @@ public final class AuraSkillsSummonProgressionBridge extends BaseSummonProgressi
                 activationReadyLogged = true;
                 GlovedPlugin.logDebug("[SummonXP] AuraSkills progression integration activated" + (activationAttempts > 0 ? " after retry" : "") + ".");
             }
+            requestAuraSkillsReloadIfNeeded();
             return cachedSkill != null || Bukkit.getPluginManager().getPlugin("AuraSkills") == null;
         } catch (Throwable t) {
             cachedSkill = null;
