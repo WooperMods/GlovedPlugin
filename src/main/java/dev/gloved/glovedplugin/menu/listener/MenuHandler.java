@@ -37,8 +37,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.item.SoulItem;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
-import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableGuideInv;
-import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv;
+import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableScreen;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableUiRouter;
 import dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv;
 
@@ -591,8 +590,7 @@ public class MenuHandler implements Listener {
         int topSize = view.getTopInventory().getSize();
         if (view.getTopInventory().getHolder() instanceof MenuEditorInv
                 || view.getTopInventory().getHolder() instanceof SoulVaultInv
-                || view.getTopInventory().getHolder() instanceof SoulTableInv
-                || view.getTopInventory().getHolder() instanceof SoulTableGuideInv) {
+                || view.getTopInventory().getHolder() instanceof SoulTableScreen) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {
                     event.setCancelled(true);

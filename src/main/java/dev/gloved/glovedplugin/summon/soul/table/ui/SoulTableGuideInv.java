@@ -5,7 +5,6 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitDefinition;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry;
-import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableItem;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -15,8 +14,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -30,7 +29,7 @@ import java.util.UUID;
 /**
  * Read-only guide menu for the Soul Table: traits, affixes, stats/rarity, and table actions.
  */
-public final class SoulTableGuideInv implements InventoryHolder {
+public final class SoulTableGuideInv implements SoulTableScreen {
 
     public enum Page { MAIN, TRAITS, AFFIXES, STATS, TABLE }
 
@@ -43,13 +42,19 @@ public final class SoulTableGuideInv implements InventoryHolder {
     private final UUID viewerId;
     private final UUID tableId;
     private final Page page;
+    private final SoulTableReturnTarget returnTarget;
     private final Inventory inventory;
 
     public SoulTableGuideInv(GlovedPlugin plugin, Player player, UUID tableId, Page page) {
+        this(plugin, player, tableId, page, SoulTableReturnTarget.HUB);
+    }
+
+    public SoulTableGuideInv(GlovedPlugin plugin, Player player, UUID tableId, Page page, SoulTableReturnTarget returnTarget) {
         this.plugin = plugin;
         this.viewerId = player != null ? player.getUniqueId() : null;
         this.tableId = tableId;
         this.page = page != null ? page : Page.MAIN;
+        this.returnTarget = returnTarget != null ? returnTarget : SoulTableReturnTarget.HUB;
         String title = switch (this.page) {
             case MAIN -> "Soul Guide";
             case TRAITS -> "Soul Guide: Traits";
@@ -66,15 +71,24 @@ public final class SoulTableGuideInv implements InventoryHolder {
         return new NamespacedKey(plugin, "soul_guide_action");
     }
 
+    @Override
     public UUID getViewerId() { return viewerId; }
+
+    @Override
     public UUID getTableId() { return tableId; }
 
     @Override
     public @NotNull Inventory getInventory() { return inventory; }
 
+    @Override
     public void open(Player player) {
         if (player == null) return;
         player.openInventory(inventory);
+    }
+
+    @Override
+    public void refresh() {
+        build();
     }
 
     private boolean isStandalone() {
@@ -321,7 +335,8 @@ public final class SoulTableGuideInv implements InventoryHolder {
                 "§7Check the button at the bottom to confirm.")));
     }
 
-    public void handleClick(Player player, int rawSlot, org.bukkit.event.inventory.ClickType clickType) {
+    @Override
+    public void handleClick(Player player, int rawSlot, ClickType clickType) {
         if (player == null) return;
         if (viewerId != null && !viewerId.equals(player.getUniqueId())) {
             player.closeInventory();
@@ -334,13 +349,16 @@ public final class SoulTableGuideInv implements InventoryHolder {
         if (action == null) return;
         switch (action) {
             case "back_table" -> openSoulTable(player);
-            case "back_main" -> new SoulTableGuideInv(plugin, player, tableId, Page.MAIN).open(player);
-            case "close" -> player.closeInventory();
+            case "back_main" -> SoulTableNav.openGuide(plugin, player, tableId, Page.MAIN, returnTarget);
+            case "close" -> {
+                if (isStandalone()) player.closeInventory();
+                else openSoulTable(player);
+            }
             default -> {
                 if (action.startsWith("page:")) {
                     try {
                         Page target = Page.valueOf(action.substring(5));
-                        new SoulTableGuideInv(plugin, player, tableId, target).open(player);
+                        SoulTableNav.openGuide(plugin, player, tableId, target, returnTarget);
                     } catch (IllegalArgumentException ignored) {}
                 }
             }
@@ -352,17 +370,7 @@ public final class SoulTableGuideInv implements InventoryHolder {
             player.closeInventory();
             return;
         }
-        try {
-            var tableMgr = plugin.getSoulTableManager();
-            if (tableMgr != null) {
-                var row = tableMgr.get(tableId);
-                if (row != null) {
-                    Bukkit.getScheduler().runTask(plugin, () -> new SoulTableInv(plugin, player, row).open(player));
-                    return;
-                }
-            }
-        } catch (Throwable ignored) {}
-        Bukkit.getScheduler().runTask(plugin, () -> player.closeInventory());
+        SoulTableNav.runSync(plugin, () -> SoulTableNav.returnToTarget(plugin, player, tableId, returnTarget));
     }
 
     private String readAction(ItemStack item) {

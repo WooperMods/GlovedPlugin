@@ -1,0 +1,164 @@
+package dev.gloved.glovedplugin.summon.soul.table.ui;
+
+import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
+import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/** Hub/entry screen for the Soul Table: pick a process, open guide, or close. */
+public final class SoulTableHubInv implements SoulTableScreen {
+
+    private static final int SIZE = 54;
+    private static final int SLOT_COMBINE = 10;
+    private static final int SLOT_ENHANCE = 12;
+    private static final int SLOT_REFORGE = 14;
+    private static final int SLOT_SALVAGE = 16;
+    private static final int SLOT_GUIDE = 31;
+    private static final int SLOT_ESSENCE = 49;
+    private static final int SLOT_CLOSE = 53;
+    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
+
+    private final GlovedPlugin plugin;
+    private final UUID viewerId;
+    private final UUID tableId;
+    private final Inventory inventory;
+
+    public SoulTableHubInv(GlovedPlugin plugin, Player player, SoulTableRow table) {
+        this.plugin = plugin;
+        this.viewerId = player.getUniqueId();
+        this.tableId = table != null ? table.tableId() : null;
+        this.inventory = Bukkit.createInventory(this, SIZE,
+                Component.text("Soul Table", NamedTextColor.LIGHT_PURPLE));
+        refresh();
+    }
+
+    @Override
+    public UUID getViewerId() {
+        return viewerId;
+    }
+
+    @Override
+    public UUID getTableId() {
+        return tableId;
+    }
+
+    @Override
+    public @NotNull Inventory getInventory() {
+        return inventory;
+    }
+
+    @Override
+    public void open(Player player) {
+        if (player == null) return;
+        refresh();
+        player.openInventory(inventory);
+    }
+
+    @Override
+    public void refresh() {
+        inventory.clear();
+        for (int i = 0; i < SIZE; i++) inventory.setItem(i, SoulTableUiItems.filler());
+
+        SoulService svc = plugin.getSoulService();
+        int essence = svc != null ? svc.getEssence(viewerId) : 0;
+
+        inventory.setItem(SLOT_COMBINE, processItem(Material.ANVIL, "§d§lCombine",
+                SoulTableUiKeys.ACTION_OPEN_COMBINE, List.of(
+                        "§7Combine 3 same-family, same-rarity souls",
+                        "§7into one higher-rarity soul.",
+                        "",
+                        "§eClick to open")));
+        inventory.setItem(SLOT_ENHANCE, processItem(Material.EXPERIENCE_BOTTLE, "§d§lEnhance",
+                SoulTableUiKeys.ACTION_OPEN_ENHANCE, List.of(
+                        "§7Raise one soul's level and improve",
+                        "§7its base stats on the next summon.",
+                        "",
+                        "§eClick to open")));
+        inventory.setItem(SLOT_REFORGE, processItem(Material.GRINDSTONE, "§d§lReforge",
+                SoulTableUiKeys.ACTION_OPEN_REFORGE, List.of(
+                        "§7Reroll a soul's affixes, base stats,",
+                        "§7and Summons capacity at its rarity.",
+                        "",
+                        "§eClick to open")));
+        inventory.setItem(SLOT_SALVAGE, processItem(Material.HOPPER, "§d§lSalvage",
+                SoulTableUiKeys.ACTION_OPEN_SALVAGE, List.of(
+                        "§7Convert selected souls into Essence.",
+                        "§7Bulk salvage with confirmation.",
+                        "",
+                        "§eClick to open")));
+
+        inventory.setItem(SLOT_ESSENCE, SoulTableUiItems.infoItem(Material.AMETHYST_SHARD,
+                "§b§lSoul Essence: §f" + essence,
+                List.of("§7Used for Combine, Enhance, and Reforge.",
+                        "§7Earn Essence by salvaging souls.")));
+
+        inventory.setItem(SLOT_GUIDE, SoulTableUiItems.actionItem(plugin, Material.BOOK,
+                "§b§lSoul Guide", SoulTableUiKeys.ACTION_GUIDE,
+                List.of("§7Learn about traits, bonuses, stats,",
+                        "§7and what each table action does.",
+                        "",
+                        "§eClick to open")));
+        inventory.setItem(SLOT_CLOSE, SoulTableUiItems.actionItem(plugin, Material.BARRIER,
+                "§cClose", SoulTableUiKeys.ACTION_CLOSE, List.of("§7Close the Soul Table.")));
+    }
+
+    private ItemStack processItem(Material material, String name, String action, List<String> lore) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LEGACY.deserialize(name).decoration(TextDecoration.ITALIC, false));
+            List<Component> components = new ArrayList<>();
+            for (String line : lore) components.add(LEGACY.deserialize(line).decoration(TextDecoration.ITALIC, false));
+            meta.lore(components);
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            SoulTableUiKeys.tagAction(meta, plugin, action);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    @Override
+    public void handleClick(Player player, int rawSlot, ClickType clickType) {
+        if (player == null) return;
+        if (!viewerId.equals(player.getUniqueId())) {
+            player.closeInventory();
+            return;
+        }
+        if (rawSlot < 0 || rawSlot >= SIZE) return;
+        ItemStack clicked = inventory.getItem(rawSlot);
+        if (clicked == null || clicked.getType().isAir()) return;
+        String action = SoulTableUiKeys.readAction(plugin, clicked);
+        if (action == null) return;
+        switch (action) {
+            case SoulTableUiKeys.ACTION_OPEN_COMBINE ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.COMBINE);
+            case SoulTableUiKeys.ACTION_OPEN_ENHANCE ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.ENHANCE);
+            case SoulTableUiKeys.ACTION_OPEN_REFORGE ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.REFORGE);
+            case SoulTableUiKeys.ACTION_OPEN_SALVAGE ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.SALVAGE);
+            case SoulTableUiKeys.ACTION_GUIDE ->
+                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.HUB);
+            case SoulTableUiKeys.ACTION_CLOSE -> player.closeInventory();
+            default -> {
+            }
+        }
+    }
+}

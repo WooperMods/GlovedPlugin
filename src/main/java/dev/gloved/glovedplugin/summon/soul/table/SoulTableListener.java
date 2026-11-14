@@ -2,7 +2,7 @@ package dev.gloved.glovedplugin.summon.soul.table;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
-import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableInv;
+import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableNav;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
@@ -141,7 +141,7 @@ public final class SoulTableListener implements Listener {
             player.sendActionBar(Component.text("This Soul Table is private", NamedTextColor.RED));
             return;
         }
-        new SoulTableInv(plugin, player, row).open(player);
+        SoulTableNav.openHub(plugin, player, row.tableId());
     }
 
     /**
