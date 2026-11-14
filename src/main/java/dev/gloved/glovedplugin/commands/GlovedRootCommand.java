@@ -395,7 +395,7 @@ public class GlovedRootCommand implements BasicCommand {
                 + " | Lifesteal unlock L" + sc.getAbilityLifestealUnlockLevel() + " abilLvl=" + lifestealLvl + "=" + (lifestealLvl > 0 && sc.isAbilityLifestealEnabled() ? "active" : "locked/off")
                 + " heal=" + fmtPct(sc.getAbilityLifestealHealPercentMaxHp(Math.max(1, lifestealLvl))) + " maxHP debuffed x" + sc.getAbilityLifestealDebuffedBonusMultiplier(),
                 net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
-        source.getSender().sendMessage(Component.text("Rewards (AuraSkills, when generated): +1 crit_chance/level, +1 crit_damage/2 levels, +1 strength/2 levels. Run /skills reload after content generation/migration if UI is stale.",
+        source.getSender().sendMessage(Component.text("Rewards (AuraSkills, when generated): odd levels +1 crit_chance & +1 crit_damage, even levels +1 strength & +1 wisdom. Run /skills reload after content generation/migration if UI is stale.",
                 net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
 
         if (profile != null) {
