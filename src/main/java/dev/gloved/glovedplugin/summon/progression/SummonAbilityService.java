@@ -248,6 +248,9 @@ public class SummonAbilityService {
                         debuffProcs++;
                         GlovedPlugin.logDebug("[SummonAbility] Debuff (lvl " + debuffLvl + ") applied to " + primaryTarget.getName() + " for " + owner.getName());
                         spawnDebuffProcVfx(minion, primaryTarget, debuffLvl);
+                        if (mods.traits.contains(SoulTrait.HEXING)) {
+                            try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playHexingAccent(primaryTarget); } catch (Throwable ignored) {}
+                        }
                     }
                 }
             }
@@ -299,6 +302,9 @@ public class SummonAbilityService {
                     }
                     if (!cleaveVictims.isEmpty()) {
                         spawnCleaveProcVfx(minion, primaryTarget, cleaveVictims.size(), cleaveLvl);
+                        if (mods.traits.contains(SoulTrait.SPLINTERING)) {
+                            try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSplinteringAccent(primaryTarget); } catch (Throwable ignored) {}
+                        }
                     }
                 }
             }
@@ -416,6 +422,9 @@ public class SummonAbilityService {
                 GlovedPlugin.logDebug("[SummonAbility] Lifesteal (lvl " + abilityLevel + ") " + heal + " -> " + owner.getName()
                         + (targetDebuffed ? " (debuffed bonus)" : "") + " target=" + (target != null ? target.getType() : "?"));
                 spawnLifestealProcVfx(owner, target, heal, targetDebuffed, abilityLevel);
+                if (mods != null && mods.traits.contains(SoulTrait.VAMPIRIC)) {
+                    try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playVampiricAccent(owner, minion); } catch (Throwable ignored) {}
+                }
             }
             // Heal other active minions of the same owner when lifesteal procs
             healOtherMinions(owner, minion, heal, perHitCap, nowTick, cfg);

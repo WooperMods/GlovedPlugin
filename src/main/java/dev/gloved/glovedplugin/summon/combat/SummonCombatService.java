@@ -392,11 +392,20 @@ public class SummonCombatService {
         } catch (Throwable ignored) {}
 
         double soulDamageMult = Math.max(0.25, Math.min(4.0, soulSnap.damageMultiplier()));
-        if (soul != null && soul.hasTrait(SoulTrait.FRENZIED)) soulDamageMult *= 1.08;
+        boolean frenzied = soul != null && soul.hasTrait(SoulTrait.FRENZIED);
+        boolean packboundActive = false;
+        if (frenzied) soulDamageMult *= 1.08;
         if (soul != null && soul.hasTrait(SoulTrait.PACKBOUND)) {
-            soulDamageMult *= packboundMultiplier(minion, owner, soul);
+            double pm = packboundMultiplier(minion, owner, soul);
+            if (pm > 1.0001) packboundActive = true;
+            soulDamageMult *= pm;
         }
         baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
+        // Subtle trait-hit accents (builder-based VFX)
+        try {
+            if (frenzied) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playFrenziedHit(minion, target);
+            if (packboundActive) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playPackboundHit(minion);
+        } catch (Throwable ignored) {}
 
         double finalDamage = baseDamage;
         boolean crit = false;

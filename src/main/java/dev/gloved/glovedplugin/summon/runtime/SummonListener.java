@@ -121,6 +121,7 @@ public class SummonListener implements Listener {
                             var soul = soulService.getSoulCached(soulId);
                             if (soul != null && soul.hasTrait(SoulTrait.BULWARK)) {
                                 totalReduction += 0.10; // Bulwark: defensive buff (10% damage reduction)
+                                try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playBulwarkProc(victim); } catch (Throwable ignored) {}
                             }
                         }
                     }

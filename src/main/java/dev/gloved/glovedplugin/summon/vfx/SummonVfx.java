@@ -204,6 +204,103 @@ public final class SummonVfx {
         } catch (Throwable ignored) {}
     }
 
+    /** BULWARK trait: subtle defensive shimmer when a summoned minion mitigates damage. */
+    public static VfxEffect.Builder bulwarkProcBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.END_ROD).count(3).offset(0.25, 0.35, 0.25).extra(0.01).build())
+                .step(ParticleStep.builder(Particle.WAX_OFF).count(4).offset(0.3, 0.4, 0.3).extra(0.0).build())
+                .step(ParticleStep.builder(Particle.CRIT).count(2).offset(0.2, 0.25, 0.2).extra(0.02).build());
+    }
+
+    public static void playBulwarkProc(@Nullable LivingEntity minion) {
+        if (minion == null || minion.getWorld() == null) return;
+        try {
+            bulwarkProcBuilder().build().play(minion.getWorld(), minion.getLocation().add(0, minion.getHeight() * 0.55, 0));
+        } catch (Throwable ignored) {}
+    }
+
+    /** VAMPIRIC trait: subtle crimson/soul accent when lifesteal procs (in addition to lifesteal VFX). */
+    public static VfxEffect.Builder vampiricAccentBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.DAMAGE_INDICATOR).count(2).offset(0.12, 0.18, 0.12).extra(0.02).build())
+                .step(ParticleStep.builder(Particle.CRIMSON_SPORE).count(4).offset(0.18, 0.2, 0.18).extra(0.0).build());
+    }
+
+    public static void playVampiricAccent(@Nullable LivingEntity owner, @Nullable LivingEntity minion) {
+        try {
+            if (owner != null && owner.getWorld() != null) {
+                vampiricAccentBuilder().build().play(owner.getWorld(), owner.getLocation().add(0, 1.0, 0));
+            }
+            if (minion != null && minion.getWorld() != null) {
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.DAMAGE_INDICATOR).count(1).offset(0.1, 0.12, 0.1).extra(0.02).build())
+                        .build().play(minion.getWorld(), minion.getLocation().add(0, 0.9, 0));
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** HEXING trait: subtle hex wisps accent when a debuff proc occurs. */
+    public static VfxEffect.Builder hexingAccentBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.WITCH).count(4).offset(0.18, 0.22, 0.18).extra(0.01).build())
+                .step(ParticleStep.builder(Particle.ENCHANT).count(6).offset(0.22, 0.28, 0.22).extra(0.3).build());
+    }
+
+    public static void playHexingAccent(@Nullable LivingEntity target) {
+        if (target == null || target.getWorld() == null) return;
+        try {
+            hexingAccentBuilder().build().play(target.getWorld(), target.getLocation().add(0, 1.05, 0));
+        } catch (Throwable ignored) {}
+    }
+
+    /** SPLINTERING trait: subtle sharp spark accent when a cleave proc occurs. */
+    public static VfxEffect.Builder splinteringAccentBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.CRIT).count(4).offset(0.25, 0.2, 0.25).extra(0.05).build())
+                .step(ParticleStep.builder(Particle.SWEEP_ATTACK).count(1).offset(0.05, 0.05, 0.05).extra(0.0).build());
+    }
+
+    public static void playSplinteringAccent(@Nullable LivingEntity target) {
+        if (target == null || target.getWorld() == null) return;
+        try {
+            splinteringAccentBuilder().build().play(target.getWorld(), target.getLocation().add(0, 1.0, 0));
+        } catch (Throwable ignored) {}
+    }
+
+    /** FRENZIED trait: subtle ember/rage sparks on hit. */
+    public static VfxEffect.Builder frenziedHitBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.FLAME).count(2).offset(0.18, 0.22, 0.18).extra(0.01).build())
+                .step(ParticleStep.builder(Particle.SMOKE).count(1).offset(0.12, 0.15, 0.12).extra(0.005).build());
+    }
+
+    public static void playFrenziedHit(@Nullable LivingEntity minion, @Nullable LivingEntity target) {
+        try {
+            if (minion != null && minion.getWorld() != null) {
+                frenziedHitBuilder().build().play(minion.getWorld(), minion.getLocation().add(0, Math.max(0.6, minion.getHeight() * 0.6), 0));
+            }
+            if (target != null && target.getWorld() != null) {
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.ASH).count(2).offset(0.15, 0.2, 0.15).extra(0.0).build())
+                        .build().play(target.getWorld(), target.getLocation().add(0, 1.0, 0));
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** PACKBOUND trait: subtle ally-link glint when pack bonus is active on hit. */
+    public static VfxEffect.Builder packboundHitBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.HAPPY_VILLAGER).count(2).offset(0.22, 0.25, 0.22).extra(0.0).build())
+                .step(ParticleStep.builder(Particle.END_ROD).count(1).offset(0.12, 0.2, 0.12).extra(0.005).build());
+    }
+
+    public static void playPackboundHit(@Nullable LivingEntity minion) {
+        if (minion == null || minion.getWorld() == null) return;
+        try {
+            packboundHitBuilder().build().play(minion.getWorld(), minion.getLocation().add(0, Math.max(0.7, minion.getHeight() * 0.65), 0));
+        } catch (Throwable ignored) {}
+    }
+
     public static VfxEffect.Builder creeperExplosionBuilder() {
         return VfxEffect.builder()
                 .step(ParticleStep.builder(Particle.EXPLOSION).count(1).offset(0.0, 0.0, 0.0).extra(0.0).build());
