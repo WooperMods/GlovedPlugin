@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.Level;
 
@@ -84,9 +85,15 @@ public class EndermanSummon extends Enderman implements SummonEntity {
         this.goalSelector.getAvailableGoals().clear();
         this.targetSelector.getAvailableGoals().clear();
         this.targetSelector.addGoal(1, new SummonAutoTargetGoal(this, plugin));
+        this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(2, new SummonFollowGoal(this, plugin));
         // Melee attack is cooldown/credit-aware via SummonMeleeAttackGoal -> SummonCombatService.
         this.goalSelector.addGoal(2, new SummonMeleeAttackGoal(this, plugin));
+    }
+
+    @Override
+    public boolean isSensitiveToWater() {
+        return false;
     }
 
     @Override
