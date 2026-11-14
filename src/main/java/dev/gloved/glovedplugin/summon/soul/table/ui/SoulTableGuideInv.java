@@ -3,7 +3,8 @@ package dev.gloved.glovedplugin.summon.soul.table.ui;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
-import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitDefinition;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableItem;
 import net.kyori.adventure.text.Component;
@@ -136,47 +137,38 @@ public final class SoulTableGuideInv implements InventoryHolder {
                 "§7Traits are special perks a soul can have.",
                 "§7Better souls can roll more traits.")));
 
-        int[] slots = {19, 20, 21, 22, 23, 24, 25};
-        SoulTrait[] traits = SoulTrait.values();
-        for (int i = 0; i < traits.length && i < slots.length; i++) {
-            inventory.setItem(slots[i], traitItem(traits[i]));
+        SoulTraitRegistry registry = SoulTraitRegistry.getActive();
+        List<SoulTraitDefinition> defs = registry != null ? registry.all() : List.of();
+        int[] slots = traitSlots(defs.size());
+        for (int i = 0; i < defs.size() && i < slots.length; i++) {
+            inventory.setItem(slots[i], traitItem(defs.get(i)));
         }
     }
 
-    private ItemStack traitItem(SoulTrait trait) {
-        String name = pretty(trait.name());
+    private ItemStack traitItem(SoulTraitDefinition trait) {
+        String name = trait != null && trait.displayName() != null ? trait.displayName() : "Unknown";
         List<String> lore = new ArrayList<>();
-        switch (trait) {
-            case VAMPIRIC -> {
-                lore.add("§7Your summons heal a bit when");
-                lore.add("§7dealing damage.");
-            }
-            case FRENZIED -> {
-                lore.add("§7Hits harder and lands critical");
-                lore.add("§7strikes more often.");
-            }
-            case BULWARK -> {
-                lore.add("§7Tougher summons that take");
-                lore.add("§7less damage in fights.");
-            }
-            case HEXING -> {
-                lore.add("§7More likely to weaken enemies");
-                lore.add("§7when your summons hit.");
-            }
-            case SPLINTERING -> {
-                lore.add("§7Better at hurting groups of");
-                lore.add("§7enemies at once.");
-            }
-            case UNSTABLE -> {
-                lore.add("§7Attacks can burst and damage");
-                lore.add("§7nearby enemies.");
-            }
-            case PACKBOUND -> {
-                lore.add("§7Fights stronger when other");
-                lore.add("§7summons are nearby.");
+        if (trait != null && trait.guideDescription() != null) {
+            for (String line : trait.guideDescription()) {
+                if (line == null) continue;
+                lore.add(line.startsWith("§") ? line : "§7" + line);
             }
         }
+        if (lore.isEmpty()) lore.add("§7No description available.");
         return infoItem(Material.ENCHANTED_BOOK, "§d" + name, lore);
+    }
+
+    private int[] traitSlots(int count) {
+        if (count <= 7) return new int[]{19, 20, 21, 22, 23, 24, 25};
+        if (count <= 9) return new int[]{10, 11, 12, 13, 14, 15, 16, 22, 31};
+        int[] slots = new int[count];
+        int idx = 0;
+        for (int row = 1; row <= 4 && idx < count; row++) {
+            for (int col = 1; col <= 7 && idx < count; col++) {
+                slots[idx++] = row * 9 + col;
+            }
+        }
+        return slots;
     }
 
     private void buildAffixes() {

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /** A captured, reusable soul collectible with random stats. */
 public final class SoulInstance {
@@ -60,7 +61,7 @@ public final class SoulInstance {
         this.rarity = rarity != null ? rarity : SoulRarity.COMMON;
         this.qualityScore = Double.isNaN(qualityScore) ? 0.0 : Math.max(0.0, Math.min(100.0, qualityScore));
         this.affixes = affixes == null ? List.of() : Collections.unmodifiableList(new ArrayList<>(affixes));
-        this.traits = traits == null ? List.of() : Collections.unmodifiableList(new ArrayList<>(traits));
+        this.traits = normalizeTraits(traits);
         this.trait = this.traits.isEmpty() ? null : this.traits.get(0);
         this.createdAt = createdAt;
         this.maxHealth = Double.isNaN(maxHealth) || maxHealth < 0 ? 0.0 : maxHealth;
@@ -68,6 +69,16 @@ public final class SoulInstance {
         this.enhanceLevel = Math.max(0, enhanceLevel);
         this.groupCapacity = Math.max(1, groupCapacity);
         this.favorite = favorite;
+    }
+
+    private static List<SoulTrait> normalizeTraits(List<SoulTrait> traits) {
+        if (traits == null || traits.isEmpty()) return List.of();
+        List<SoulTrait> out = new ArrayList<>(traits.size());
+        for (SoulTrait t : traits) {
+            if (t == null || t.id() == null || t.id().isBlank()) continue;
+            out.add(t);
+        }
+        return out.isEmpty() ? List.of() : Collections.unmodifiableList(out);
     }
 
     public UUID getSoulId() { return soulId; }
@@ -81,7 +92,21 @@ public final class SoulInstance {
     public SoulTrait getTrait() { return trait; }
     /** All traits on this soul (may be empty). */
     public List<SoulTrait> getTraits() { return traits; }
-    public boolean hasTrait(SoulTrait t) { return t != null && traits.contains(t); }
+    public boolean hasTrait(SoulTrait t) {
+        if (t == null || t.id() == null) return false;
+        return hasTraitId(t.id());
+    }
+    public boolean hasTraitId(String id) {
+        String canonical = SoulTrait.canonicalize(id);
+        if (canonical == null) return false;
+        for (SoulTrait tr : traits) {
+            if (tr != null && canonical.equals(tr.id())) return true;
+        }
+        return false;
+    }
+    public List<String> getTraitIds() {
+        return traits.stream().map(SoulTrait::id).collect(Collectors.toUnmodifiableList());
+    }
 
     public long getCreatedAt() { return createdAt; }
     public double getMaxHealth() { return maxHealth; }

@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -301,6 +302,30 @@ public final class SummonVfx {
         } catch (Throwable ignored) {}
     }
 
+    /** MULTI_HIT trait: subtle quick-strike accent when a follow-up hit is triggered. */
+    public static VfxEffect.Builder multiHitProcBuilder() {
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.SWEEP_ATTACK).count(1).offset(0.05, 0.05, 0.05).extra(0.0).build())
+                .step(ParticleStep.builder(Particle.CRIT).count(4).offset(0.2, 0.25, 0.2).extra(0.05).build())
+                .step(ParticleStep.builder(Particle.ELECTRIC_SPARK).count(3).offset(0.18, 0.2, 0.18).extra(0.02).build())
+                .sound(Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.35f, 1.6f);
+    }
+
+    public static void playMultiHitProc(@Nullable LivingEntity minion, @Nullable LivingEntity target) {
+        try {
+            if (minion != null && minion.getWorld() != null) {
+                multiHitProcBuilder().build().play(minion.getWorld(), minion.getLocation().add(0, Math.max(0.7, minion.getHeight() * 0.6), 0));
+            } else if (target != null && target.getWorld() == null) {
+                // no-op
+            }
+            if (target != null && target.getWorld() != null) {
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.CRIT).count(2).offset(0.12, 0.18, 0.12).extra(0.03).build())
+                        .build().play(target.getWorld(), target.getLocation().add(0, 1.0, 0));
+            }
+        } catch (Throwable ignored) {}
+    }
+
     public static VfxEffect.Builder creeperExplosionBuilder() {
         return VfxEffect.builder()
                 .step(ParticleStep.builder(Particle.EXPLOSION).count(1).offset(0.0, 0.0, 0.0).extra(0.0).build());
@@ -353,6 +378,106 @@ public final class SummonVfx {
                         }
                     })
                     .start();
+        } catch (Throwable ignored) {}
+    }
+
+    /** ECHO_STEP trait: reposition/shield blink cue + stunned-target accent. */
+    public static VfxEffect.Builder echoStepProcBuilder(boolean empowered) {
+        VfxEffect.Builder b = VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.PORTAL).count(empowered ? 18 : 12).offset(0.35, 0.45, 0.35).extra(0.08).build())
+                .step(ParticleStep.builder(Particle.END_ROD).count(empowered ? 8 : 5).offset(0.2, 0.3, 0.2).extra(0.01).build())
+                .step(ParticleStep.builder(Particle.CLOUD).count(4).offset(0.2, 0.1, 0.2).extra(0.01).build())
+                .sound(Sound.ENTITY_ENDERMAN_TELEPORT, 0.5f, empowered ? 1.5f : 1.3f);
+        if (empowered) {
+            b.step(ParticleStep.builder(Particle.ELECTRIC_SPARK).count(6).offset(0.25, 0.3, 0.25).extra(0.03).build());
+        }
+        return b;
+    }
+
+    public static void playEchoStepProc(@Nullable LivingEntity minion, @Nullable LivingEntity target, boolean empowered) {
+        try {
+            if (minion != null && minion.getWorld() != null) {
+                Location at = minion.getLocation().add(0, Math.max(0.6, minion.getHeight() * 0.55), 0);
+                echoStepProcBuilder(empowered).build().play(minion.getWorld(), at);
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.CRIT).count(4).offset(0.18, 0.25, 0.18).extra(0.04).build())
+                        .sound(Sound.ITEM_SHIELD_BLOCK, 0.35f, 1.4f)
+                        .build().play(minion.getWorld(), at);
+            }
+            if (target != null && target.getWorld() != null) {
+                Location t = target.getLocation().add(0, 1.0, 0);
+                VfxEffect.Builder tb = VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.CRIT).count(empowered ? 8 : 5).offset(0.25, 0.3, 0.25).extra(0.05).build())
+                        .step(ParticleStep.builder(Particle.ELECTRIC_SPARK).count(empowered ? 6 : 3).offset(0.2, 0.25, 0.2).extra(0.02).build());
+                if (empowered) {
+                    tb.step(ParticleStep.builder(Particle.SOUL_FIRE_FLAME).count(4).offset(0.18, 0.2, 0.18).extra(0.01).build());
+                }
+                tb.build().play(target.getWorld(), t);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** POISON_TOUCH trait: poison by default, wither variant when empowered by Debuff ability. */
+    public static VfxEffect.Builder poisonTouchProcBuilder(boolean witherVariant) {
+        if (witherVariant) {
+            return VfxEffect.builder()
+                    .step(ParticleStep.builder(Particle.SOUL).count(8).offset(0.25, 0.3, 0.25).extra(0.02).build())
+                    .step(ParticleStep.builder(Particle.SMOKE).count(6).offset(0.22, 0.25, 0.22).extra(0.01).build())
+                    .step(ParticleStep.builder(Particle.WITCH).count(4).offset(0.2, 0.25, 0.2).extra(0.0).build())
+                    .sound(Sound.ENTITY_WITHER_HURT, 0.35f, 1.5f);
+        }
+        return VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.HAPPY_VILLAGER).count(6).offset(0.25, 0.3, 0.25).extra(0.0).build())
+                .step(ParticleStep.builder(Particle.WITCH).count(5).offset(0.22, 0.25, 0.22).extra(0.0).build())
+                .step(ParticleStep.builder(Particle.SNEEZE).count(3).offset(0.18, 0.2, 0.18).extra(0.01).build())
+                .sound(Sound.ENTITY_SPIDER_STEP, 0.35f, 0.8f);
+    }
+
+    public static void playPoisonTouchProc(@Nullable LivingEntity minion, @Nullable LivingEntity target, boolean witherVariant) {
+        try {
+            if (target != null && target.getWorld() != null) {
+                Location t = target.getLocation().add(0, 1.0, 0);
+                poisonTouchProcBuilder(witherVariant).build().play(target.getWorld(), t);
+            }
+            if (minion != null && minion.getWorld() != null) {
+                Location m = minion.getLocation().add(0, Math.max(0.6, minion.getHeight() * 0.55), 0);
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(witherVariant ? Particle.SOUL_FIRE_FLAME : Particle.SPORE_BLOSSOM_AIR).count(witherVariant ? 4 : 5).offset(0.18, 0.22, 0.18).extra(0.01).build())
+                        .build().play(minion.getWorld(), m);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    /** REFLECTION trait: shield flash on summon and reflected impact on attacker. */
+    public static VfxEffect.Builder reflectionProcBuilder(boolean empowered) {
+        VfxEffect.Builder b = VfxEffect.builder()
+                .step(ParticleStep.builder(Particle.ENCHANTED_HIT).count(empowered ? 14 : 9).offset(0.3, 0.35, 0.3).extra(0.08).build())
+                .step(ParticleStep.builder(Particle.END_ROD).count(empowered ? 8 : 5).offset(0.2, 0.3, 0.2).extra(0.02).build())
+                .step(ParticleStep.builder(Particle.CRIT).count(empowered ? 8 : 5).offset(0.25, 0.3, 0.25).extra(0.05).build())
+                .sound(Sound.ITEM_SHIELD_BLOCK, empowered ? 0.8f : 0.6f, empowered ? 0.9f : 1.1f);
+        if (empowered) {
+            b.step(ParticleStep.builder(Particle.SONIC_BOOM).count(1).offset(0.0, 0.0, 0.0).extra(0.0).build());
+        }
+        return b;
+    }
+
+    public static void playReflectionProc(@Nullable LivingEntity victimMinion, @Nullable Entity attacker, boolean empowered) {
+        try {
+            if (victimMinion != null && victimMinion.getWorld() != null) {
+                Location v = victimMinion.getLocation().add(0, Math.max(0.7, victimMinion.getHeight() * 0.6), 0);
+                reflectionProcBuilder(empowered).build().play(victimMinion.getWorld(), v);
+            }
+            if (attacker instanceof LivingEntity le && le.getWorld() != null) {
+                Location a = le.getLocation().add(0, 1.0, 0);
+                VfxEffect.Builder ab = VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.CRIT).count(empowered ? 10 : 6).offset(0.25, 0.3, 0.25).extra(0.06).build())
+                        .step(ParticleStep.builder(Particle.ELECTRIC_SPARK).count(empowered ? 8 : 4).offset(0.22, 0.28, 0.22).extra(0.03).build())
+                        .sound(Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.5f, empowered ? 0.8f : 1.0f);
+                if (empowered) {
+                    ab.step(ParticleStep.builder(Particle.SWEEP_ATTACK).count(1).offset(0.05, 0.05, 0.05).extra(0.0).build());
+                }
+                ab.build().play(le.getWorld(), a);
+            }
         } catch (Throwable ignored) {}
     }
 }

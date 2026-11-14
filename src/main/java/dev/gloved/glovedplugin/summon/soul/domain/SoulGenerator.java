@@ -58,7 +58,10 @@ public final class SoulGenerator {
         int groupCapacity = rollBaseGroupCapacity(rarity, cat, typeKey, cfg);
         boolean allowCapacityAffix = canRollCapacityAffix(rarity, groupCapacity, typeKey, cfg);
         List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCapacityAffix, allowCommander);
-        List<SoulTrait> traits = rollTraits(rarity, rng);
+        dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext traitCtx =
+                new dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext(
+                        owner, type, typeKey, cat, rarity, groupCapacity, affixes, cfg, summonCfg);
+        List<SoulTrait> traits = rollTraits(rarity, traitCtx, rng);
         double quality = SoulQuality.percent(rarity, affixes);
         SoulBaseStats baseStats = rollBaseStats(type, rarity, source, tableCfg);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
@@ -344,8 +347,32 @@ public final class SoulGenerator {
     }
 
     private static List<SoulTrait> rollTraits(SoulRarity rarity, ThreadLocalRandom rng) {
+        return rollTraits(rarity, null, rng);
+    }
+
+    private static List<SoulTrait> rollTraits(SoulRarity rarity,
+                                              dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext ctx,
+                                              ThreadLocalRandom rng) {
         List<SoulTrait> out = new ArrayList<>();
-        SoulTrait[] vals = SoulTrait.values();
+        dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry registry =
+                dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry.getActive();
+        List<dev.gloved.glovedplugin.summon.soul.trait.SoulTraitDefinition> defs =
+                registry != null ? new ArrayList<>(registry.rollable()) : new ArrayList<>();
+        if (defs.isEmpty()) return out;
+
+        List<dev.gloved.glovedplugin.summon.soul.trait.SoulTraitDefinition> eligible = new ArrayList<>(defs.size());
+        for (var def : defs) {
+            if (def == null) continue;
+            boolean canRoll = true;
+            try {
+                canRoll = ctx == null || def.canRoll(ctx);
+            } catch (Throwable ignored) {
+                canRoll = true;
+            }
+            if (canRoll) eligible.add(def);
+        }
+        if (eligible.isEmpty()) return out;
+
         int target = 0;
 
         switch (rarity) {
@@ -379,13 +406,13 @@ public final class SoulGenerator {
                 break;
         }
 
-        target = Math.min(target, vals.length);
+        target = Math.min(target, eligible.size());
         if (target <= 0) return out;
 
-        List<SoulTrait> pool = new ArrayList<>(Arrays.asList(vals));
-        Collections.shuffle(pool, new Random(rng.nextLong()));
-        for (int i = 0; i < target && i < pool.size(); i++) {
-            out.add(pool.get(i));
+        Collections.shuffle(eligible, new Random(rng.nextLong()));
+        for (int i = 0; i < target && i < eligible.size(); i++) {
+            SoulTrait t = SoulTrait.of(eligible.get(i).id());
+            if (t != null) out.add(t);
         }
         return out;
     }
@@ -402,7 +429,8 @@ public final class SoulGenerator {
             sb.append(" [");
             for (int i = 0; i < soul.getTraits().size(); i++) {
                 if (i > 0) sb.append(", ");
-                sb.append(soul.getTraits().get(i).name());
+                SoulTrait t = soul.getTraits().get(i);
+                sb.append(t != null ? t.displayName() : "?");
             }
             sb.append("]");
         }

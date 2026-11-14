@@ -32,6 +32,8 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.PreviewContext;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 
@@ -844,7 +846,7 @@ public class SoulService {
         sb.append("§dCompare§7: ").append(shortId(a)).append(" vs ").append(shortId(b)).append("\n");
         sb.append("§7Type: §f").append(a.getFamilyKey()).append(" §7vs §f").append(b.getFamilyKey()).append("\n");
         sb.append("§7Rarity: §f").append(a.getRarity()).append(" §7vs §f").append(b.getRarity()).append("\n");
-        sb.append("§7Trait: §f").append(a.getTrait() != null ? a.getTrait() : "-").append(" §7vs §f").append(b.getTrait() != null ? b.getTrait() : "-").append("\n");
+        sb.append("§7Trait: §f").append(a.getTrait() != null ? a.getTrait().displayName() : "-").append(" §7vs §f").append(b.getTrait() != null ? b.getTrait().displayName() : "-").append("\n");
         sb.append("§7Affixes A: §f").append(affixSummary(a)).append("\n");
         sb.append("§7Affixes B: §f").append(affixSummary(b));
         return sb.toString();
@@ -874,7 +876,7 @@ public class SoulService {
                 .append(" §a").append(String.format(java.util.Locale.ROOT, "%.2f", aps)).append(" APS\n");
         sb.append("§7Summons: §f").append(effectiveGroupCapacity(s)).append(" §7(base ").append(Math.max(1, s.getGroupCapacity())).append(")\n");
         sb.append("§7Enhancement: §fLv ").append(Math.max(0, s.getEnhanceLevel())).append("\n");
-        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().name() : "-")
+        sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().displayName() : "-")
                 .append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
         if (s.getAffixes().isEmpty()) {
             sb.append("§7Affixes: §f-");
@@ -1045,7 +1047,15 @@ public class SoulService {
         // Soul damage multipliers/traits (packbound is situational, omitted)
         SoulStatSnapshot snap = getSnapshot(soul);
         double soulDamageMult = Math.max(0.25, Math.min(4.0, snap.damageMultiplier()));
-        if (soul.hasTrait(SoulTrait.FRENZIED)) soulDamageMult *= 1.08;
+        PreviewContext preview = new PreviewContext(plugin, summonCfg, ownerId, soul, snap);
+        try {
+            for (var trait : soul.getTraits()) {
+                if (trait == null) continue;
+                SoulTraitHooks hooks = trait.hooks();
+                if (hooks != null) hooks.contributePreview(preview);
+            }
+        } catch (Throwable ignored) {}
+        soulDamageMult *= preview.outgoingDamageMult();
         baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
 
         // Expected crit multiplier (average per hit)
@@ -1068,7 +1078,8 @@ public class SoulService {
                 }
                 chance += Math.max(0.0, snap.critChanceBonus());
                 multiplier += Math.max(0.0, snap.critDamageBonus());
-                if (soul.hasTrait(SoulTrait.FRENZIED)) { chance += 0.03; multiplier += 0.08; }
+                chance += preview.critChanceBonus();
+                multiplier += preview.critDamageBonus();
                 chance = Math.max(0.0, Math.min(summonCfg.getCritMaxChance(), chance));
                 multiplier = Math.max(summonCfg.getCritMinDamageMultiplier(), Math.min(summonCfg.getCritMaxDamageMultiplier(), multiplier));
                 baseDamage *= (1.0 + chance * (Math.max(1.0, multiplier) - 1.0));

@@ -5,7 +5,9 @@ import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
-import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.AbilityContext;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.CritContext;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
@@ -45,17 +47,8 @@ public class SummonAbilityService {
 
     private record BudgetSample(long tick, double amount) {}
     private record CritResolution(double damage, boolean crit, double multiplier) {}
-    private record SoulCombatMods(double critChanceBonus, double critDamageBonus, double abilityPotencyMult, List<SoulTrait> traits) {
-        static SoulCombatMods none() { return new SoulCombatMods(0,0,1.0,List.of()); }
-        static SoulCombatMods from(SoulInstance soul, SoulStatSnapshot snap) {
-            if (soul == null || snap == null) return none();
-            double cc = Math.max(0.0, snap.critChanceBonus());
-            double cd = Math.max(0.0, snap.critDamageBonus());
-            double pot = Math.max(0.2, Math.min(3.0, snap.abilityPotencyMultiplier()));
-            List<SoulTrait> traits = soul.getTraits();
-            if (traits.contains(SoulTrait.FRENZIED)) { cc += 0.03; cd += 0.08; pot *= 1.05; }
-            return new SoulCombatMods(cc, cd, pot, traits);
-        }
+    private record SoulCombatMods(double critChanceBonus, double critDamageBonus, double abilityPotencyMult) {
+        static SoulCombatMods none() { return new SoulCombatMods(0, 0, 1.0); }
     }
 
     public static final class HitResult {
@@ -126,11 +119,43 @@ public class SummonAbilityService {
         dev.gloved.glovedplugin.summon.vfx.SummonVfx.playCrit(minion, target, strong);
     }
 
-    private CritResolution resolveCrit(double baseDamage, Player owner, SummonConfig cfg) {
-        return resolveCrit(baseDamage, owner, cfg, SoulCombatMods.none());
+    private SoulCombatMods soulCombatMods(SoulInstance soul, SoulStatSnapshot snap) {
+        if (soul == null || snap == null) return SoulCombatMods.none();
+        double cc = Math.max(0.0, snap.critChanceBonus());
+        double cd = Math.max(0.0, snap.critDamageBonus());
+        double pot = Math.max(0.2, Math.min(3.0, snap.abilityPotencyMultiplier()));
+        // Trait crit modifiers are contributed via CritContext hooks at resolve time; potency base comes from snapshot here.
+        return new SoulCombatMods(cc, cd, pot);
     }
 
-    private CritResolution resolveCrit(double baseDamage, Player owner, SummonConfig cfg, SoulCombatMods soul) {
+    private AbilityContext buildAbilityContext(Player owner, LivingEntity minion, LivingEntity primaryTarget,
+                                              SoulInstance soul, SoulStatSnapshot snap, SummonConfig cfg,
+                                              String profileName, long nowTick) {
+        AbilityContext ctx = new AbilityContext(plugin, cfg, owner, minion, primaryTarget, soul, snap, profileName, nowTick);
+        if (soul == null) return ctx;
+        // Base ability potency from soul snapshot (same as prior SoulCombatMods.from)
+        double basePot = snap != null ? Math.max(0.2, Math.min(3.0, snap.abilityPotencyMultiplier())) : 1.0;
+        ctx.multiplyAbilityPotency(basePot);
+        for (var trait : soul.getTraits()) {
+            if (trait == null) continue;
+            try {
+                SoulTraitHooks hooks = trait.hooks();
+                if (hooks != null) hooks.modifyAbility(ctx);
+            } catch (Throwable ignored) {}
+        }
+        return ctx;
+    }
+
+    private CritResolution resolveCrit(double baseDamage, Player owner, SummonConfig cfg) {
+        return resolveCrit(baseDamage, owner, cfg, null, null);
+    }
+
+    private CritResolution resolveCrit(double baseDamage, Player owner, SummonConfig cfg, SoulInstance soul, SoulStatSnapshot snap) {
+        return resolveCrit(baseDamage, owner, null, null, cfg, soul, snap);
+    }
+
+    private CritResolution resolveCrit(double baseDamage, Player owner, LivingEntity minion, LivingEntity target,
+                                       SummonConfig cfg, SoulInstance soul, SoulStatSnapshot snap) {
         if (cfg == null || !cfg.isCritEnabled()) return new CritResolution(baseDamage, false, 1.0);
         double chance = 0.0;
         double multiplier = 1.0;
@@ -148,9 +173,20 @@ public class SummonAbilityService {
             chance = cfg.getCritLegacyBaseChance() + cfg.getCritLegacyPerLevel() * Math.max(0, level);
             multiplier = cfg.getCritLegacyDamageMultiplier();
         }
+        SoulStatSnapshot s = snap != null ? snap : (soul != null ? dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot.fromSoul(soul) : dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot.identity());
+        chance += Math.max(0.0, s.critChanceBonus());
+        multiplier += Math.max(0.0, s.critDamageBonus());
         if (soul != null) {
-            chance += Math.max(0.0, soul.critChanceBonus);
-            multiplier += Math.max(0.0, soul.critDamageBonus);
+            CritContext ctx = new CritContext(plugin, cfg, owner, minion, target, soul, s, baseDamage);
+            for (var trait : soul.getTraits()) {
+                if (trait == null) continue;
+                try {
+                    SoulTraitHooks hooks = trait.hooks();
+                    if (hooks != null) hooks.modifyCrit(ctx);
+                } catch (Throwable ignored) {}
+            }
+            chance += ctx.critChanceBonus();
+            multiplier += ctx.critDamageBonus();
         }
         chance = Math.max(0.0, Math.min(cfg.getCritMaxChance(), chance));
         multiplier = Math.max(cfg.getCritMinDamageMultiplier(), Math.min(cfg.getCritMaxDamageMultiplier(), multiplier));
@@ -166,8 +202,7 @@ public class SummonAbilityService {
     public HitResult applyCritAndDamage(Player owner, LivingEntity minion, LivingEntity target, double baseDamage, SummonConfig cfg,
                                         SoulInstance soul, SoulStatSnapshot snap) {
         boolean debuffedBefore = isDebuffed(target, cfg);
-        SoulCombatMods mods = SoulCombatMods.from(soul, snap);
-        CritResolution cr = resolveCrit(baseDamage, owner, cfg, mods);
+        CritResolution cr = resolveCrit(baseDamage, owner, minion, target, cfg, soul, snap);
         if (cr.crit) {
             spawnCritVfx(minion, target, cr.multiplier >= 1.75 || cr.damage >= baseDamage * 1.75);
             GlovedPlugin.logDebug("[SummonCrit] " + (owner != null ? owner.getName() : "?") + " minion crit " + baseDamage + " -> " + cr.damage
@@ -231,7 +266,7 @@ public class SummonAbilityService {
             if (owner == null || minion == null || primaryTarget == null || cfg == null || progression == null) return;
             if (!cfg.isProgressionEnabled() || !cfg.isAbilitiesEnabled()) return;
             long now = Bukkit.getCurrentTick();
-            SoulCombatMods mods = SoulCombatMods.from(soul, snap);
+            AbilityContext mods = buildAbilityContext(owner, minion, primaryTarget, soul, snap, cfg, profileName, now);
 
             int debuffLvl = resolveAbilityLevel(owner, cfg, ABILITY_DEBUFF, cfg.getAbilityDebuffUnlockLevel());
             int cleaveLvl = resolveAbilityLevel(owner, cfg, ABILITY_CLEAVE, cfg.getAbilityCleaveUnlockLevel());
@@ -239,8 +274,9 @@ public class SummonAbilityService {
 
             boolean debuffProcced = false;
             if (debuffLvl > 0 && cfg.isAbilityDebuffEnabled()) {
-                double debuffChance = cfg.getAbilityDebuffChance(debuffLvl) * Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult));
-                if (mods.traits.contains(SoulTrait.HEXING)) debuffChance *= 1.25;
+                double debuffChance = cfg.getAbilityDebuffChance(debuffLvl)
+                        * Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult()))
+                        * mods.debuffChanceMult();
                 debuffChance = Math.min(0.85, debuffChance);
                 if (proc(owner.getUniqueId(), "debuff", now, cfg.getAbilityDebuffCooldownTicks(), debuffChance)) {
                     debuffProcced = applyDebuff(primaryTarget, cfg, debuffLvl);
@@ -248,7 +284,7 @@ public class SummonAbilityService {
                         debuffProcs++;
                         GlovedPlugin.logDebug("[SummonAbility] Debuff (lvl " + debuffLvl + ") applied to " + primaryTarget.getName() + " for " + owner.getName());
                         spawnDebuffProcVfx(minion, primaryTarget, debuffLvl);
-                        if (mods.traits.contains(SoulTrait.HEXING)) {
+                        if (mods.hexingDebuffProc()) {
                             try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playHexingAccent(primaryTarget); } catch (Throwable ignored) {}
                         }
                     }
@@ -257,8 +293,9 @@ public class SummonAbilityService {
 
             boolean cleaveProcced = false;
             if (cleaveLvl > 0 && cfg.isAbilityCleaveEnabled()) {
-                double cleaveChance = cfg.getAbilityCleaveChance(cleaveLvl) * Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult));
-                if (mods.traits.contains(SoulTrait.SPLINTERING)) cleaveChance *= 1.20;
+                double cleaveChance = cfg.getAbilityCleaveChance(cleaveLvl)
+                        * Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult()))
+                        * mods.cleaveChanceMult();
                 cleaveChance = Math.min(0.85, cleaveChance);
                 if (proc(owner.getUniqueId(), "cleave", now, cfg.getAbilityCleaveCooldownTicks(), cleaveChance)) {
                     cleaveProcced = true;
@@ -269,10 +306,11 @@ public class SummonAbilityService {
                         if (victim == null || victim.isDead()) continue;
                         boolean victimDebuffedBefore = isDebuffed(victim, cfg);
                         double ratioBase = cfg.isAbilityCleaveDamageRatioUsesBaseDamage() ? Math.max(0.0, primaryBaseDamage) : Math.max(0.0, primaryFinalDamage);
-                        double ratio = cfg.getAbilityCleaveDamageRatio(cleaveLvl) * Math.max(0.5, Math.min(2.0, mods.abilityPotencyMult));
-                        if (mods.traits.contains(SoulTrait.SPLINTERING)) ratio *= 1.15;
+                        double ratio = cfg.getAbilityCleaveDamageRatio(cleaveLvl)
+                                * Math.max(0.5, Math.min(2.0, mods.abilityPotencyMult()))
+                                * mods.cleaveRatioMult();
                         double cleaveBase = Math.min(cfg.getAbilityCleaveMaxDamage(), Math.max(1.0, ratioBase * ratio));
-                        CritResolution ccr = resolveCrit(cleaveBase, owner, cfg, mods);
+                        CritResolution ccr = resolveCrit(cleaveBase, owner, minion, victim, cfg, soul, snap);
                         double cleaveDamage = ccr.damage;
                         if (!consumeBudget(cleaveDamageBudget, owner.getUniqueId(), cleaveDamage, cfg.getAbilityCleaveMaxDamagePerMinute(), now)) {
                             GlovedPlugin.logDebug("[SummonAbility] Cleave damage budget capped for " + owner.getName());
@@ -302,7 +340,7 @@ public class SummonAbilityService {
                     }
                     if (!cleaveVictims.isEmpty()) {
                         spawnCleaveProcVfx(minion, primaryTarget, cleaveVictims.size(), cleaveLvl);
-                        if (mods.traits.contains(SoulTrait.SPLINTERING)) {
+                        if (mods.splinteringCleaveProc()) {
                             try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSplinteringAccent(primaryTarget); } catch (Throwable ignored) {}
                         }
                     }
@@ -390,10 +428,10 @@ public class SummonAbilityService {
     }
 
     private void applyLifesteal(Player owner, LivingEntity minion, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel) {
-        applyLifesteal(owner, minion, target, targetDebuffed, cfg, nowTick, abilityLevel, SoulCombatMods.none());
+        applyLifesteal(owner, minion, target, targetDebuffed, cfg, nowTick, abilityLevel, (AbilityContext) null);
     }
 
-    private void applyLifesteal(Player owner, LivingEntity minion, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel, SoulCombatMods mods) {
+    private void applyLifesteal(Player owner, LivingEntity minion, LivingEntity target, boolean targetDebuffed, SummonConfig cfg, long nowTick, int abilityLevel, AbilityContext mods) {
         try {
             if (owner == null || !owner.isOnline() || owner.isDead()) return;
             double ownerMax = 20.0;
@@ -402,11 +440,11 @@ public class SummonAbilityService {
                 if (attr != null) ownerMax = Math.max(1.0, attr.getValue());
             } catch (Throwable ignored) {}
             double heal = ownerMax * Math.max(0.0, cfg.getAbilityLifestealHealPercentMaxHp(abilityLevel));
-            if (mods != null) heal *= Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult));
-            if (mods != null && mods.traits.contains(SoulTrait.VAMPIRIC)) heal *= 1.20;
+            if (mods != null) heal *= Math.max(0.2, Math.min(2.5, mods.abilityPotencyMult()));
+            if (mods != null) heal *= mods.lifestealHealMult();
             if (targetDebuffed) heal *= Math.max(1.0, cfg.getAbilityLifestealDebuffedBonusMultiplier());
             double perHitCap = Math.max(0.0, cfg.getAbilityLifestealPerHitHealCap());
-            if (mods != null && mods.traits.contains(SoulTrait.VAMPIRIC)) perHitCap *= 1.10;
+            if (mods != null) perHitCap *= mods.lifestealPerHitCapMult();
             heal = Math.min(heal, perHitCap);
             if (heal <= 0) return;
             if (!consumeBudget(lifestealBudget, owner.getUniqueId(), heal, cfg.getAbilityLifestealMaxHealPerMinute(), nowTick)) return;
@@ -422,7 +460,7 @@ public class SummonAbilityService {
                 GlovedPlugin.logDebug("[SummonAbility] Lifesteal (lvl " + abilityLevel + ") " + heal + " -> " + owner.getName()
                         + (targetDebuffed ? " (debuffed bonus)" : "") + " target=" + (target != null ? target.getType() : "?"));
                 spawnLifestealProcVfx(owner, target, heal, targetDebuffed, abilityLevel);
-                if (mods != null && mods.traits.contains(SoulTrait.VAMPIRIC)) {
+                if (mods != null && mods.vampiricLifesteal()) {
                     try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playVampiricAccent(owner, minion); } catch (Throwable ignored) {}
                 }
             }

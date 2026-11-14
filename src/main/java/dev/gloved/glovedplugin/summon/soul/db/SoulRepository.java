@@ -765,26 +765,45 @@ public class SoulRepository {
     private static String serializeTraits(List<SoulTrait> traits) {
         if (traits == null || traits.isEmpty()) return "[]";
         List<String> names = new ArrayList<>();
-        for (SoulTrait t : traits) if (t != null) names.add(t.name());
+        for (SoulTrait t : traits) {
+            if (t == null) continue;
+            String id = t.id();
+            if (id != null && !id.isBlank()) names.add(id);
+        }
         return GSON.toJson(names);
     }
 
     private static List<SoulTrait> deserializeTraits(String json) {
         if (json == null || json.isBlank() || "[]".equals(json)) return List.of();
-        // Migration: existing rows may store a single trait name (not JSON array).
+        List<String> names = new ArrayList<>();
+        boolean parsedArray = false;
+        // Migration/current format: JSON array of trait ID strings.
         try {
-            List<String> names = GSON.fromJson(json, new com.google.gson.reflect.TypeToken<List<String>>() {}.getType());
-            if (names != null) {
-                List<SoulTrait> out = new ArrayList<>();
-                for (String n : names) {
+            List<String> arr = GSON.fromJson(json, new com.google.gson.reflect.TypeToken<List<String>>() {}.getType());
+            if (arr != null) {
+                parsedArray = true;
+                for (String n : arr) {
                     if (n == null || n.isBlank()) continue;
-                    try { out.add(SoulTrait.valueOf(n)); } catch (Exception ignored) {}
+                    names.add(n);
                 }
-                if (!out.isEmpty()) return out;
             }
         } catch (Exception ignored) {}
-        // Fallback: treat whole string as a single trait name.
-        try { return List.of(SoulTrait.valueOf(json.trim())); } catch (Exception ignored) { return List.of(); }
+        // Legacy fallback: treat whole string as a single trait name/ID.
+        if (!parsedArray && names.isEmpty()) {
+            String single = json.trim();
+            if (!single.isBlank()) names.add(single);
+        }
+        if (names.isEmpty()) return List.of();
+
+        List<SoulTrait> out = new ArrayList<>(names.size());
+        for (String n : names) {
+            SoulTrait t = SoulTrait.fromId(n);
+            if (t == null) continue;
+            // Resolve via registry (logs unknown once). Keep resolved trait identity in original order.
+            try { t.definitionOptional(); } catch (Throwable ignored) {}
+            out.add(t);
+        }
+        return out.isEmpty() ? List.of() : List.copyOf(out);
     }
 
     private static String serializeAffixes(List<SoulAffixRoll> affixes) {

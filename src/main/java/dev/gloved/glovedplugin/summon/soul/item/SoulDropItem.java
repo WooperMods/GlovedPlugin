@@ -194,10 +194,10 @@ public final class SoulDropItem {
         dto.category = soul.getCategory().name();
         dto.rarity = soul.getRarity().name();
         dto.quality = soul.getQualityScore();
-        dto.trait = soul.getTrait() != null ? soul.getTrait().name() : null;
+        dto.trait = soul.getTrait() != null ? soul.getTrait().id() : null;
         dto.traits = new ArrayList<>();
         for (SoulTrait t : soul.getTraits()) {
-            if (t != null) dto.traits.add(t.name());
+            if (t != null && t.id() != null) dto.traits.add(t.id());
         }
         dto.createdAt = soul.getCreatedAt();
         dto.favorite = soul.isFavorite();
@@ -225,12 +225,20 @@ public final class SoulDropItem {
         if (dto.traits != null) {
             for (String n : dto.traits) {
                 if (n == null || n.isBlank()) continue;
-                try { traits.add(SoulTrait.valueOf(n)); } catch (Exception ignored) {}
+                SoulTrait t = SoulTrait.fromId(n);
+                if (t != null) {
+                    try { t.definitionOptional(); } catch (Throwable ignored) {}
+                    traits.add(t);
+                }
             }
         }
         // Migration: older items stored a single trait in dto.trait.
         if (traits.isEmpty() && dto.trait != null && !dto.trait.isBlank()) {
-            try { traits.add(SoulTrait.valueOf(dto.trait)); } catch (Exception ignored) {}
+            SoulTrait t = SoulTrait.fromId(dto.trait);
+            if (t != null) {
+                try { t.definitionOptional(); } catch (Throwable ignored) {}
+                traits.add(t);
+            }
         }
         List<SoulAffixRoll> affixes = new ArrayList<>();
         if (dto.affixes != null) {

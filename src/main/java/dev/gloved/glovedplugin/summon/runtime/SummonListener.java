@@ -20,7 +20,8 @@ import java.util.logging.Level;
 import dev.gloved.glovedplugin.combat.targeting.CombatTargetRules;
 import dev.gloved.glovedplugin.summon.ai.EngagedOwnerTargetGoal;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
-import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.IncomingDamageContext;
 
 /**
  * Summon event listener: cleanup, owner-damage protection, and enemy engagement targeting.
@@ -107,7 +108,7 @@ public class SummonListener implements Listener {
                     }
                 }
 
-                // TENACIOUS soul affix (damage reduction/defense) + BULWARK trait (tanky buff)
+                // TENACIOUS soul affix (damage reduction/defense) + trait mitigation hooks (e.g. BULWARK)
                 try {
                     String soulIdStr = victim.getPersistentDataContainer()
                             .get(new org.bukkit.NamespacedKey(plugin, "summon_soul_id"),
@@ -116,12 +117,28 @@ public class SummonListener implements Listener {
                         UUID soulId = UUID.fromString(soulIdStr);
                         var soulService = plugin.getSoulService();
                         if (soulService != null) {
-                            double tenacity = Math.max(0.0, Math.min(0.6, soulService.getSnapshot(soulId).tenacityBonus()));
-                            if (tenacity > 0.0) totalReduction += tenacity;
                             var soul = soulService.getSoulCached(soulId);
-                            if (soul != null && soul.hasTrait(SoulTrait.BULWARK)) {
-                                totalReduction += 0.10; // Bulwark: defensive buff (10% damage reduction)
-                                try { dev.gloved.glovedplugin.summon.vfx.SummonVfx.playBulwarkProc(victim); } catch (Throwable ignored) {}
+                            var snap = soulService.getSnapshot(soulId);
+                            double tenacity = Math.max(0.0, Math.min(0.6, snap.tenacityBonus()));
+                            if (tenacity > 0.0) totalReduction += tenacity;
+                            if (soul != null) {
+                                UUID ownerId = tracker.getOwner(victim.getUniqueId());
+                                IncomingDamageContext ctx = new IncomingDamageContext(
+                                        plugin, victim, damager, ownerId, soul, snap, event.getDamage());
+                                for (var trait : soul.getTraits()) {
+                                    if (trait == null) continue;
+                                    try {
+                                        SoulTraitHooks hooks = trait.hooks();
+                                        if (hooks != null) hooks.modifyIncomingDamage(ctx);
+                                    } catch (Throwable ignored) {}
+                                }
+                                if (ctx.isDamageCancelled()) {
+                                    event.setDamage(0.0);
+                                    // Trait (e.g. Reflection) fully negated this hit; skip normal capped mitigation scaling.
+                                    totalReduction = 0.0;
+                                } else if (ctx.addedReduction() != 0.0) {
+                                    totalReduction += ctx.addedReduction();
+                                }
                             }
                         }
                     }

@@ -6,7 +6,6 @@ import dev.gloved.glovedplugin.core.logging.DebugLog;
 import dev.gloved.glovedplugin.lootr.integration.EliteMobsIntegration;
 import dev.gloved.glovedplugin.summon.ai.movement.ReachabilityService;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
-import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.progression.NoopSummonProgressionBridge;
 import dev.gloved.glovedplugin.summon.progression.SummonAbilityService;
 import dev.gloved.glovedplugin.summon.progression.SummonProgressionBridge;
@@ -16,17 +15,17 @@ import dev.gloved.glovedplugin.summon.runtime.SummonManager;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
-import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.HitContext;
+import dev.gloved.glovedplugin.summon.soul.trait.ctx.OutgoingDamageContext;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
 
@@ -61,8 +60,7 @@ public class SummonCombatService {
     private static final ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, Location>> unreachableLocationCache = new ConcurrentHashMap<>();
     private static final long UNREACHABLE_TTL_MS = 10_000L;
 
-    // Trait ICDs (bounded proc behavior)
-    private static final ConcurrentHashMap<UUID, Long> unstableIcd = new ConcurrentHashMap<>();
+    // Trait ICDs handled by SoulTraits.procCooldowns() (generic per-trait cooldown utility)
 
     public SummonCombatService(GlovedPlugin plugin, SummonInstanceTracker tracker) {
         this.plugin = plugin;
@@ -392,19 +390,23 @@ public class SummonCombatService {
         } catch (Throwable ignored) {}
 
         double soulDamageMult = Math.max(0.25, Math.min(4.0, soulSnap.damageMultiplier()));
-        boolean frenzied = soul != null && soul.hasTrait(SoulTrait.FRENZIED);
-        boolean packboundActive = false;
-        if (frenzied) soulDamageMult *= 1.08;
-        if (soul != null && soul.hasTrait(SoulTrait.PACKBOUND)) {
-            double pm = packboundMultiplier(minion, owner, soul);
-            if (pm > 1.0001) packboundActive = true;
-            soulDamageMult *= pm;
+        double adjustedBaseDamage = Math.max(0.5, baseDamage * soulDamageMult);
+        OutgoingDamageContext outCtx = new OutgoingDamageContext(plugin, summonConfig, summonManager, this,
+                minion, owner, target, soul, soulSnap, baseDamage, adjustedBaseDamage);
+        if (soul != null) {
+            for (var trait : soul.getTraits()) {
+                if (trait == null) continue;
+                try {
+                    SoulTraitHooks hooks = trait.hooks();
+                    if (hooks != null) hooks.modifyOutgoingDamage(outCtx);
+                } catch (Throwable ignored) {}
+            }
         }
-        baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
+        baseDamage = Math.max(0.5, outCtx.damage());
         // Subtle trait-hit accents (builder-based VFX)
         try {
-            if (frenzied) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playFrenziedHit(minion, target);
-            if (packboundActive) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playPackboundHit(minion);
+            if (outCtx.frenziedHitAccent()) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playFrenziedHit(minion, target);
+            if (outCtx.packboundActive()) dev.gloved.glovedplugin.summon.vfx.SummonVfx.playPackboundHit(minion);
         } catch (Throwable ignored) {}
 
         double finalDamage = baseDamage;
@@ -442,7 +444,20 @@ public class SummonCombatService {
             } catch (Throwable t) {
                 GlovedPlugin.logDebug("[SummonAbility] Ability hook dispatch error: " + t);
             }
-            try { applyUnstableTrait(owner, minion, target, soul, finalDamage, baseDamage, nowTick); } catch (Throwable ignored) {}
+            try {
+                if (soul != null) {
+                    HitContext hitCtx = new HitContext(plugin, summonConfig, summonManager, this, progression,
+                            minion, owner, target, soul, soulSnap, profileName, finalDamage, baseDamage,
+                            crit, targetDebuffedBefore, nowTick);
+                    for (var trait : soul.getTraits()) {
+                        if (trait == null) continue;
+                        try {
+                            SoulTraitHooks hooks = trait.hooks();
+                            if (hooks != null) hooks.afterPrimaryHit(hitCtx);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            } catch (Throwable ignored) {}
         } catch (Exception e) {
             GlovedPlugin.logDebug("[Summon] Minion " + minion.getUniqueId() + " damage exception: " + e);
         }
@@ -559,70 +574,5 @@ public class SummonCombatService {
         return Math.max(1L, Math.round(requiredTicks));
     }
 
-    private double packboundMultiplier(LivingEntity minion, Player owner, SoulInstance soul) {
-        try {
-            if (minion == null || owner == null || soul == null || tracker == null) return 1.0;
-            String fam = soul.getFamilyKey();
-            int same = 0;
-            for (LivingEntity le : tracker.getActiveMinions(owner.getUniqueId())) {
-                if (le == null || le.isDead()) continue;
-                if (le.getWorld() != minion.getWorld()) continue;
-                if (le.getLocation().distanceSquared(minion.getLocation()) > 256.0) continue;
-                try {
-                    var pdc = le.getPersistentDataContainer();
-                    String f = pdc.get(new NamespacedKey(plugin, "summon_family"), PersistentDataType.STRING);
-                    if (f == null) f = pdc.get(new NamespacedKey(plugin, "summon_profile"), PersistentDataType.STRING);
-                    if (fam.equalsIgnoreCase(f)) same++;
-                } catch (Throwable ignored) {}
-            }
-            if (same >= 2) {
-                return 1.0 + Math.min(0.12, (same - 1) * 0.03);
-            }
-        } catch (Throwable ignored) {}
-        return 1.0;
-    }
-
-    private void applyUnstableTrait(Player owner, LivingEntity minion, LivingEntity primaryTarget, SoulInstance soul, double finalDamage, double baseDamage, long nowTick) {
-        if (owner == null || minion == null || primaryTarget == null || soul == null) return;
-        if (!soul.hasTrait(SoulTrait.UNSTABLE)) return;
-        Long last = unstableIcd.get(minion.getUniqueId());
-        if (last != null && nowTick - last < 80) return;
-        if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() > 0.18) return;
-        unstableIcd.put(minion.getUniqueId(), nowTick);
-        double radius = 2.75;
-        double aoe = Math.max(0.75, Math.min(6.0, Math.max(finalDamage, baseDamage) * 0.35));
-        int hit = 0;
-        try {
-            if (primaryTarget.getWorld() != null) {
-                dev.gloved.glovedplugin.summon.vfx.SummonVfx.playUnstableBurst(primaryTarget.getLocation());
-            }
-        } catch (Throwable ignored) {}
-        for (Entity e : primaryTarget.getNearbyEntities(radius, radius, radius)) {
-            if (hit >= 3) break;
-            if (!(e instanceof LivingEntity le) || le.isDead()) continue;
-            if (le.getUniqueId().equals(primaryTarget.getUniqueId())) continue;
-            if (le.getUniqueId().equals(owner.getUniqueId()) || le.getUniqueId().equals(minion.getUniqueId())) continue;
-            try {
-                var pdc = le.getPersistentDataContainer();
-                if (pdc.has(new NamespacedKey(plugin, "summon_mobtype"), PersistentDataType.STRING)) continue;
-            } catch (Throwable ignored) {}
-            if (CombatTargetRules.isProtected(plugin, owner, le)) continue;
-            try {
-                try { if (le.getNoDamageTicks() > 0) le.setNoDamageTicks(0); } catch (Throwable ignored) {}
-                DamageSource src = DamageSource.builder(DamageType.GENERIC)
-                        .withDirectEntity(minion)
-                        .withCausingEntity(minion != null ? minion : owner)
-                        .build();
-                try {
-                    DamageProxy.beginPipelineDamage();
-                    le.damage(aoe, src);
-                } finally {
-                    DamageProxy.endPipelineDamage();
-                }
-                try { progression.recordKillCredit(owner, minion, le, null, nowTick); } catch (Throwable ignored) {}
-                hit++;
-            } catch (Throwable ignored) {}
-        }
-        GlovedPlugin.logDebug("[SummonTrait] UNSTABLE proc by minion " + minion.getUniqueId() + " aoe=" + aoe + " extraTargets=" + hit);
-    }
+    // Packbound multiplier and UNSTABLE proc are trait-hook driven (see SoulTraits).
 }

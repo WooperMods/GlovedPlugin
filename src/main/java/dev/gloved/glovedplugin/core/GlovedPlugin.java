@@ -178,6 +178,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
     // Modular summon module (dynamic soul system)
     this.summonConfig = SummonConfig.load(this);
+    var traitRegistry = new dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry();
+    dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry.setActive(traitRegistry);
+    dev.gloved.glovedplugin.summon.soul.trait.SoulTraits.registerAll(traitRegistry);
+    traitRegistry.freeze();
     this.soulDatabase = new SoulDatabase(this);
     try {
       this.soulDatabase.init();

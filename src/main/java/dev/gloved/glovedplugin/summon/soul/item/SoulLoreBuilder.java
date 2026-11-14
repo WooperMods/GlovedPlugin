@@ -48,7 +48,23 @@ public final class SoulLoreBuilder {
         if (traits.isEmpty()) return out;
         out.add(header("Traits"));
         for (SoulTrait trait : traits) {
-            out.add(line("§d" + pretty(trait.name())));
+            if (trait == null) continue;
+            out.add(line("§d" + trait.displayName()));
+            List<String> desc = trait.guideDescription();
+            if (desc == null || desc.isEmpty()) continue;
+            for (String dl : desc) {
+                if (dl == null) continue;
+                String t = dl.trim();
+                if (t.isEmpty()) continue;
+                // Support inline separators in descriptions and render each as a lore line.
+                String normalized = t.replace("\r\n", "\n").replace('\r', '\n');
+                for (String part : normalized.split("[;\n]", -1)) {
+                    if (part == null) continue;
+                    String lineText = part.trim();
+                    if (lineText.isEmpty()) continue;
+                    out.add(line(lineText.startsWith("§") ? "§7 " + lineText : "§7 " + lineText));
+                }
+            }
         }
         return out;
     }
