@@ -3,8 +3,6 @@ package dev.gloved.glovedplugin.summon.runtime;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -59,13 +57,10 @@ public class SummonInstanceTracker {
                 if (playerId != null) {
                     var player = Bukkit.getPlayer(playerId);
                     if (player != null && player.isOnline() && player.getWorld().equals(le.getWorld())) {
-                        var soulService = plugin.getSoulService();
-                        if (soulService != null) {
-                            soulService.playSoulTrail(
-                                    le.getLocation().add(0, le.getHeight() * 0.5, 0),
-                                    player.getLocation().add(0, 1.0, 0),
-                                    null);
-                        }
+                        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSoulTrail(
+                                plugin,
+                                le.getLocation().add(0, le.getHeight() * 0.5, 0),
+                                player.getLocation().add(0, 1.0, 0));
                     }
                 }
             } catch (Throwable ignored) {}
@@ -75,15 +70,7 @@ public class SummonInstanceTracker {
 
     /** Cool soul-fire/portal despawn VFX + SFX when a minion fades out. */
     private void playDespawnVFX(LivingEntity le) {
-        if (le == null || le.getWorld() == null) return;
-        World world = le.getWorld();
-        org.bukkit.Location at = le.getLocation().add(0, 0.6, 0);
-        world.spawnParticle(Particle.SOUL_FIRE_FLAME, at, 12, 0.5, 0.7, 0.5, 0.04);
-        world.spawnParticle(Particle.REVERSE_PORTAL, at, 10, 0.6, 0.6, 0.6, 0.06);
-        world.spawnParticle(Particle.END_ROD, at.clone().add(0, 0.5, 0), 7, 0.35, 0.5, 0.35, 0.03);
-        world.spawnParticle(Particle.SOUL, at, 15, 0.4, 0.5, 0.4, 0.02);
-        world.playSound(at, Sound.ENTITY_ENDERMAN_TELEPORT, 0.7f, 1.3f);
-        world.playSound(at, Sound.BLOCK_BEACON_DEACTIVATE, 0.6f, 1.6f);
+        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSummonDespawn(le);
     }
 
     public void resetTimer(UUID entityId, int lifetimeTicks) {

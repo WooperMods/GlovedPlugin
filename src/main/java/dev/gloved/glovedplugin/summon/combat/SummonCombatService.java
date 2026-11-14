@@ -20,8 +20,6 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
@@ -587,9 +585,7 @@ public class SummonCombatService {
         int hit = 0;
         try {
             if (primaryTarget.getWorld() != null) {
-                primaryTarget.getWorld().spawnParticle(Particle.EXPLOSION, primaryTarget.getLocation().add(0, 0.8, 0), 1, 0, 0, 0, 0);
-                primaryTarget.getWorld().spawnParticle(Particle.FLAME, primaryTarget.getLocation().add(0, 0.8, 0), 18, 0.6, 0.4, 0.6, 0.02);
-                primaryTarget.getWorld().playSound(primaryTarget.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.35f, 1.35f);
+                dev.gloved.glovedplugin.summon.vfx.SummonVfx.playUnstableBurst(primaryTarget.getLocation());
             }
         } catch (Throwable ignored) {}
         for (Entity e : primaryTarget.getNearbyEntities(radius, radius, radius)) {

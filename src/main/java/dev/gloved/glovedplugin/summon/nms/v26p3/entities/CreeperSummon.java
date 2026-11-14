@@ -189,7 +189,7 @@ public class CreeperSummon extends Creeper implements SummonEntity {
 
         // Non-griefing visual/sound effect (no block damage, no vanilla entity damage routing).
         try {
-            center.getWorld().spawnParticle(Particle.EXPLOSION, center, 1, 0.0, 0.0, 0.0, 0.0);
+            dev.gloved.glovedplugin.summon.vfx.SummonVfx.creeperExplosionBuilder().build().play(center.getWorld(), center);
             center.getWorld().playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
         } catch (Throwable ignored) {}
 

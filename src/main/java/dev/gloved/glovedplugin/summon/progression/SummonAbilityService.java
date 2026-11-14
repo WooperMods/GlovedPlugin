@@ -7,8 +7,6 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
 import org.bukkit.Bukkit;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
@@ -125,22 +123,7 @@ public class SummonAbilityService {
     }
 
     private void spawnCritVfx(LivingEntity minion, LivingEntity target, boolean strong) {
-        try {
-            if (target == null || target.getWorld() == null) return;
-            var world = target.getWorld();
-            var center = target.getLocation().add(0, 1.0, 0);
-            int burst = strong ? 18 : 10;
-            world.spawnParticle(Particle.CRIT, center, burst, 0.3, 0.45, 0.3, 0.08);
-            world.spawnParticle(Particle.ENCHANTED_HIT, center, strong ? 14 : 8, 0.35, 0.45, 0.35, 0.12);
-            world.spawnParticle(Particle.ELECTRIC_SPARK, center, strong ? 10 : 4, 0.25, 0.35, 0.25, 0.02);
-            if (minion != null && minion.getWorld() == world) {
-                world.spawnParticle(Particle.END_ROD, minion.getLocation().add(0, 0.9, 0), strong ? 8 : 4, 0.2, 0.25, 0.2, 0.01);
-            }
-            world.playSound(center, Sound.ENTITY_PLAYER_ATTACK_CRIT, 0.55f, strong ? 1.55f : 1.35f);
-            if (strong) {
-                world.playSound(center, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.45f, 1.7f);
-            }
-        } catch (Throwable ignored) {}
+        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playCrit(minion, target, strong);
     }
 
     private CritResolution resolveCrit(double baseDamage, Player owner, SummonConfig cfg) {
@@ -481,71 +464,14 @@ public class SummonAbilityService {
     }
 
     private void spawnDebuffProcVfx(LivingEntity minion, LivingEntity target, int level) {
-        try {
-            if (target == null || target.getWorld() == null) return;
-            var world = target.getWorld();
-            var center = target.getLocation().add(0, 1.0, 0);
-            world.spawnParticle(Particle.WITCH, center, 14 + Math.min(level * 3, 12), 0.35, 0.5, 0.35, 0.02);
-            world.spawnParticle(Particle.SMOKE, center, 10 + Math.min(level * 2, 10), 0.3, 0.4, 0.3, 0.01);
-            world.spawnParticle(Particle.SOUL, center.clone().add(0, 0.2, 0), 6 + Math.min(level, 6), 0.25, 0.35, 0.25, 0.02);
-            if (level >= 2) {
-                world.spawnParticle(Particle.PORTAL, center, 18, 0.4, 0.6, 0.4, 0.15);
-            }
-            if (minion != null && minion.getWorld() == world) {
-                world.spawnParticle(Particle.ENCHANT, minion.getLocation().add(0, 0.9, 0), 12, 0.3, 0.4, 0.3, 0.4);
-            }
-            world.playSound(center, Sound.ENTITY_WITCH_DRINK, 0.3f, 1.25f);
-            world.playSound(center, Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.35f, 1.45f);
-            if (level >= 2) world.playSound(center, Sound.ENTITY_ENDERMAN_AMBIENT, 0.18f, 1.8f);
-        } catch (Throwable ignored) {}
+        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playDebuffProc(minion, target, level);
     }
 
     private void spawnCleaveProcVfx(LivingEntity minion, LivingEntity primaryTarget, int victims, int level) {
-        try {
-            if (primaryTarget == null || primaryTarget.getWorld() == null) return;
-            var world = primaryTarget.getWorld();
-            var center = primaryTarget.getLocation().add(0, 1.0, 0);
-            world.spawnParticle(Particle.SWEEP_ATTACK, center, 1 + Math.min(victims, 2), 0.2, 0.1, 0.2, 0.0);
-            world.spawnParticle(Particle.CRIT, center, 10 + Math.min(victims * 4, 18) + level * 2, 0.6, 0.35, 0.6, 0.08);
-            world.spawnParticle(Particle.CLOUD, center, 6 + Math.min(victims * 2, 10), 0.5, 0.15, 0.5, 0.02);
-            world.spawnParticle(Particle.ELECTRIC_SPARK, center, 8 + Math.min(victims * 3, 12), 0.7, 0.3, 0.7, 0.03);
-            if (minion != null && minion.getWorld() == world) {
-                world.spawnParticle(Particle.SONIC_BOOM, minion.getLocation().add(0, 1.0, 0), 1, 0, 0, 0, 0);
-            }
-            world.playSound(center, Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.7f, 0.95f);
-            world.playSound(center, Sound.ENTITY_PLAYER_ATTACK_STRONG, 0.45f, 1.25f);
-            if (victims >= 2) world.playSound(center, Sound.ITEM_TRIDENT_RETURN, 0.25f, 1.8f);
-        } catch (Throwable ignored) {}
+        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playCleaveProc(minion, primaryTarget, victims, level);
     }
 
     private void spawnLifestealProcVfx(LivingEntity owner, LivingEntity target, double heal, boolean targetDebuffed, int level) {
-        try {
-            if (owner == null || owner.getWorld() == null) return;
-            var world = owner.getWorld();
-            var ownerCenter = owner.getLocation().add(0, 1.2, 0);
-            int hearts = Math.max(1, Math.min(4, (int) Math.ceil(heal / 0.5)));
-            if (targetDebuffed) hearts = Math.min(5, hearts + 1);
-            world.spawnParticle(Particle.HEART, owner.getLocation().add(0, 1.9, 0), hearts, 0.25, 0.18, 0.25, 0.0);
-            world.spawnParticle(Particle.HAPPY_VILLAGER, ownerCenter, 6 + Math.min(level * 2, 8), 0.35, 0.45, 0.35, 0.02);
-            if (target != null && target.getWorld() == world) {
-                var targetCenter = target.getLocation().add(0, 1.0, 0);
-                world.spawnParticle(Particle.DAMAGE_INDICATOR, targetCenter, 4 + Math.min(level, 4), 0.2, 0.3, 0.2, 0.02);
-                world.spawnParticle(Particle.SOUL, targetCenter, 4 + Math.min(level, 4), 0.2, 0.3, 0.2, 0.01);
-                // trail of soul energy from target to owner
-                org.bukkit.util.Vector diff = ownerCenter.toVector().subtract(targetCenter.toVector());
-                double len = diff.length();
-                if (len > 0.2) {
-                    org.bukkit.util.Vector step = diff.clone().normalize().multiply(0.5);
-                    int steps = Math.min(10, (int) Math.ceil(len / 0.5));
-                    var p = targetCenter.clone();
-                    for (int i = 0; i < steps; i++) {
-                        p.add(step);
-                        world.spawnParticle(Particle.SCULK_SOUL, p, 1, 0.02, 0.02, 0.02, 0.0);
-                    }
-                }
-            }
-            world.playSound(owner.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.18f, 1.9f);
-            if (targetDebuffed) world.playSound(owner.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.12f, 2.0f);
-        } catch (Throwable ignored) {}
+        dev.gloved.glovedplugin.summon.vfx.SummonVfx.playLifestealProc(owner, target, heal, targetDebuffed, level);
     }
 }

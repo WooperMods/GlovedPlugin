@@ -582,47 +582,7 @@ public class SoulService {
     /** Visual trail from start location to end location (e.g. capture→player, player→minion on summon, minion→player on despawn). */
     public void playSoulTrail(Location start, Location end, SoulInstance soul) {
         try {
-            if (start == null || end == null || start.getWorld() == null) return;
-            if (!start.getWorld().equals(end.getWorld())) return;
-            final Location trailStart = start.clone();
-            final Location trailEnd = end.clone();
-            final int durationTicks = 6;
-            final org.bukkit.scheduler.BukkitRunnable task = new org.bukkit.scheduler.BukkitRunnable() {
-                int tick = 0;
-
-                @Override
-                public void run() {
-                    try {
-                        if (trailEnd.getWorld() == null || !trailEnd.getWorld().equals(trailStart.getWorld())) {
-                            cancel();
-                            return;
-                        }
-                        Location target = trailEnd.clone();
-                        double progress = Math.min(1.0, tick / (double) durationTicks);
-                        // leading point moves toward target over time
-                        double lead = Math.min(1.0, progress * 1.15);
-                        double trailLen = 0.35;
-                        double tail = Math.max(0.0, lead - trailLen);
-                        int steps = 20;
-                        for (int i = 0; i <= steps; i++) {
-                            double t = tail + (lead - tail) * (i / (double) steps);
-                            Location p = trailStart.clone().add(target.clone().subtract(trailStart).multiply(t));
-                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.SOUL, p, 2, 0.02, 0.02, 0.02, 0.0);
-                            if (i % 2 == 0) {
-                                trailStart.getWorld().spawnParticle(org.bukkit.Particle.SCULK_SOUL, p, 2, 0.01, 0.01, 0.01, 0.0);
-                            }
-                        }
-                        if (progress >= 0.95) {
-                            trailStart.getWorld().spawnParticle(org.bukkit.Particle.END_ROD, target, 6, 0.15, 0.2, 0.15, 0.01);
-                        }
-                        tick++;
-                        if (tick > durationTicks) cancel();
-                    } catch (Throwable t) {
-                        cancel();
-                    }
-                }
-            };
-            task.runTaskTimer(plugin, 0L, 1L);
+            dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSoulTrail(plugin, start, end);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[Souls] playSoulTrail failed: " + t);
         }

@@ -8,8 +8,6 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
@@ -446,18 +444,7 @@ public class SummonManager {
     public void playSummonEffects(Player player, Location at, int count) {
         if (at == null || at.getWorld() == null) return;
         try {
-            World world = at.getWorld();
-            Location fx = at.clone().add(0, 0.8, 0);
-            world.spawnParticle(Particle.SOUL_FIRE_FLAME, fx, 14 + Math.min(count * 2, 20), 0.9, 0.7, 0.9, 0.02);
-            world.spawnParticle(Particle.REVERSE_PORTAL, fx, 12 + Math.min(count * 2, 15), 0.8, 0.6, 0.8, 0.03);
-            world.spawnParticle(Particle.WITCH, fx, 8 + Math.min(count * 1, 12), 0.7, 0.5, 0.7, 0.01);
-            world.spawnParticle(Particle.END_ROD, fx.clone().add(0, 0.6, 0), 5 + Math.min(count * 1, 9), 0.5, 0.8, 0.5, 0.01);
-            world.spawnParticle(Particle.CLOUD, fx, 4, 0.5, 0.2, 0.5, 0.02);
-            world.playSound(fx, Sound.ENTITY_ILLUSIONER_CAST_SPELL, 0.8f, 1.15f);
-            world.playSound(fx, Sound.BLOCK_BEACON_ACTIVATE, 0.35f, 1.6f);
-            if (player != null) {
-                player.playSound(player.getLocation(), Sound.ITEM_TRIDENT_RETURN, 0.25f, 1.4f);
-            }
+            dev.gloved.glovedplugin.summon.vfx.SummonVfx.playSummonSpawn(player, at, count);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[Summon] Failed to play summon effects: " + t);
         }
