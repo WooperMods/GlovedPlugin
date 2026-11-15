@@ -321,50 +321,14 @@ public final class SoulLoreBuilder {
         int filled = (int) Math.round(p * segments);
         if (p > 0.0 && filled == 0) filled = 1;
         if (p >= 1.0) filled = segments;
-
-        String text = suffix == null ? "" : suffix.trim();
-        String plain = stripLegacy(text);
-        if (plain.length() > segments) {
-            // Fallback: keep text outside if it cannot fit in the bar
-            StringBuilder bar = new StringBuilder("§8[§a");
-            for (int i = 0; i < segments; i++) {
-                if (i == filled) bar.append("§8");
-                bar.append("|");
-            }
-            bar.append("§8]");
-            if (!text.isBlank()) bar.append(" ").append(text);
-            return bar.toString();
-        }
-
-        int start = Math.max(0, (segments - plain.length()) / 2);
-        int end = start + plain.length();
-        StringBuilder bar = new StringBuilder("§8[");
+        StringBuilder bar = new StringBuilder("§8[§a");
         for (int i = 0; i < segments; i++) {
-            if (i >= start && i < end) {
-                int idx = i - start;
-                char c = plain.charAt(idx);
-                // Use high-contrast text color inside bar; keep fill/empty context readable.
-                bar.append(i < filled ? "§f" : "§7").append(c);
-            } else {
-                bar.append(i < filled ? "§a|" : "§8|");
-            }
+            if (i == filled) bar.append("§8");
+            bar.append("|");
         }
         bar.append("§8]");
+        if (suffix != null && !suffix.isBlank()) bar.append(" ").append(suffix);
         return bar.toString();
-    }
-
-    private static String stripLegacy(String s) {
-        if (s == null || s.isEmpty()) return "";
-        StringBuilder out = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c == '§' && i + 1 < s.length()) {
-                i++; // skip color/format code char
-                continue;
-            }
-            out.append(c);
-        }
-        return out.toString();
     }
 
     public static String pretty(String key) {
