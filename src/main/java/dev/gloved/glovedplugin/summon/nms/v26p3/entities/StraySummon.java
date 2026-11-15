@@ -63,16 +63,23 @@ public class StraySummon extends Stray implements SummonEntity {
     public void reassessWeaponGoal() {
         if (this.level() == null || this.level().isClientSide()) return;
         if (this.bowGoal == null || this.meleeGoal == null) return;
-        try { this.goalSelector.removeGoal(this.bowGoal); } catch (Throwable ignored) {}
-        try { this.goalSelector.removeGoal(this.meleeGoal); } catch (Throwable ignored) {}
         boolean hasBow = false;
         try {
             ItemStack stack = this.getItemInHand(ProjectileUtil.getWeaponHoldingHand(this, Items.BOW));
             hasBow = stack != null && stack.is(Items.BOW);
         } catch (Throwable ignored) {}
-        if (hasBow) this.goalSelector.addGoal(4, this.bowGoal);
-        else this.goalSelector.addGoal(4, this.meleeGoal);
-        GlovedPlugin.logDebug("[Summon] StraySummon weapon goal uuid=" + getBukkitUniqueId() + " bow=" + hasBow);
+
+        boolean bowActive = this.goalSelector.getAvailableGoals().stream().anyMatch(w -> w.getGoal() == this.bowGoal);
+        boolean meleeActive = this.goalSelector.getAvailableGoals().stream().anyMatch(w -> w.getGoal() == this.meleeGoal);
+        if (hasBow) {
+            if (!bowActive) this.goalSelector.addGoal(4, this.bowGoal);
+            if (meleeActive) try { this.goalSelector.removeGoal(this.meleeGoal); } catch (Throwable ignored) {}
+        } else {
+            if (!meleeActive) this.goalSelector.addGoal(4, this.meleeGoal);
+            if (bowActive) try { this.goalSelector.removeGoal(this.bowGoal); } catch (Throwable ignored) {}
+        }
+        GlovedPlugin.logDebug("[Summon] StraySummon weapon goal uuid=" + getBukkitUniqueId() + " bow=" + hasBow
+                + " bowActive=" + bowActive + " meleeActive=" + meleeActive);
     }
 
     @Override
