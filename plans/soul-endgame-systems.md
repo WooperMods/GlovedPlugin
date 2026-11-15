@@ -1,18 +1,16 @@
 # Soul Endgame Systems — Follow-up Plan (Post Infusion & Condensation)
 
-> **Builds on:** implemented `plans/soul-infusion-and-condensation.md` baseline (Condense, Soul Catalyst crafting, Infusion, supporting config/items/services/UI/pack) and the implemented Soul Groups loadout system (`plans/soul-team-loadout-overhaul.md`) plus follow-up adjustments. This document defines the next wave of endgame/progression systems that build on that foundation.
+> **Builds on:** implemented `plans/soul-infusion-and-condensation.md` baseline (Condense, Soul Catalyst crafting, Infusion, supporting config/items/services/UI/pack), the implemented Soul Groups loadout system (`plans/soul-team-loadout-overhaul.md`) plus follow-up adjustments, and the MVP implementations of **Soul Mastery / Attunement** and **Account/Family Codex** (`plans/soul-mastery-codex-subplan.md`). This document defines the remaining endgame/progression systems.
 
 ## 0. Summary
 
-Add layered systems to deepen soul buildcraft, create short/mid/long-term goals, and improve retention:
+Remaining layered systems to deepen soul buildcraft, economy choice, and long-term goals:
 
-1. **Soul Mastery / Attunement** (per-soul progression)
-2. **Account/Family Codex** (collection progression)
-3. **Catalyst Tiers / Variants** (economy depth and player choice)
-4. **Fragments & Targeted Crafting** (deterministic paths, reduced RNG frustration)
-5. **Essence Sinks with Player Choice** (healthy, flexible economy)
-6. **Socketed “Soul Cores”** (modular build slots)
-7. **Affinity/Element Flavor** (lightweight identity and synergies)
+1. **Catalyst Tiers / Variants** (economy depth and player choice)
+2. **Fragments & Targeted Crafting** (deterministic paths, reduced RNG frustration)
+3. **Essence Sinks with Player Choice** (healthy, flexible economy)
+4. **Socketed “Soul Cores”** (modular build slots)
+5. **Affinity/Element Flavor** (lightweight identity and synergies)
 
 **Design intent**
 - **Incremental progression:** visible steps and milestones, not all-or-nothing.
@@ -22,13 +20,16 @@ Add layered systems to deepen soul buildcraft, create short/mid/long-term goals,
 
 **Cross-cutting implementation notes**
 - Layer onto existing souls (rarity, base stats, affixes, traits, enhancement, essence, Soul Table), the Soul Groups loadout system, and the Condense → Catalyst → Infusion loop.
-- Respect current Soul Groups behavior: **4 groups per player, 4 slots per group, 1 summon per valid slot** (mixed soul types), activate/recall/hotswap semantics, and per-summon full effective stats (no legacy `groupCapacity`/group-division gameplay). Design future progression/buildcraft (cores, affinity, mastery, etc.) to apply per soul/summon and to compose cleanly with group activation.
+- Build on the implemented **Mastery** and **Codex** MVP foundations (additive per-soul mastery progression/milestones, account/family codex tiers/claims, related config/DB/service/UI hooks). See `plans/soul-mastery-codex-subplan.md` for MVP scope and deferred extensions.
+- Respect current Soul Groups behavior: **4 groups per player, 4 slots per group, 1 summon per valid slot** (mixed soul types), activate/recall/hotswap semantics, and per-summon full effective stats (no legacy `groupCapacity`/group-division gameplay). Design future progression/buildcraft (cores, affinity, etc.) to apply per soul/summon and to compose cleanly with group activation.
 - Prefer additive config/data and avoid DB schema changes initially where possible (PDC/JSON fields, config registries, account-level storage consistent with repo patterns); finalize storage at implementation time.
 - Keep most rewards horizontal/utility/cosmetic or bounded; preserve caps/ICDs/diminishing returns to limit power creep.
 - Build/verify with `./build.sh`. Follow repo config conventions (bundled resource + runtime fallback + backfill, preserve existing keys).
 
 **Current baseline notes (implemented, relevant to this plan)**
 - **Soul Groups loadout (current):** players have **4 saved groups** with **4 slots each**; each valid slot summons **1** soul (mixed types allowed, 1 summon per slot). One group is active at a time: activating the active group recalls/toggles off, activating another group hotswaps. Empty/invalid slots are skipped/cleaned on activation. **Soul Focus:** right-click opens the Soul Groups view, left-click performs quick activate/recall of the selected group; `/gloved soul menu` opens the Groups view. Commands use `/gloved soul group ...` with `group`/`groups` (and compatibility alias `team`/`teams`). Player-facing terminology is **Group/Groups**; config keys, DB schema, PDC keys, and internal APIs remain team-based for compatibility (e.g. `souls.teams.*`, `soul_teams`). Legacy `groupCapacity` ("Summons count") is retired from gameplay/UI/previews/lore (kept only as compatibility data where present).
+- **Soul Mastery / Attunement (MVP):** per-soul mastery XP/level/rank and configurable milestone rewards (default essence claims), with summon hit/kill and capture/refine/mastery hooks as implemented, persisted additively and surfaced in soul lore/tooltips. Further reward effects, anti-farm tuning, and deeper system integrations remain deferred per `plans/soul-mastery-codex-subplan.md`.
+- **Account/Family Codex (MVP):** additive account/family codex progress/tier tracking and claimable rewards (discovered/collected/refined/mastered foundations), surfaced in `/gloved soul codex` and the **Soul Codex** menu (accessible from Soul Groups below Soul Vault). Richer objectives, reward types, and browser UX remain deferred per `plans/soul-mastery-codex-subplan.md`.
 - **Condensed Soul Essence item:** PDC-tagged, stackable material (default `AMETHYST_SHARD`, non-placeable/non-vanilla-interactable); configurable name/material/rate via `souls.table.essence.condense.*`. Lore shows total/value and per-item rate (no redundant title line). Right-click redeems **1** condensed item at a time (cancels normal interaction/placement) and grants Essence; rapid redeems show an accumulated action-bar total. Condensed Essence can also appear as a rare bonus in newly generated Lootr chest inventories (`elite.condensed-essence.*`, configurable).
 - **Soul Catalyst (current):** single crafted catalyst item used for Infusion (no tiers/variants yet). Current lore describes infusion use; future tier/variant work should preserve/extend PDC identity and config-driven recipes/rules.
 - **Config/UI conventions:** item/display color codes in soul-table config use `&` in YAML and are normalized to `§` in code. Player-facing Soul Table/Guide/Infusion copy avoids config/admin/internal implementation wording.
@@ -36,84 +37,7 @@ Add layered systems to deepen soul buildcraft, create short/mid/long-term goals,
 
 ---
 
-## 1. Soul Mastery / Attunement (per-soul progression)
-
-### Purpose
-Make individual souls feel like long-term companions/projects, not just stat containers. Rewards using and investing in a specific soul.
-
-### Player loop
-1. Capture/find a promising soul → 2. Use it in combat/summoning → 3. Earn **Mastery XP** and hit **attunement milestones** → 4. Claim small perks/rewards or unlock attunement actions → 5. Continue specializing that soul (pairs with Infusion/Cores).
-
-### Mechanics
-- **Mastery track (per soul):** leveled or milestone-based track (e.g. Lv 1–20 or ranks: Novice → Adept → Expert → Mastered → Awakened-ready). Progress gained from:
-  - Time/instances summoned and active in valid combat.
-  - Damage dealt/taken participation, ability/trait procs, kills (with diminishing returns/anti-farm rules).
-  - Bonus for elite/boss/challenging content (if detectable), with caps/rate limits to prevent AFK abuse.
-- **Attunement milestones:** at specific mastery levels, unlock a choice or reward (small, meaningful, mostly horizontal/utility):
-  - **Cosmetic identity:** nameplate accent, summon/recall particle trail, aura style, idle effect (client-visual, no power).
-  - **Minor utility perks (bounded):** e.g. slightly faster recall/cast feel, small pickup/aggro behavior tweak, reduced friction QoL — avoid raw stat inflation.
-  - **Attunement token (optional reward):** rare milestone grants a token (or discounted action) for a targeted adjustment (e.g. one-time non-trait reroll aid, small infusion discount/catalyst rebate) to reduce bad-luck frustration.
-- **Soul-bound:** tied to that `SoulInstance`; survives in vault and carries across normal table actions unless explicitly reset (configurable).
-
-### Interaction with other systems
-- **Infusion:** mastery can gate certain tiers or provide small cost reductions/insights; infusion does not reset mastery by default.
-- **Reforge:** preserves mastery by default (configurable).
-- **Combine/Salvage:** mastery may convert into a small bonus (extra essence/fragments/mastery shard) when consumed/salvaged.
-- **Cores/Affinity:** higher mastery can unlock core slots or resonance perks.
-
-### UI / feedback
-- Soul lore/tooltip: mastery rank/XP bar, next milestone, unlocked attunements.
-- Soul Table/details panel: **Mastery/Attunement view** showing progress sources, milestones, and claimable rewards.
-- Subtle in-world feedback on milestone (sound/VFX/title).
-
-### Config/data considerations
-- XP rates, diminishing returns, eligible events, milestone rewards, preserve/reset rules.
-- Store mastery XP/rank and selected attunements per soul (additive serialized field/storage consistent with repo patterns).
-
-### Balance/risks
-- Prevent AFK/farm exploitation (combat-valid checks, rate caps, diminishing returns).
-- Keep perks mostly utility/cosmetic or very small.
-
----
-
-## 2. Account/Family Codex (collection progression)
-
-### Purpose
-Provide long-term, account-wide goals and a sense of discovery/completion beyond any single soul.
-
-### Player loop
-1. Encounter/capture souls across families/types/rarities → 2. Register discoveries and complete codex objectives → 3. Earn account-wide rewards/unlocks → 4. Target missing entries via bounties/crafting/infusion.
-
-### Mechanics
-- **Codex entries/sets:**
-  - **Family/entity entries:** first capture, captured count, highest rarity/quality, mastered count, infused variants, affinity/core milestones (as available).
-  - **Category sets:** by family group, category, rarity tier, or trait/affinity collection.
-- **Completion tiers:** e.g. Discovered → Collected → Refined (enhanced/infused) → Mastered. Each tier grants progress/rewards once per account.
-- **Account rewards (mostly horizontal/QoL/cosmetic, light efficiency):**
-  - Cosmetic: badges, summon titles/effects, UI frames.
-  - QoL: vault/sort/filter conveniences, favorites/pins, and (if expanded in future) additional Soul Group slots/groups beyond the current 4×4 baseline.
-  - Light efficiency (bounded): small essence conversion/crafting efficiency perks, occasional fragment drops, or reduced friction.
-- **Discovery moments:** first-time capture/infusion/mastery shows a codex toast and tracks progress.
-
-### Interaction with other systems
-- **Mastery:** objectives for mastering souls/families.
-- **Infusion/Catalysts/Cores/Affinity:** objectives for infusing, applying cores, unlocking affinities.
-- **Fragments/Condense:** milestones can award fragments/catalyst materials.
-
-### UI / feedback
-- Dedicated **Codex** UI/tab: browsable families, completion %, missing objectives, claimable rewards, filters/search, trackable hints.
-
-### Config/data considerations
-- Entry groupings/sets and reward tables in config/data where possible.
-- Account-wide per-player codex progress storage with efficient discovery/claim tracking.
-
-### Balance/risks
-- Keep power rewards modest; prioritize cosmetics/QoL/targeting aids.
-- Avoid dependence on extremely rare RNG-only outcomes without pity/targeted paths (Fragments).
-
----
-
-## 3. Catalyst Tiers / Variants
+## 1. Catalyst Tiers / Variants
 
 ### Purpose
 Add depth and choice to the crafting/infusion economy: catalysts express intent and support different progression paths.
@@ -138,7 +62,8 @@ Add depth and choice to the crafting/infusion economy: catalysts express intent 
 - **Condense/Essence sinks:** primary material source (Condensed Soul Essence is now a concrete item/source, including rare Lootr chest drops).
 - **Infusion:** core consumer with add/replace-specific variants.
 - **Cores/Affinity/Fragments:** catalyst ingredients/consumers.
-- **Codex/Bounties:** reward sources.
+- **Mastery/Codex:** potential objective/reward hooks (future/deferred extensions).
+- **Bounties:** reward sources.
 
 ### UI / feedback
 - Item lore states tier, variant, and valid uses.
@@ -154,7 +79,7 @@ Add depth and choice to the crafting/infusion economy: catalysts express intent 
 
 ---
 
-## 4. Fragments & Targeted Crafting
+## 2. Fragments & Targeted Crafting
 
 ### Purpose
 Reduce pure RNG frustration and provide deterministic paths toward specific goals while keeping rare outcomes meaningful.
@@ -174,7 +99,7 @@ Reduce pure RNG frustration and provide deterministic paths toward specific goal
 ### Interaction with other systems
 - **Condense/Catalysts:** primary conversion/crafting targets.
 - **Infusion:** targeted support for chosen traits/build refinement.
-- **Mastery/Codex:** key sources and rewards.
+- **Mastery/Codex:** key sources and rewards (existing foundations, with future extensions as needed).
 - **Cores/Affinity:** primary crafting inputs.
 
 ### UI / feedback
@@ -190,7 +115,7 @@ Reduce pure RNG frustration and provide deterministic paths toward specific goal
 
 ---
 
-## 5. Essence Sinks with Player Choice
+## 3. Essence Sinks with Player Choice
 
 ### Purpose
 Ensure Essence/condensed materials always have meaningful uses, enabling players to choose progression priorities.
@@ -222,7 +147,7 @@ Ensure Essence/condensed materials always have meaningful uses, enabling players
 
 ---
 
-## 6. Socketed “Soul Cores” (build slots)
+## 4. Socketed “Soul Cores” (build slots)
 
 ### Purpose
 Add a modular, swappable customization layer for playstyle/utility roles (horizontal progression) without endless base-stat inflation.
@@ -238,7 +163,7 @@ Add a modular, swappable customization layer for playstyle/utility roles (horizo
 
 ### Interaction with other systems
 - **Infusion/Traits:** complementary; UI surfaces synergies/conflicts.
-- **Mastery/Codex:** unlock slots/recipes/rewards.
+- **Mastery/Codex:** unlock slots/recipes/rewards (potential future extensions of existing foundations).
 - **Affinity:** resonant cores gain thematic/conditional bonuses.
 - **Essence sinks/Catalysts/Fragments:** crafting inputs.
 
@@ -255,7 +180,7 @@ Add a modular, swappable customization layer for playstyle/utility roles (horizo
 
 ---
 
-## 7. Affinity/Element Flavor (lightweight)
+## 5. Affinity/Element Flavor (lightweight)
 
 ### Purpose
 Add thematic identity and soft build direction (flavor + light synergies) without heavy elemental counters.
@@ -275,7 +200,7 @@ Add thematic identity and soft build direction (flavor + light synergies) withou
 ### Interaction with other systems
 - **Traits/Cores:** primary synergy targets.
 - **Fragments/Catalysts/Essence sinks:** attunement materials/costs.
-- **Codex:** collection/completion objectives.
+- **Mastery/Codex:** collection/completion objectives (potential future extensions of existing foundations).
 
 ### UI / feedback
 - Affinity icon/description and active synergy vs cosmetic indicators in tooltips, codex, and previews.
@@ -290,17 +215,16 @@ Add thematic identity and soft build direction (flavor + light synergies) withou
 
 ---
 
-## 8. Recommended implementation sequencing (incremental)
+## 6. Recommended implementation sequencing (incremental)
 
 1. **Foundations:** extend item/recipe/config framework for catalyst tiers/variants and fragment types (building on Condense/Catalyst).
-2. **Codex (account tracking + UI shell) and Mastery (per-soul tracking + basic milestones):** establish long-term goals and identity.
-3. **Fragments & targeted crafting + Catalyst tiers/variants integration:** deepen economy and player choice; wire into Infusion/Condense.
-4. **Essence sink expansion pass:** unify balances/previews/recipes and add bounded optional sinks.
-5. **Soul Cores (slot + small curated set):** modular buildcraft with synergies/warnings.
-6. **Affinity (flavor + light synergies):** thematic layer over traits/cores.
+2. **Fragments & targeted crafting + Catalyst tiers/variants integration:** deepen economy and player choice; wire into Infusion/Condense.
+3. **Essence sink expansion pass:** unify balances/previews/recipes and add bounded optional sinks.
+4. **Soul Cores (slot + small curated set):** modular buildcraft with synergies/warnings.
+5. **Affinity (flavor + light synergies):** thematic layer over traits/cores.
 
-## 9. Verification & tuning (when implemented)
+## 7. Verification & tuning (when implemented)
 
 - `./build.sh` succeeds per phase; in-game validation for each system.
 - Validate transactional safety (DB vs inventory), cache invalidation, reload/backfill behavior, and UI clarity/previews.
-- Playtest tuning: pacing (earn vs sink), replace-vs-add costs, fragment generosity, mastery XP rates, core/affinity impact, and overall “rewarding vs exhausting” progression with distinct, non-solved builds.
+- Playtest tuning: pacing (earn vs sink), replace-vs-add costs, fragment generosity, core/affinity impact, and overall “rewarding vs exhausting” progression with distinct, non-solved builds. Tie new systems into existing Mastery/Codex foundations where appropriate without unbalancing MVP rewards/progression.
