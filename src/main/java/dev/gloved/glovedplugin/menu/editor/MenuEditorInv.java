@@ -4,6 +4,7 @@ import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.menu.config.MenuConfig;
 import dev.gloved.glovedplugin.menu.inventory.MenuInv;
 import dev.gloved.glovedplugin.menu.listener.MenuHandler;
+import dev.gloved.glovedplugin.ui.UiIcons;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -92,7 +93,12 @@ public class MenuEditorInv implements InventoryHolder {
     // ------------------------------------------------------------------ build
 
     private ItemStack btn(Material material, String name, String... lore) {
-        return MenuInv.getItem(new ItemStack(material), name, lore);
+        ItemStack it = MenuInv.getItem(new ItemStack(material), name, lore);
+        if (name != null) {
+            String plain = name.replace("&", "§").toLowerCase(java.util.Locale.ROOT);
+            if (plain.contains("back")) UiIcons.apply(it, UiIcons.BACK);
+        }
+        return it;
     }
 
     private void chrome(Inventory inv) {

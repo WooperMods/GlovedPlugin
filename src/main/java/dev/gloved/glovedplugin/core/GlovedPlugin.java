@@ -53,6 +53,7 @@ import dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableService;
 import dev.gloved.glovedplugin.summon.soul.table.SoulCatalystRecipeManager;
+import dev.gloved.glovedplugin.ui.UiPackService;
 import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideListener;
 import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener;
@@ -91,6 +92,7 @@ public final class GlovedPlugin extends JavaPlugin {
   private SoulTableManager soulTableManager;
   private SoulTableService soulTableService;
   private SoulTablePackService soulTablePackService;
+  private UiPackService uiPackService;
   private SoulTableRecipeManager soulTableRecipeManager;
   private SoulCatalystRecipeManager soulCatalystRecipeManager;
   private SoulGuideRecipeManager soulGuideRecipeManager;
@@ -222,8 +224,9 @@ public final class GlovedPlugin extends JavaPlugin {
     getServer().getPluginManager().registerEvents(this.soulGuideRecipeManager, this);
     getServer().getPluginManager().registerEvents(new SoulGuideListener(this), this);
     this.soulTablePackService = new SoulTablePackService(this);
-    // Write the pack immediately so ResourcePackManager (which enables after
-    // GlovedPlugin) picks it
+    this.uiPackService = new UiPackService(this);
+    // Write packs immediately so ResourcePackManager (which enables after
+    // GlovedPlugin) picks them
     // up during its own startup merge. The ServerLoadEvent pass below re-deploys
     // and runs `rspm reload`
     // for the case where ResourcePackManager enabled first (e.g. /reload confirm).
@@ -231,6 +234,11 @@ public final class GlovedPlugin extends JavaPlugin {
       this.soulTablePackService.generateAndDeploy();
     } catch (Throwable t) {
       getLogger().warning("[SoulTable] Resource pack deployment failed: " + t.getMessage());
+    }
+    try {
+      this.uiPackService.generateAndDeploy();
+    } catch (Throwable t) {
+      getLogger().warning("[UI] Resource pack deployment failed: " + t.getMessage());
     }
     try {
       var tableCfg = this.summonConfig.getSoulTableConfig();
@@ -460,6 +468,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
   public SoulTablePackService getSoulTablePackService() {
     return soulTablePackService;
+  }
+
+  public UiPackService getUiPackService() {
+    return uiPackService;
   }
 
   public SoulTableRecipeManager getSoulTableRecipeManager() {
@@ -740,6 +752,15 @@ public final class GlovedPlugin extends JavaPlugin {
             logWarning("[SoulTable] " + result.message());
         } catch (Throwable t) {
           getLogger().warning("[SoulTable] Resource pack deployment failed: " + t.getMessage());
+        }
+      }
+      if (uiPackService != null) {
+        try {
+          var result = uiPackService.generateAndDeploy();
+          if (!result.ok())
+            logWarning("[UI] " + result.message());
+        } catch (Throwable t) {
+          getLogger().warning("[UI] Resource pack deployment failed: " + t.getMessage());
         }
       }
       if (soulTableManager != null) {

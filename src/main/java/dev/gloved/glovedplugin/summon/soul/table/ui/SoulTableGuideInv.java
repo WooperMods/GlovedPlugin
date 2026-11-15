@@ -6,6 +6,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitDefinition;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRegistry;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableItem;
+import dev.gloved.glovedplugin.ui.UiIcons;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -505,7 +506,7 @@ public final class SoulTableGuideInv implements SoulTableScreen {
             meta.getPersistentDataContainer().set(actionKey(plugin), PersistentDataType.STRING, action);
             item.setItemMeta(meta);
         }
-        return item;
+        return UiIcons.apply(item, iconForGuideAction(action));
     }
 
     private ItemStack infoItem(Material material, String name, List<String> lore) {
@@ -534,7 +535,22 @@ public final class SoulTableGuideInv implements SoulTableScreen {
             meta.getPersistentDataContainer().set(actionKey(plugin), PersistentDataType.STRING, action);
             item.setItemMeta(meta);
         }
-        return item;
+        return UiIcons.apply(item, iconForGuideAction(action));
+    }
+
+    private static String iconForGuideAction(String action) {
+        if (action == null) return null;
+        return switch (action) {
+            case "back_table" -> UiIcons.HOME;
+            case "back_main" -> UiIcons.BACK;
+            case "close" -> UiIcons.CLOSE;
+            case "page:TABLE" -> UiIcons.HOME;
+            case "page:CONDENSE" -> UiIcons.CONDENSE;
+            case "page:INFUSION" -> UiIcons.INFUSION;
+            case "page:CRAFTING" -> UiIcons.GUIDE;
+            case "page:TRAITS", "page:AFFIXES", "page:STATS" -> UiIcons.GUIDE;
+            default -> null;
+        };
     }
 
     private ItemStack soulTableInfoItem(String name, List<String> lore) {

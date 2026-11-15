@@ -36,6 +36,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import dev.gloved.glovedplugin.ui.UiIcons;
 
 /**
  * Simple paginated vault GUI for dynamic souls.
@@ -140,25 +141,24 @@ public class SoulVaultInv implements InventoryHolder {
         }
 
         // controls row
-        inv.setItem(45, navItem(Material.ARROW, "§ePrevious Page", "prev"));
+        inv.setItem(45, navItem(Material.ARROW, "§ePrevious Page", "prev", UiIcons.ARROW_LEFT));
         inv.setItem(49, infoItem(total, cap, essence));
-        inv.setItem(53, navItem(Material.ARROW, "§eNext Page", "next"));
-        inv.setItem(47, navItem(Material.PAPER, "§bFilter: " + (filterType == null || filterType.isBlank() ? "ALL" : filterType), "filter"));
-        inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity"));
-        inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort"));
+        inv.setItem(53, navItem(Material.ARROW, "§eNext Page", "next", UiIcons.ARROW_RIGHT));
+        inv.setItem(47, navItem(Material.PAPER, "§bFilter: " + (filterType == null || filterType.isBlank() ? "ALL" : filterType), "filter", null));
+        inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity", null));
+        inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort", null));
         if (isPickerMode()) {
-            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back"));
-            inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot"));
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.BACK));
+            inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot", UiIcons.CLOSE));
         } else {
-            inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close"));
+            inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close", UiIcons.CLOSE));
             inv.setItem(52, combatModeItem());
         }
 
         // help
-        ItemStack help = new ItemStack(Material.BOOK);
+        ItemStack help = navItem(Material.BOOK, "§dControls", "help", UiIcons.GUIDE);
         ItemMeta hm = help.getItemMeta();
         if (hm != null) {
-            hm.displayName(LegacyComponentSerializer.legacySection().deserialize("§dControls").decoration(TextDecoration.ITALIC, false));
             hm.lore(List.of(
                     LegacyComponentSerializer.legacySection().deserialize("§7Left Click: Equip to selected slot").decoration(TextDecoration.ITALIC, false),
                     LegacyComponentSerializer.legacySection().deserialize("§7Right Click: Inspect").decoration(TextDecoration.ITALIC, false),
@@ -174,14 +174,19 @@ public class SoulVaultInv implements InventoryHolder {
     }
 
     private ItemStack navItem(Material mat, String name, String action) {
+        return navItem(mat, name, action, null);
+    }
+
+    private ItemStack navItem(Material mat, String name, String action, String iconModel) {
         ItemStack it = new ItemStack(mat);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
             meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name).decoration(TextDecoration.ITALIC, false));
-            meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, action);
+            if (action != null) meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, action);
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             it.setItemMeta(meta);
         }
-        return it;
+        return UiIcons.apply(it, iconModel);
     }
 
     private ItemStack infoItem(int total, int cap, int essence) {

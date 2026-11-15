@@ -6,6 +6,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import dev.gloved.glovedplugin.ui.UiIcons;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -91,11 +92,11 @@ public class SoulTeamsInv implements InventoryHolder {
         }
 
         // Controls row 5
-        inv.setItem(45, navItem(Material.BOOK, "§dHelp", "help",
+        inv.setItem(45, navItem(Material.BOOK, "§dHelp", "help", UiIcons.GUIDE,
                 "§7Soul Focus: §fRMB §7Teams, §fLMB §7Quick cast/recall",
                 "§7Slot: §fLMB §7assign, §fRMB §7clear"));
-        inv.setItem(49, navItem(Material.BARRIER, "§eRecall Active Team", "recall"));
-        inv.setItem(53, navItem(Material.OAK_DOOR, "§cClose", "close"));
+        inv.setItem(49, navItem(Material.BARRIER, "§eRecall Active Team", "recall", UiIcons.BACK));
+        inv.setItem(53, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 
         return inv;
     }
@@ -126,7 +127,7 @@ public class SoulTeamsInv implements InventoryHolder {
             meta.getPersistentDataContainer().set(teamKey(plugin), PersistentDataType.INTEGER, team);
             it.setItemMeta(meta);
         }
-        return it;
+        return UiIcons.apply(it, active ? UiIcons.BACK : UiIcons.TEAMS);
     }
 
     private ItemStack teamSlotItem(int team, int slot, SoulInstance soul, SoulService svc) {
@@ -171,7 +172,7 @@ public class SoulTeamsInv implements InventoryHolder {
         return it;
     }
 
-    private ItemStack navItem(Material mat, String name, String action, String... loreLines) {
+    private ItemStack navItem(Material mat, String name, String action, String iconModel, String... loreLines) {
         ItemStack it = new ItemStack(mat);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
@@ -182,10 +183,10 @@ public class SoulTeamsInv implements InventoryHolder {
                 meta.lore(lore);
             }
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
-            meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, action);
+            if (action != null) meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, action);
             it.setItemMeta(meta);
         }
-        return it;
+        return UiIcons.apply(it, iconModel);
     }
 
     private static ItemStack pane(Material mat, String name) {

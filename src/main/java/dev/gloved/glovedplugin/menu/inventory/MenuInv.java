@@ -14,6 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.menu.config.MenuConfig;
+import dev.gloved.glovedplugin.ui.UiIcons;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,8 +71,9 @@ public class MenuInv implements InventoryHolder {
                 lore.add("");
                 lore.add("&eShift Click to Edit");
             }
-            inventory.setItem(entry.getKey(), getItem(new ItemStack(mi.material()), mi.name(),
-                    lore.toArray(new String[0])));
+            ItemStack item = getItem(new ItemStack(mi.material()), mi.name(), lore.toArray(new String[0]));
+            UiIcons.apply(item, iconForMenuItem(mi));
+            inventory.setItem(entry.getKey(), item);
         }
         if (config.fillerEnabled()) {
             ItemStack filler = getItem(new ItemStack(config.fillerMaterial()), config.fillerName(),
@@ -110,7 +112,20 @@ public class MenuInv implements InventoryHolder {
             meta.getPersistentDataContainer().set(menuKey(), PersistentDataType.BYTE, (byte) 1);
             opener.setItemMeta(meta);
         }
+        UiIcons.apply(opener, UiIcons.HOME);
         return opener;
+    }
+
+    private static String iconForMenuItem(MenuConfig.MenuItem mi) {
+        if (mi == null) return null;
+        String cmd = mi.command() == null ? "" : mi.command().toLowerCase(java.util.Locale.ROOT);
+        String name = mi.name() == null ? "" : mi.name().toLowerCase(java.util.Locale.ROOT);
+        if (cmd.contains("soul") && (cmd.contains("team") || cmd.contains("menu") || cmd.equals("gloved soul") || cmd.contains("gloved soul"))) {
+            return UiIcons.TEAMS;
+        }
+        if (cmd.contains("soul")) return UiIcons.VAULT;
+        if (cmd.equals("menu") || cmd.contains("gloved menu") || name.contains("menu")) return UiIcons.HOME;
+        return null;
     }
 
     public static boolean isMenuOpener(ItemStack item) {

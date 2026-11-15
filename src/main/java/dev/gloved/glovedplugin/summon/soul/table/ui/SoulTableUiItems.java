@@ -6,6 +6,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulQuality;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
 import dev.gloved.glovedplugin.summon.soul.item.SoulLoreBuilder;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableItem;
+import dev.gloved.glovedplugin.ui.UiIcons;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -51,7 +52,7 @@ public final class SoulTableUiItems {
             if (action != null) SoulTableUiKeys.tagAction(meta, plugin, action);
             item.setItemMeta(meta);
         }
-        return item;
+        return UiIcons.apply(item, iconForAction(action));
     }
 
     public static ItemStack backToHubItem(GlovedPlugin plugin) {
@@ -66,7 +67,25 @@ public final class SoulTableUiItems {
             SoulTableUiKeys.tagAction(meta, plugin, SoulTableUiKeys.ACTION_BACK_HUB);
             item.setItemMeta(meta);
         }
-        return item;
+        return UiIcons.apply(item, UiIcons.HOME);
+    }
+
+    private static String iconForAction(String action) {
+        if (action == null) return null;
+        return switch (action) {
+            case SoulTableUiKeys.ACTION_PREV -> UiIcons.ARROW_LEFT;
+            case SoulTableUiKeys.ACTION_NEXT -> UiIcons.ARROW_RIGHT;
+            case SoulTableUiKeys.ACTION_BACK_HUB -> UiIcons.HOME;
+            case SoulTableUiKeys.ACTION_CLOSE -> UiIcons.CLOSE;
+            case SoulTableUiKeys.ACTION_GUIDE -> UiIcons.GUIDE;
+            case SoulTableUiKeys.ACTION_OPEN_COMBINE -> UiIcons.COMBINE;
+            case SoulTableUiKeys.ACTION_OPEN_ENHANCE -> UiIcons.ENHANCE;
+            case SoulTableUiKeys.ACTION_OPEN_REFORGE -> UiIcons.REFORGE;
+            case SoulTableUiKeys.ACTION_OPEN_SALVAGE -> UiIcons.SALVAGE;
+            case SoulTableUiKeys.ACTION_OPEN_CONDENSE -> UiIcons.CONDENSE;
+            case SoulTableUiKeys.ACTION_OPEN_INFUSION -> UiIcons.INFUSION;
+            default -> null;
+        };
     }
 
     public static ItemStack infoItem(Material material, String name, List<String> lore) {

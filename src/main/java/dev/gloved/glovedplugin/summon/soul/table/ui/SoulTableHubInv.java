@@ -3,6 +3,7 @@ package dev.gloved.glovedplugin.summon.soul.table.ui;
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import dev.gloved.glovedplugin.ui.UiIcons;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -141,7 +142,16 @@ public final class SoulTableHubInv implements SoulTableScreen {
             SoulTableUiKeys.tagAction(meta, plugin, action);
             item.setItemMeta(meta);
         }
-        return item;
+        String icon = switch (action) {
+            case SoulTableUiKeys.ACTION_OPEN_COMBINE -> UiIcons.COMBINE;
+            case SoulTableUiKeys.ACTION_OPEN_ENHANCE -> UiIcons.ENHANCE;
+            case SoulTableUiKeys.ACTION_OPEN_REFORGE -> UiIcons.REFORGE;
+            case SoulTableUiKeys.ACTION_OPEN_SALVAGE -> UiIcons.SALVAGE;
+            case SoulTableUiKeys.ACTION_OPEN_CONDENSE -> UiIcons.CONDENSE;
+            case SoulTableUiKeys.ACTION_OPEN_INFUSION -> UiIcons.INFUSION;
+            default -> null;
+        };
+        return UiIcons.apply(item, icon);
     }
 
     @Override
