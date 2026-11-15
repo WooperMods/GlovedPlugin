@@ -39,6 +39,8 @@ public class StraySummon extends Stray implements SummonEntity {
         this.plugin = plugin;
         try {
             this.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
+            // AbstractSkeleton ranged attacks require a projectile item to be available.
+            this.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.ARROW));
         } catch (Throwable ignored) {}
     }
 
