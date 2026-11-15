@@ -49,8 +49,8 @@ public class SoulRepository {
 
     public synchronized void insertSoul(SoulInstance soul) throws SQLException {
         String sql = "INSERT INTO souls (soul_id, owner_uuid, entity_type, family_key, category, rarity, quality, " +
-                "affixes_json, trait, favorite, state, origin_context, created_at, max_health, base_stats_json, enhance_level, group_capacity) " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                "affixes_json, trait, favorite, state, origin_context, created_at, max_health, base_stats_json, enhance_level, group_capacity, mastery_xp, mastery_level, mastery_claimed) " +
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         try (PreparedStatement ps = conn().prepareStatement(sql)) {
             ps.setString(1, soul.getSoulId().toString());
             ps.setString(2, soul.getOwnerId().toString());
@@ -69,6 +69,9 @@ public class SoulRepository {
             ps.setString(15, soul.getBaseStats() != null ? soul.getBaseStats().toJson() : null);
             ps.setInt(16, Math.max(0, soul.getEnhanceLevel()));
             ps.setInt(17, Math.max(1, soul.getGroupCapacity()));
+            ps.setInt(18, Math.max(0, soul.getMasteryXp()));
+            ps.setInt(19, Math.max(0, soul.getMasteryLevel()));
+            ps.setString(20, serializeMasteryClaimed(soul.getMasteryClaimedMilestones()));
             ps.executeUpdate();
         }
     }
@@ -108,10 +111,11 @@ public class SoulRepository {
     }
 
     public synchronized void upsertCodex(UUID owner, String familyKey, SoulRarity rarity) throws SQLException {
-        // Get existing
-        String sel = "SELECT highest_rarity, captured_count FROM soul_codex WHERE owner_uuid = ? AND family_key = ?";
+        if (owner == null || familyKey == null || familyKey.isBlank()) return;
+        String sel = "SELECT highest_rarity, captured_count, first_captured_at FROM soul_codex WHERE owner_uuid = ? AND family_key = ?";
         String highest = rarity != null ? rarity.name() : null;
         int count = 0;
+        long firstAt = 0L;
         boolean exists = false;
         try (PreparedStatement ps = conn().prepareStatement(sel)) {
             ps.setString(1, owner.toString());
@@ -119,28 +123,32 @@ public class SoulRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     exists = true;
-                    String prev = rs.getString("highest_rarity");
-                    highest = maxRarity(prev, highest);
+                    highest = maxRarity(rs.getString("highest_rarity"), highest);
                     count = rs.getInt("captured_count");
+                    try { firstAt = rs.getLong("first_captured_at"); } catch (SQLException ignored) {}
                 }
             }
         }
+        long now = System.currentTimeMillis();
+        if (firstAt <= 0L) firstAt = now;
         if (exists) {
-            String upd = "UPDATE soul_codex SET highest_rarity = ?, captured_count = ? WHERE owner_uuid = ? AND family_key = ?";
+            String upd = "UPDATE soul_codex SET highest_rarity = ?, captured_count = ?, first_captured_at = ? WHERE owner_uuid = ? AND family_key = ?";
             try (PreparedStatement ps = conn().prepareStatement(upd)) {
                 ps.setString(1, highest);
                 ps.setInt(2, count + 1);
-                ps.setString(3, owner.toString());
-                ps.setString(4, familyKey);
+                ps.setLong(3, firstAt);
+                ps.setString(4, owner.toString());
+                ps.setString(5, familyKey);
                 ps.executeUpdate();
             }
         } else {
-            String ins = "INSERT INTO soul_codex (owner_uuid, family_key, highest_rarity, captured_count) VALUES (?,?,?,?)";
+            String ins = "INSERT INTO soul_codex (owner_uuid, family_key, highest_rarity, captured_count, first_captured_at) VALUES (?,?,?,?,?)";
             try (PreparedStatement ps = conn().prepareStatement(ins)) {
                 ps.setString(1, owner.toString());
                 ps.setString(2, familyKey);
                 ps.setString(3, highest);
                 ps.setInt(4, 1);
+                ps.setLong(5, firstAt);
                 ps.executeUpdate();
             }
         }
@@ -304,6 +312,17 @@ public class SoulRepository {
         }
     }
 
+    public synchronized void updateSoulMastery(UUID soulId, int masteryXp, int masteryLevel, java.util.Set<Integer> claimed) throws SQLException {
+        String sql = "UPDATE souls SET mastery_xp = ?, mastery_level = ?, mastery_claimed = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setInt(1, Math.max(0, masteryXp));
+            ps.setInt(2, Math.max(0, masteryLevel));
+            ps.setString(3, serializeMasteryClaimed(claimed));
+            ps.setString(4, soulId.toString());
+            ps.executeUpdate();
+        }
+    }
+
     public synchronized void setSelectedSlot(UUID owner, int slot, int defaultCapacity) throws SQLException {
         getOrCreatePlayerState(owner, defaultCapacity);
         String upd = "UPDATE soul_player_state SET selected_slot = ?, updated_at = ? WHERE owner_uuid = ?";
@@ -353,18 +372,102 @@ public class SoulRepository {
     }
 
     public synchronized List<CodexEntry> listCodex(UUID owner, int limit) throws SQLException {
-        String sql = "SELECT family_key, highest_rarity, captured_count FROM soul_codex WHERE owner_uuid = ? ORDER BY captured_count DESC, family_key ASC LIMIT ?";
+        String sql = "SELECT family_key, highest_rarity, captured_count, first_captured_at, mastered_count, refined_count, " +
+                "discovered_claimed, collected_claimed, refined_claimed, mastered_claimed " +
+                "FROM soul_codex WHERE owner_uuid = ? ORDER BY captured_count DESC, family_key ASC LIMIT ?";
         List<CodexEntry> out = new ArrayList<>();
         try (PreparedStatement ps = conn().prepareStatement(sql)) {
             ps.setString(1, owner.toString());
             ps.setInt(2, Math.max(1, limit));
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(new CodexEntry(rs.getString("family_key"), rs.getString("highest_rarity"), rs.getInt("captured_count")));
-                }
+                while (rs.next()) out.add(mapCodex(rs));
             }
         }
         return out;
+    }
+
+    public synchronized CodexEntry getCodexEntry(UUID owner, String familyKey) throws SQLException {
+        if (owner == null || familyKey == null) return null;
+        String sql = "SELECT family_key, highest_rarity, captured_count, first_captured_at, mastered_count, refined_count, " +
+                "discovered_claimed, collected_claimed, refined_claimed, mastered_claimed " +
+                "FROM soul_codex WHERE owner_uuid = ? AND family_key = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setString(2, familyKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? mapCodex(rs) : null;
+            }
+        }
+    }
+
+    private CodexEntry mapCodex(ResultSet rs) throws SQLException {
+        long firstAt = 0L; int mastered = 0, refined = 0;
+        boolean d = false, c = false, r = false, m = false;
+        try { firstAt = rs.getLong("first_captured_at"); } catch (SQLException ignored) {}
+        try { mastered = rs.getInt("mastered_count"); } catch (SQLException ignored) {}
+        try { refined = rs.getInt("refined_count"); } catch (SQLException ignored) {}
+        try { d = rs.getInt("discovered_claimed") != 0; } catch (SQLException ignored) {}
+        try { c = rs.getInt("collected_claimed") != 0; } catch (SQLException ignored) {}
+        try { r = rs.getInt("refined_claimed") != 0; } catch (SQLException ignored) {}
+        try { m = rs.getInt("mastered_claimed") != 0; } catch (SQLException ignored) {}
+        return new CodexEntry(rs.getString("family_key"), rs.getString("highest_rarity"), rs.getInt("captured_count"),
+                firstAt, mastered, refined, d, c, r, m);
+    }
+
+    public synchronized void incrementCodexMastered(UUID owner, String familyKey) throws SQLException {
+        if (owner == null || familyKey == null) return;
+        ensureCodexRow(owner, familyKey);
+        String sql = "UPDATE soul_codex SET mastered_count = mastered_count + 1 WHERE owner_uuid = ? AND family_key = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setString(2, familyKey);
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized void incrementCodexRefined(UUID owner, String familyKey) throws SQLException {
+        if (owner == null || familyKey == null) return;
+        ensureCodexRow(owner, familyKey);
+        String sql = "UPDATE soul_codex SET refined_count = refined_count + 1 WHERE owner_uuid = ? AND family_key = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setString(2, familyKey);
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized boolean setCodexClaimed(UUID owner, String familyKey, String tier, boolean claimed) throws SQLException {
+        if (owner == null || familyKey == null || tier == null) return false;
+        ensureCodexRow(owner, familyKey);
+        String col = switch (tier.toUpperCase(Locale.ROOT)) {
+            case "DISCOVERED" -> "discovered_claimed";
+            case "COLLECTED" -> "collected_claimed";
+            case "REFINED" -> "refined_claimed";
+            case "MASTERED" -> "mastered_claimed";
+            default -> null;
+        };
+        if (col == null) return false;
+        String sql = "UPDATE soul_codex SET " + col + " = ? WHERE owner_uuid = ? AND family_key = ? AND " + col + " = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setInt(1, claimed ? 1 : 0);
+            ps.setString(2, owner.toString());
+            ps.setString(3, familyKey);
+            ps.setInt(4, claimed ? 0 : 1);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    private void ensureCodexRow(UUID owner, String familyKey) throws SQLException {
+        if (getCodexEntry(owner, familyKey) != null) return;
+        String ins = "INSERT OR IGNORE INTO soul_codex (owner_uuid, family_key, highest_rarity, captured_count, first_captured_at) VALUES (?,?,?,?,?)";
+        try (PreparedStatement ps = conn().prepareStatement(ins)) {
+            ps.setString(1, owner.toString());
+            ps.setString(2, familyKey);
+            ps.setString(3, null);
+            ps.setInt(4, 0);
+            ps.setLong(5, 0L);
+            ps.executeUpdate();
+        }
     }
 
     public synchronized int countCodex(UUID owner) throws SQLException {
@@ -955,8 +1058,14 @@ public class SoulRepository {
         int groupCapacity = 1;
         try { groupCapacity = Math.max(1, rs.getInt("group_capacity")); } catch (SQLException ignored) {}
         if (groupCapacity <= 0) groupCapacity = 1;
+        int masteryXp = 0;
+        int masteryLevel = 0;
+        java.util.Set<Integer> masteryClaimed = java.util.Set.of();
+        try { masteryXp = Math.max(0, rs.getInt("mastery_xp")); } catch (SQLException ignored) {}
+        try { masteryLevel = Math.max(0, rs.getInt("mastery_level")); } catch (SQLException ignored) {}
+        try { masteryClaimed = deserializeMasteryClaimed(rs.getString("mastery_claimed")); } catch (SQLException ignored) {}
         return new SoulInstance(soulId, owner, et, family, cat, rarity, quality, affixes, traits, createdAt,
-                maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimed);
     }
 
     private static String serializeTraits(List<SoulTrait> traits) {
@@ -1026,6 +1135,27 @@ public class SoulRepository {
         }
     }
 
+    private static String serializeMasteryClaimed(java.util.Set<Integer> claimed) {
+        if (claimed == null || claimed.isEmpty()) return "[]";
+        List<Integer> vals = new ArrayList<>();
+        for (Integer v : claimed) if (v != null && v > 0) vals.add(v);
+        Collections.sort(vals);
+        return GSON.toJson(vals);
+    }
+
+    private static java.util.Set<Integer> deserializeMasteryClaimed(String json) {
+        if (json == null || json.isBlank() || "[]".equals(json)) return java.util.Set.of();
+        try {
+            List<Integer> vals = GSON.fromJson(json, new TypeToken<List<Integer>>() {}.getType());
+            if (vals == null || vals.isEmpty()) return java.util.Set.of();
+            java.util.LinkedHashSet<Integer> out = new java.util.LinkedHashSet<>();
+            for (Integer v : vals) if (v != null && v > 0) out.add(v);
+            return out.isEmpty() ? java.util.Set.of() : java.util.Collections.unmodifiableSet(out);
+        } catch (Exception e) {
+            return java.util.Set.of();
+        }
+    }
+
     private static String maxRarity(String a, String b) {
         SoulRarity ra = parseRarity(a), rb = parseRarity(b);
         if (ra == null) return rb != null ? rb.name() : a;
@@ -1040,5 +1170,11 @@ public class SoulRepository {
     private record AffixDto(String type, double value) {}
 
     public record PlayerSoulState(UUID owner, int essence, int vaultCapacity, int selectedSlot, int selectedTeam, String pityJson, String combatMode, String soulTableTab) {}
-    public record CodexEntry(String familyKey, String highestRarity, int capturedCount) {}
+    public record CodexEntry(String familyKey, String highestRarity, int capturedCount,
+                             long firstCapturedAt, int masteredCount, int refinedCount,
+                             boolean discoveredClaimed, boolean collectedClaimed, boolean refinedClaimed, boolean masteredClaimed) {
+        public CodexEntry(String familyKey, String highestRarity, int capturedCount) {
+            this(familyKey, highestRarity, capturedCount, 0L, 0, 0, false, false, false, false);
+        }
+    }
 }

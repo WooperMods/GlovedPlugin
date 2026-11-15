@@ -54,6 +54,10 @@ public class SoulDatabase {
             addColumnIfMissing(stmt, "base_stats_json", "ALTER TABLE souls ADD COLUMN base_stats_json TEXT");
             addColumnIfMissing(stmt, "enhance_level", "ALTER TABLE souls ADD COLUMN enhance_level INTEGER NOT NULL DEFAULT 0");
             addColumnIfMissing(stmt, "group_capacity", "ALTER TABLE souls ADD COLUMN group_capacity INTEGER NOT NULL DEFAULT 1");
+            // Soul Mastery (per-soul progression)
+            addColumnIfMissing(stmt, "mastery_xp", "ALTER TABLE souls ADD COLUMN mastery_xp INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(stmt, "mastery_level", "ALTER TABLE souls ADD COLUMN mastery_level INTEGER NOT NULL DEFAULT 0");
+            addColumnIfMissing(stmt, "mastery_claimed", "ALTER TABLE souls ADD COLUMN mastery_claimed TEXT NOT NULL DEFAULT '[]'");
 
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS soul_loadouts (" +
@@ -90,6 +94,13 @@ public class SoulDatabase {
                 "PRIMARY KEY(owner_uuid, family_key)" +
                 ");"
             );
+            addCodexColumnIfMissing(stmt, "first_captured_at", "ALTER TABLE soul_codex ADD COLUMN first_captured_at INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "mastered_count", "ALTER TABLE soul_codex ADD COLUMN mastered_count INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "refined_count", "ALTER TABLE soul_codex ADD COLUMN refined_count INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "discovered_claimed", "ALTER TABLE soul_codex ADD COLUMN discovered_claimed INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "collected_claimed", "ALTER TABLE soul_codex ADD COLUMN collected_claimed INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "refined_claimed", "ALTER TABLE soul_codex ADD COLUMN refined_claimed INTEGER NOT NULL DEFAULT 0");
+            addCodexColumnIfMissing(stmt, "mastered_claimed", "ALTER TABLE soul_codex ADD COLUMN mastered_claimed INTEGER NOT NULL DEFAULT 0");
 
             // Placed Soul Table stations (real smithing tables + ItemDisplay overlay).
             stmt.execute(
@@ -135,6 +146,15 @@ public class SoulDatabase {
 
     private static void addPlayerStateColumnIfMissing(Statement stmt, String column, String alterSql) throws SQLException {
         try (ResultSet cols = stmt.executeQuery("PRAGMA table_info(soul_player_state)")) {
+            while (cols.next()) {
+                if (column.equalsIgnoreCase(cols.getString("name"))) return;
+            }
+        }
+        stmt.execute(alterSql);
+    }
+
+    private static void addCodexColumnIfMissing(Statement stmt, String column, String alterSql) throws SQLException {
+        try (ResultSet cols = stmt.executeQuery("PRAGMA table_info(soul_codex)")) {
             while (cols.next()) {
                 if (column.equalsIgnoreCase(cols.getString("name"))) return;
             }

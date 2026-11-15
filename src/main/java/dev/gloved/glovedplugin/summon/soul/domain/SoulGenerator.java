@@ -66,7 +66,7 @@ public final class SoulGenerator {
         double quality = SoulQuality.percent(rarity, affixes);
         SoulBaseStats baseStats = rollBaseStats(type, rarity, source, tableCfg);
         return new SoulInstance(UUID.randomUUID(), owner, type, type.name(), cat, rarity, quality, affixes, traits,
-                System.currentTimeMillis(), maxHealth, false, baseStats, 0, groupCapacity);
+                System.currentTimeMillis(), maxHealth, false, baseStats, 0, groupCapacity, 0, 0, java.util.Set.of());
     }
 
     /** Per-rarity base group-size band [min,max]. Higher rarities can overlap far down into lower bands. */

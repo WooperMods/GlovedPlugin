@@ -61,12 +61,19 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
         try {
             SummonConfig cfg = config;
             if (owner == null || minion == null || target == null || cfg == null) return;
+            UUID soulId = resolveSoulId(minion);
+            // Soul mastery hit hook (independent of AuraSkills progression enablement; gated by mastery config inside service)
+            try {
+                if (soulId != null && plugin.getSoulService() != null && plugin.getSoulService().getMasteryService() != null) {
+                    plugin.getSoulService().getMasteryService().onSummonHit(owner, soulId, finalDamage, currentTick());
+                }
+            } catch (Throwable ignored) {}
             if (!cfg.isProgressionEnabled() || !cfg.isProgressionAuraSkillsEnabled()) return;
             if (!cfg.isProgressionHitXpEnabled() && !cfg.isProgressionKillXpEnabled()) return;
             long nowTick = currentTick();
             // Always record kill credit when kill XP is enabled, even if hit XP is disabled/capped.
             if (cfg.isProgressionKillXpEnabled() && !target.isDead()) {
-                state.recordKillCredit(target.getUniqueId(), owner.getUniqueId(), profileName, nowTick);
+                state.recordKillCredit(target.getUniqueId(), owner.getUniqueId(), soulId, profileName, nowTick);
             }
             if (!cfg.isProgressionHitXpEnabled() || !active()) return;
             if (cfg.getProgressionHitXpAmount() <= 0) return;
@@ -85,7 +92,8 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
         try {
             SummonConfig cfg = config;
             if (owner == null || victim == null || cfg == null || !cfg.isProgressionEnabled() || !cfg.isProgressionKillXpEnabled()) return;
-            state.recordKillCredit(victim.getUniqueId(), owner.getUniqueId(), profileName, nowTick);
+            UUID soulId = resolveSoulId(minion);
+            state.recordKillCredit(victim.getUniqueId(), owner.getUniqueId(), soulId, profileName, nowTick);
         } catch (Throwable ignored) {}
     }
 
@@ -99,12 +107,20 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
         try {
             SummonConfig cfg = config;
             if (victim == null || cfg == null) return;
-            if (!cfg.isProgressionEnabled() || !cfg.isProgressionKillXpEnabled() || !active()) {
-                // Still consume stale credit to bound cache if progression off? cheap enough to ignore.
-                return;
-            }
             SummonXpState.KillCredit credit = state.consumeKillCredit(victim.getUniqueId(), cfg, nowTick);
             if (credit == null) return;
+
+            // Soul mastery kill hook (independent of AuraSkills XP enablement/readiness)
+            try {
+                if (credit.soulId != null && plugin.getSoulService() != null && plugin.getSoulService().getMasteryService() != null) {
+                    Player owner = Bukkit.getPlayer(credit.ownerUuid);
+                    if (owner != null) plugin.getSoulService().getMasteryService().onSummonKill(owner, credit.soulId, nowTick);
+                }
+            } catch (Throwable ignored) {}
+
+            if (!cfg.isProgressionEnabled() || !cfg.isProgressionKillXpEnabled() || !active()) {
+                return;
+            }
             if (cfg.getProgressionKillXpAmount() <= 0) return;
             if (!state.tryConsumeKillXp(credit.ownerUuid, cfg, nowTick)) {
                 GlovedPlugin.logDebug("[SummonXP] Kill XP capped for owner=" + credit.ownerUuid);
@@ -117,6 +133,18 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
             grantXp(credit.ownerUuid, cfg.getProgressionKillXpAmount());
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonXP] Kill hook error: " + t);
+        }
+    }
+
+    private UUID resolveSoulId(LivingEntity minion) {
+        try {
+            if (minion == null || plugin == null) return null;
+            org.bukkit.NamespacedKey k = new org.bukkit.NamespacedKey(plugin, "summon_soul_id");
+            String id = minion.getPersistentDataContainer().get(k, org.bukkit.persistence.PersistentDataType.STRING);
+            if (id == null || id.isBlank()) return null;
+            return java.util.UUID.fromString(id);
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

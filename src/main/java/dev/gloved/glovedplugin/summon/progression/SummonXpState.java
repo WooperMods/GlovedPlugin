@@ -14,12 +14,18 @@ final class SummonXpState {
     static final class KillCredit {
         final UUID victimUuid;
         final UUID ownerUuid;
+        final UUID soulId;
         final String profileName;
         final long creditTick;
 
         KillCredit(UUID victimUuid, UUID ownerUuid, String profileName, long creditTick) {
+            this(victimUuid, ownerUuid, null, profileName, creditTick);
+        }
+
+        KillCredit(UUID victimUuid, UUID ownerUuid, UUID soulId, String profileName, long creditTick) {
             this.victimUuid = victimUuid;
             this.ownerUuid = ownerUuid;
+            this.soulId = soulId;
             this.profileName = profileName;
             this.creditTick = creditTick;
         }
@@ -97,8 +103,12 @@ final class SummonXpState {
     }
 
     void recordKillCredit(UUID victimId, UUID ownerId, String profileName, long nowTick) {
+        recordKillCredit(victimId, ownerId, null, profileName, nowTick);
+    }
+
+    void recordKillCredit(UUID victimId, UUID ownerId, UUID soulId, String profileName, long nowTick) {
         if (victimId == null || ownerId == null) return;
-        recentKillCredit.put(victimId, new KillCredit(victimId, ownerId, profileName, nowTick));
+        recentKillCredit.put(victimId, new KillCredit(victimId, ownerId, soulId, profileName, nowTick));
     }
 
     KillCredit consumeKillCredit(UUID victimId, SummonConfig cfg, long nowTick) {

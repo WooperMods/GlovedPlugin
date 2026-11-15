@@ -23,6 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.config.SummonProfile;
 import dev.gloved.glovedplugin.summon.runtime.SummonManager;
+import dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService;
 import dev.gloved.glovedplugin.summon.soul.domain.EntityCategory;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulAffixType;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulBaseStats;
@@ -32,6 +33,7 @@ import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulRarity;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulStatSnapshot;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulTrait;
+import dev.gloved.glovedplugin.summon.soul.mastery.SoulMasteryService;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
 import dev.gloved.glovedplugin.summon.soul.trait.ctx.PreviewContext;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
@@ -54,6 +56,8 @@ public class SoulService {
     private final GlovedPlugin plugin;
     private final SoulDatabase database;
     private final SoulRepository repository;
+    private final SoulMasteryService masteryService;
+    private final SoulCodexService codexService;
 
     // Ephemeral DR timestamps (per-player per-family) + short global DR
     private final Map<UUID, Map<String, Long>> lastCaptureAt = new ConcurrentHashMap<>();
@@ -69,6 +73,8 @@ public class SoulService {
         this.plugin = plugin;
         this.database = database;
         this.repository = new SoulRepository(plugin, database);
+        this.masteryService = new SoulMasteryService(plugin, this);
+        this.codexService = new SoulCodexService(plugin, this);
     }
 
     public void invalidateSelectedCache(UUID owner) {
@@ -109,6 +115,8 @@ public class SoulService {
     }
 
     public SoulRepository getRepository() { return repository; }
+    public SoulMasteryService getMasteryService() { return masteryService; }
+    public SoulCodexService getCodexService() { return codexService; }
 
     /** Essence balance for an owner (0 when the database is unavailable). */
     public int getEssence(UUID owner) {
@@ -310,12 +318,19 @@ public class SoulService {
 
         // Capture-time side effects
         updatePityOnResult(killer.getUniqueId(), cfg, soul.getRarity(), true);
-        try { repository.upsertCodex(killer.getUniqueId(), soul.getFamilyKey(), soul.getRarity()); } catch (SQLException ignored) {}
+        boolean firstDiscovery = false;
+        try {
+            var prev = repository.getCodexEntry(killer.getUniqueId(), soul.getFamilyKey());
+            firstDiscovery = (prev == null || prev.capturedCount() <= 0);
+            repository.upsertCodex(killer.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+        } catch (SQLException ignored) {}
         markCaptureDr(killer.getUniqueId(), soul.getFamilyKey());
         try {
             var prog = plugin.getSummonProgression();
             if (prog != null) prog.onSoulCaptured(killer, victim, soul.getFamilyKey(), soul.getRarity());
         } catch (Throwable ignored) {}
+        try { if (codexService != null) codexService.onSoulAcquired(killer, soul, firstDiscovery); } catch (Throwable ignored) {}
+        try { if (masteryService != null) masteryService.onSoulCaptured(killer, soul); } catch (Throwable ignored) {}
 
         Location from = victim.getLocation().add(0, victim.getHeight() * 0.5, 0);
         CollectResult res = persistSoulToVault(killer, soul, cfg, false, true);
@@ -397,11 +412,23 @@ public class SoulService {
             if (toEssence) {
                 int essence = overflowEssenceValue(soul.getRarity());
                 repository.addEssence(player.getUniqueId(), essence, scaledCap);
-                if (updateCodex) repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+                if (updateCodex) {
+                    boolean first = false;
+                    try { var prev = repository.getCodexEntry(player.getUniqueId(), soul.getFamilyKey()); first = (prev == null || prev.capturedCount() <= 0); } catch (SQLException ignored) {}
+                    repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+                    try { if (codexService != null) codexService.onSoulAcquired(player, soul, first); } catch (Throwable ignored) {}
+                    try { if (masteryService != null) masteryService.onSoulCaptured(player, soul); } catch (Throwable ignored) {}
+                }
                 return CollectResult.okEssence(essence);
             } else {
                 repository.insertSoul(soul);
-                if (updateCodex) repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+                if (updateCodex) {
+                    boolean first = false;
+                    try { var prev = repository.getCodexEntry(player.getUniqueId(), soul.getFamilyKey()); first = (prev == null || prev.capturedCount() <= 0); } catch (SQLException ignored) {}
+                    repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+                    try { if (codexService != null) codexService.onSoulAcquired(player, soul, first); } catch (Throwable ignored) {}
+                    try { if (masteryService != null) masteryService.onSoulCaptured(player, soul); } catch (Throwable ignored) {}
+                }
                 if (invalidateCaches) invalidateSelectedCache(player.getUniqueId());
                 return CollectResult.okStored();
             }
@@ -418,7 +445,7 @@ public class SoulService {
         SoulInstance toStore = soul;
         boolean transferred = !player.getUniqueId().equals(soul.getOwnerId());
         if (transferred) {
-            // Claiming a traded soul: transfer ownership to the collector
+            // Claiming a traded soul: transfer ownership to the collector (preserve soul progression)
             toStore = new SoulInstance(
                     java.util.UUID.randomUUID(),
                     player.getUniqueId(),
@@ -434,7 +461,10 @@ public class SoulService {
                     false,
                     soul.getBaseStats(),
                     soul.getEnhanceLevel(),
-                    soul.getGroupCapacity()
+                    soul.getGroupCapacity(),
+                    soul.getMasteryXp(),
+                    soul.getMasteryLevel(),
+                    soul.getMasteryClaimedMilestones()
             );
         }
         SoulConfig cfg = soulConfig();
@@ -485,12 +515,19 @@ public class SoulService {
         try {
             if (cfg != null && cfg.isPityEnabled()) updatePityOnResult(player.getUniqueId(), cfg, soul.getRarity(), true);
         } catch (Throwable ignored) {}
-        try { repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity()); } catch (SQLException ignored) {}
+        boolean firstDiscovery = false;
+        try {
+            var prev = repository.getCodexEntry(player.getUniqueId(), soul.getFamilyKey());
+            firstDiscovery = (prev == null || prev.capturedCount() <= 0);
+            repository.upsertCodex(player.getUniqueId(), soul.getFamilyKey(), soul.getRarity());
+        } catch (SQLException ignored) {}
         try { markCaptureDr(player.getUniqueId(), soul.getFamilyKey()); } catch (Throwable ignored) {}
         try {
             var prog = plugin.getSummonProgression();
             if (prog != null) prog.onSoulCaptured(player, victim, soul.getFamilyKey(), soul.getRarity());
         } catch (Throwable ignored) {}
+        try { if (codexService != null) codexService.onSoulAcquired(player, soul, firstDiscovery); } catch (Throwable ignored) {}
+        try { if (masteryService != null) masteryService.onSoulCaptured(player, soul); } catch (Throwable ignored) {}
     }
 
     /** Essence value using new defaults (config-less fallback). Prefer {@link #essenceValueOf(SoulRarity)}. */

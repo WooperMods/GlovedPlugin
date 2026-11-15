@@ -316,6 +316,84 @@ souls:
       roll-skew:
         health: 2.5
 
+  mastery:
+    enabled: true
+    max-level: 20
+    # XP required to advance from level n to n+1 (index by current level, clamped to last). Simple MVP curve.
+    xp-per-level:
+      - 100
+      - 150
+      - 220
+      - 300
+      - 400
+      - 520
+      - 660
+      - 820
+      - 1000
+      - 1200
+      - 1450
+      - 1750
+      - 2100
+      - 2500
+      - 2950
+      - 3450
+      - 4000
+      - 4600
+      - 5300
+      - 6100
+    sources:
+      summon-hit:
+        enabled: true
+        xp: 1.0
+        min-final-damage: 0.0
+        per-soul-cooldown-ticks: 10
+        per-minute-cap: 120.0
+      summon-kill:
+        enabled: true
+        xp: 12.0
+        per-minute-cap: 240.0
+      capture:
+        enabled: false
+        xp: 5.0
+    milestones:
+      # level: {claimable reward}. MVP rewards: ESSENCE amount (safe/bounded).
+      5:
+        type: ESSENCE
+        amount: 25
+        label: "Novice Attunement"
+      10:
+        type: ESSENCE
+        amount: 50
+        label: "Adept Attunement"
+      15:
+        type: ESSENCE
+        amount: 100
+        label: "Expert Attunement"
+      20:
+        type: ESSENCE
+        amount: 200
+        label: "Mastered"
+
+  codex:
+    enabled: true
+    refined-enhance-level: 5
+    mastered-mastery-level: 20
+    rewards:
+      # Per-family tier claim rewards (MVP: essence). Keep bounded.
+      discovered:
+        type: ESSENCE
+        amount: 5
+      collected:
+        type: ESSENCE
+        amount: 15
+        min-captured: 10
+      refined:
+        type: ESSENCE
+        amount: 25
+      mastered:
+        type: ESSENCE
+        amount: 50
+
 progression:
   enabled: true
   auraskills:

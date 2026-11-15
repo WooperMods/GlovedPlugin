@@ -120,7 +120,8 @@ public final class SoulTableService {
                             generated.getEntityType(), first.getFamilyKey(), generated.getCategory(),
                             generated.getRarity(), generated.getQualityScore(), generated.getAffixes(),
                             generated.getTraits(), generated.getCreatedAt(), 0.0, false,
-                            generated.getBaseStats(), generated.getEnhanceLevel(), generated.getGroupCapacity());
+                            generated.getBaseStats(), generated.getEnhanceLevel(), generated.getGroupCapacity(),
+                            0, 0, java.util.Set.of());
                 }
                 repository.insertSoul(generated);
                 return generated;
@@ -151,6 +152,15 @@ public final class SoulTableService {
                 return soul.withEnhanceLevel(level + 1);
             });
             soulService.invalidateSoul(soulId, owner);
+            try {
+                var sc = plugin.getSummonConfig();
+                var codexCfg = sc != null ? sc.getSoulCodexConfig() : null;
+                if (codexCfg != null && codexCfg.isEnabled() && result.getEnhanceLevel() == codexCfg.getRefinedEnhanceLevel()) {
+                    var codex = soulService.getCodexService();
+                    var p = org.bukkit.Bukkit.getPlayer(owner);
+                    if (codex != null && p != null) codex.onSoulRefined(p, result);
+                }
+            } catch (Throwable ignored) {}
             return TableResult.ok("Enhanced to level " + result.getEnhanceLevel(), result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
@@ -497,6 +507,15 @@ public final class SoulTableService {
             }
 
             soulService.invalidateSoul(soulId, owner);
+            try {
+                var sc = plugin.getSummonConfig();
+                var codexCfg = sc != null ? sc.getSoulCodexConfig() : null;
+                if (codexCfg != null && codexCfg.isEnabled()) {
+                    var codex = soulService.getCodexService();
+                    var p = org.bukkit.Bukkit.getPlayer(owner);
+                    if (codex != null && p != null) codex.onSoulRefined(p, result);
+                }
+            } catch (Throwable ignored) {}
             return TableResult.ok("Infused trait " + def.displayName() + " (applies on next summon)", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
@@ -575,6 +594,15 @@ public final class SoulTableService {
             }
 
             soulService.invalidateSoul(soulId, owner);
+            try {
+                var sc = plugin.getSummonConfig();
+                var codexCfg = sc != null ? sc.getSoulCodexConfig() : null;
+                if (codexCfg != null && codexCfg.isEnabled()) {
+                    var codex = soulService.getCodexService();
+                    var p = org.bukkit.Bukkit.getPlayer(owner);
+                    if (codex != null && p != null) codex.onSoulRefined(p, result);
+                }
+            } catch (Throwable ignored) {}
             return TableResult.ok("Replaced trait with " + def.displayName() + " (applies on next summon)", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());

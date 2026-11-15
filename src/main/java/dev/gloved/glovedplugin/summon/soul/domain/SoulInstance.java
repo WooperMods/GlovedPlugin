@@ -4,7 +4,9 @@ import org.bukkit.entity.EntityType;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -25,20 +27,23 @@ public final class SoulInstance {
     private final SoulBaseStats baseStats; // rolled capture-time stats; null for legacy souls before backfill
     private final int enhanceLevel; // Soul Table enhancement level (0 = none)
     private final int groupCapacity; // rolled base group capacity (summon group size), authoritative before affix/enhance modifiers
+    private final int masteryXp;
+    private final int masteryLevel;
+    private final Set<Integer> masteryClaimedMilestones;
     private boolean favorite;
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
                         SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
                         SoulTrait trait, long createdAt, double maxHealth, boolean favorite) {
         this(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                trait != null ? List.of(trait) : List.of(), createdAt, maxHealth, favorite, null, 0, 1);
+                trait != null ? List.of(trait) : List.of(), createdAt, maxHealth, favorite, null, 0, 1, 0, 0, Set.of());
     }
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
                         SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
                         List<SoulTrait> traits, long createdAt, double maxHealth, boolean favorite) {
         this(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, null, 0, 1);
+                traits, createdAt, maxHealth, favorite, null, 0, 1, 0, 0, Set.of());
     }
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
@@ -46,13 +51,22 @@ public final class SoulInstance {
                         List<SoulTrait> traits, long createdAt, double maxHealth, boolean favorite,
                         SoulBaseStats baseStats, int enhanceLevel) {
         this(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, 1);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, 1, 0, 0, Set.of());
     }
 
     public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
                         SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
                         List<SoulTrait> traits, long createdAt, double maxHealth, boolean favorite,
                         SoulBaseStats baseStats, int enhanceLevel, int groupCapacity) {
+        this(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, 0, 0, Set.of());
+    }
+
+    public SoulInstance(UUID soulId, UUID ownerId, EntityType entityType, String familyKey, EntityCategory category,
+                        SoulRarity rarity, double qualityScore, List<SoulAffixRoll> affixes,
+                        List<SoulTrait> traits, long createdAt, double maxHealth, boolean favorite,
+                        SoulBaseStats baseStats, int enhanceLevel, int groupCapacity,
+                        int masteryXp, int masteryLevel, Set<Integer> masteryClaimedMilestones) {
         this.soulId = soulId != null ? soulId : UUID.randomUUID();
         this.ownerId = ownerId;
         this.entityType = entityType;
@@ -68,7 +82,19 @@ public final class SoulInstance {
         this.baseStats = baseStats;
         this.enhanceLevel = Math.max(0, enhanceLevel);
         this.groupCapacity = Math.max(1, groupCapacity);
+        this.masteryXp = Math.max(0, masteryXp);
+        this.masteryLevel = Math.max(0, masteryLevel);
+        this.masteryClaimedMilestones = normalizeClaimed(masteryClaimedMilestones);
         this.favorite = favorite;
+    }
+
+    private static Set<Integer> normalizeClaimed(Set<Integer> in) {
+        if (in == null || in.isEmpty()) return Set.of();
+        LinkedHashSet<Integer> out = new LinkedHashSet<>();
+        for (Integer v : in) {
+            if (v != null && v > 0) out.add(v);
+        }
+        return out.isEmpty() ? Set.of() : Collections.unmodifiableSet(out);
     }
 
     private static List<SoulTrait> normalizeTraits(List<SoulTrait> traits) {
@@ -113,43 +139,53 @@ public final class SoulInstance {
     public SoulBaseStats getBaseStats() { return baseStats; }
     public int getEnhanceLevel() { return enhanceLevel; }
     public int getGroupCapacity() { return groupCapacity; }
+    public int getMasteryXp() { return masteryXp; }
+    public int getMasteryLevel() { return masteryLevel; }
+    public Set<Integer> getMasteryClaimedMilestones() { return masteryClaimedMilestones; }
+    public boolean hasClaimedMasteryMilestone(int level) { return masteryClaimedMilestones.contains(level); }
     public boolean isFavorite() { return favorite; }
     public void setFavorite(boolean favorite) { this.favorite = favorite; }
 
     /** Same soul with a different rolled base-stat block (null keeps legacy behaviour). */
     public SoulInstance withBaseStats(SoulBaseStats baseStats) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     /** Same soul at a different Soul Table enhancement level. */
     public SoulInstance withEnhanceLevel(int enhanceLevel) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     /** Same soul with rerolled affixes and a recomputed quality score. */
     public SoulInstance withAffixes(List<SoulAffixRoll> affixes, double qualityScore) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     /** Same soul with a different base group capacity. */
     public SoulInstance withGroupCapacity(int groupCapacity) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     /** Combined update used by reforge/enhancement flows that may change multiple rolled fields. */
     public SoulInstance withReforgedState(SoulBaseStats baseStats, List<SoulAffixRoll> affixes, double qualityScore, int groupCapacity) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     /** Same soul with a different trait set (normalized, primary trait kept consistent). */
     public SoulInstance withTraits(List<SoulTrait> traits) {
         return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
-                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
+    }
+
+    /** Same soul with updated mastery progression (additive per-soul progression). */
+    public SoulInstance withMastery(int masteryXp, int masteryLevel, Set<Integer> masteryClaimedMilestones) {
+        return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity, masteryXp, masteryLevel, masteryClaimedMilestones);
     }
 
     public int traitCount() {

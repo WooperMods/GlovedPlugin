@@ -369,6 +369,27 @@ private static EntityType parseEntityType(String raw) {
 }
 
 private void handleSoulCodex(CommandSourceStack source, String[] args, SoulService svc) {
+    // /gloved soul codex [player] [limit]
+    // /gloved soul codex claim <familyKey> <discovered|collected|refined|mastered>
+    if (args.length >= 4 && "claim".equalsIgnoreCase(args[2])) {
+        if (!(source.getSender() instanceof Player player)) {
+            source.getSender().sendMessage(Component.text("Only players can claim codex rewards."));
+            return;
+        }
+        var codex = svc.getCodexService();
+        if (codex == null) { source.getSender().sendMessage(Component.text("Codex unavailable.")); return; }
+        String family = args[3].trim().toUpperCase(Locale.ROOT);
+        String tierRaw = args.length >= 5 ? args[4] : "";
+        dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier tier;
+        try { tier = dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.valueOf(tierRaw.trim().toUpperCase(Locale.ROOT)); }
+        catch (Exception e) {
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul codex claim <FAMILY_KEY> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.RED));
+            return;
+        }
+        codex.claimTier(player, family, tier);
+        return;
+    }
+
     Player target = null;
     int limit = 20;
     if (args.length >= 3) {
@@ -377,7 +398,7 @@ private void handleSoulCodex(CommandSourceStack source, String[] args, SoulServi
     }
     if (args.length >= 4) { try { limit = Integer.parseInt(args[3]); } catch (Exception ignored) {} }
     if (target == null && source.getSender() instanceof Player p) target = p;
-    if (target == null) { source.getSender().sendMessage(Component.text("Usage: /gloved soul codex [player] [limit]")); return; }
+    if (target == null) { source.getSender().sendMessage(Component.text("Usage: /gloved soul codex [player] [limit] | /gloved soul codex claim <FAMILY_KEY> <tier>")); return; }
     limit = Math.max(1, Math.min(100, limit));
     var entries = svc.listCodex(target.getUniqueId(), limit);
     int total = svc.countCodex(target.getUniqueId());
@@ -386,10 +407,46 @@ private void handleSoulCodex(CommandSourceStack source, String[] args, SoulServi
         source.getSender().sendMessage(Component.text("(no discoveries yet)", net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
         return;
     }
+    var codex = svc.getCodexService();
     int i = 1;
     for (var e : entries) {
-        source.getSender().sendMessage(Component.text(i++ + ". " + e.familyKey() + " §7- best §f" + e.highestRarity() + " §7captured §f" + e.capturedCount()));
+        StringBuilder tiers = new StringBuilder();
+        if (codex != null) {
+            tiers.append(" §8[");
+            tiers.append(tierBadge(codex, e, dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.DISCOVERED, "D"));
+            tiers.append(tierBadge(codex, e, dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.COLLECTED, "C"));
+            tiers.append(tierBadge(codex, e, dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.REFINED, "R"));
+            tiers.append(tierBadge(codex, e, dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.MASTERED, "M"));
+            tiers.append("§8]");
+        }
+        source.getSender().sendMessage(Component.text(i++ + ". §f" + prettyFamilyKey(e.familyKey())
+                + " §7(" + e.familyKey() + ") §7- best §f" + e.highestRarity()
+                + " §7captured §f" + e.capturedCount()
+                + " §7refined §f" + e.refinedCount()
+                + " §7mastered §f" + e.masteredCount()
+                + tiers));
     }
+    source.getSender().sendMessage(Component.text("Claim: /gloved soul codex claim <FAMILY_KEY> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+}
+
+private static String tierBadge(dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService codex, dev.gloved.glovedplugin.summon.soul.db.SoulRepository.CodexEntry e,
+                                dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier tier, String label) {
+    var st = codex.tierState(e, tier);
+    if (st.claimed()) return "§a" + label;
+    if (st.reached()) return "§e" + label;
+    return "§8" + label;
+}
+
+private static String prettyFamilyKey(String familyKey) {
+    if (familyKey == null || familyKey.isBlank()) return "Unknown";
+    String[] parts = familyKey.toLowerCase(Locale.ROOT).split("[_\\s]+");
+    StringBuilder sb = new StringBuilder();
+    for (String p : parts) {
+        if (p.isBlank()) continue;
+        if (sb.length() > 0) sb.append(' ');
+        sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
+    }
+    return sb.length() == 0 ? familyKey : sb.toString();
 }
 
 private void handleSoulTrapGive(CommandSourceStack source, String[] args) {

@@ -204,6 +204,11 @@ public final class SoulDropItem {
         dto.maxHealth = soul.getMaxHealth();
         dto.enhanceLevel = soul.getEnhanceLevel();
         dto.groupCapacity = soul.getGroupCapacity();
+        dto.masteryXp = soul.getMasteryXp();
+        dto.masteryLevel = soul.getMasteryLevel();
+        if (soul.getMasteryClaimedMilestones() != null && !soul.getMasteryClaimedMilestones().isEmpty()) {
+            dto.masteryClaimed = new ArrayList<>(soul.getMasteryClaimedMilestones());
+        }
         dto.baseStats = soul.getBaseStats() != null ? soul.getBaseStats().toJson() : null;
         dto.affixes = new ArrayList<>();
         for (SoulAffixRoll r : soul.getAffixes()) {
@@ -248,9 +253,16 @@ public final class SoulDropItem {
             }
         }
         int groupCapacity = dto.groupCapacity > 0 ? dto.groupCapacity : 1;
+        java.util.Set<Integer> masteryClaimed = java.util.Set.of();
+        if (dto.masteryClaimed != null && !dto.masteryClaimed.isEmpty()) {
+            java.util.LinkedHashSet<Integer> mc = new java.util.LinkedHashSet<>();
+            for (Integer v : dto.masteryClaimed) if (v != null && v > 0) mc.add(v);
+            if (!mc.isEmpty()) masteryClaimed = java.util.Collections.unmodifiableSet(mc);
+        }
         return new SoulInstance(soulId, ownerId, et, dto.familyKey, cat, rarity, dto.quality, affixes, traits,
                 dto.createdAt, dto.maxHealth, dto.favorite,
-                baseStatsOrFallback(dto.baseStats, et, dto.familyKey), dto.enhanceLevel, groupCapacity);
+                baseStatsOrFallback(dto.baseStats, et, dto.familyKey), dto.enhanceLevel, groupCapacity,
+                Math.max(0, dto.masteryXp), Math.max(0, dto.masteryLevel), masteryClaimed);
     }
 
     private static SoulBaseStats baseStatsOrFallback(String json, EntityType type, String familyKey) {
@@ -267,6 +279,9 @@ public final class SoulDropItem {
         double quality; long createdAt; double maxHealth; boolean favorite;
         int enhanceLevel;
         int groupCapacity;
+        int masteryXp;
+        int masteryLevel;
+        List<Integer> masteryClaimed;
         List<AffixDto> affixes;
     }
     private static class AffixDto {

@@ -1,9 +1,11 @@
 package dev.gloved.glovedplugin.summon.config;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.codex.SoulCodexConfig;
 import dev.gloved.glovedplugin.summon.soul.domain.DynamicSoulTemplate;
 import dev.gloved.glovedplugin.summon.soul.domain.EntityCategory;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulConfig;
+import dev.gloved.glovedplugin.summon.soul.mastery.SoulMasteryConfig;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
@@ -132,8 +134,9 @@ public class SummonConfig {
 
     // Dynamic soul config
     private SoulConfig soulConfig = new SoulConfig();
-    private final SoulTableConfig soulTableConfig =
-            new SoulTableConfig();
+    private final SoulTableConfig soulTableConfig = new SoulTableConfig();
+    private SoulMasteryConfig soulMasteryConfig = new SoulMasteryConfig();
+    private SoulCodexConfig soulCodexConfig = new SoulCodexConfig();
 
     private SummonConfig(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -156,6 +159,8 @@ public class SummonConfig {
         // Soul config backfill + load
         SoulConfig.backfill(yaml);
         SoulTableConfig.backfill(yaml);
+        SoulMasteryConfig.backfill(yaml);
+        SoulCodexConfig.backfill(yaml);
         try { yaml.save(file); } catch (Exception ignored) {}
 
         enabled = yaml.getBoolean("enabled", true);
@@ -274,6 +279,8 @@ public class SummonConfig {
         this.soulConfig = SoulConfig.load(yaml);
         // Reloaded in place: managers/listeners keep their SoulTableConfig reference.
         this.soulTableConfig.reload(yaml);
+        this.soulMasteryConfig = SoulMasteryConfig.load(yaml);
+        this.soulCodexConfig = SoulCodexConfig.load(yaml);
 
         if (yaml.isConfigurationSection("profiles")) {
             GlovedPlugin.logInfo("[Summon] Fully-dynamic soul system active: static 'profiles:' catalog is ignored (entity-type souls are resolved dynamically).");
@@ -432,6 +439,8 @@ public class SummonConfig {
 
     /** Soul Table + soul stat config (same instance across reloads). */
     public SoulTableConfig getSoulTableConfig() { return soulTableConfig; }
+    public SoulMasteryConfig getSoulMasteryConfig() { return soulMasteryConfig != null ? soulMasteryConfig : new SoulMasteryConfig(); }
+    public SoulCodexConfig getSoulCodexConfig() { return soulCodexConfig != null ? soulCodexConfig : new SoulCodexConfig(); }
 
     private static SummonProfile toProfile(DynamicSoulTemplate t) {
         return new SummonProfile(t.name, t.entityType != null ? t.entityType.name() : t.name,
