@@ -150,7 +150,7 @@ souls:
 
   teams:
     enabled: true
-    count: 3
+    count: 4
     slots-per-team: 4
     allow-same-soul-in-multiple-teams: true
     allow-duplicate-soul-in-same-team: false
