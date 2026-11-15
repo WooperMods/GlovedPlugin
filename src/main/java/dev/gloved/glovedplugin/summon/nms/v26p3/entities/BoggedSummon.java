@@ -40,6 +40,9 @@ public class BoggedSummon extends Bogged implements SummonEntity {
         super(EntityTypes.BOGGED, (Level) level);
         this.sharedData = sharedData;
         this.plugin = plugin;
+        try {
+            this.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
+        } catch (Throwable ignored) {}
     }
 
     @Override

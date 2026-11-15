@@ -24,6 +24,7 @@ import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonBowAttackGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonFollowGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonLookAtOwnerGoal;
 import dev.gloved.glovedplugin.summon.nms.v26p3.goals.SummonMeleeAttackGoal;
+import net.minecraft.world.InteractionHand;
 
 public class StraySummon extends Stray implements SummonEntity {
     private final SummonSharedData sharedData;
@@ -36,6 +37,9 @@ public class StraySummon extends Stray implements SummonEntity {
         super(EntityTypes.STRAY, (Level) level);
         this.sharedData = sharedData;
         this.plugin = plugin;
+        try {
+            this.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
+        } catch (Throwable ignored) {}
     }
 
     @Override
