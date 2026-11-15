@@ -30,6 +30,7 @@ public class SummonBowAttackGoal extends Goal {
     private boolean strafingClockwise;
     private boolean strafingBackwards;
     private int strafingTime = -1;
+    private int attackTime = -1;
 
     public SummonBowAttackGoal(Mob mob, GlovedPlugin plugin, double speedModifier, float attackRadius) {
         if (!(mob instanceof RangedAttackMob ram)) {
@@ -73,6 +74,7 @@ public class SummonBowAttackGoal extends Goal {
     public void stop() {
         this.mob.setAggressive(false);
         this.seeTime = 0;
+        this.attackTime = -1;
         try { this.mob.stopUsingItem(); } catch (Throwable ignored) {}
     }
 
@@ -118,34 +120,57 @@ public class SummonBowAttackGoal extends Goal {
             this.mob.getLookControl().setLookAt(target, 30.0F, 30.0F);
         }
 
+        if (--this.attackTime > 0) {
+            // Respect attack pacing; avoid drawing/cancelling repeatedly while on cooldown.
+            if (this.mob.isUsingItem()) {
+                try { this.mob.stopUsingItem(); } catch (Throwable ignored) {}
+            }
+            return;
+        }
+
+        SummonCombatService ai = plugin.getSummonCombatService();
+        org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
+        long now = Bukkit.getCurrentTick();
+        boolean ready = ai == null || ai.canAttackNow(bSummon, owner, now);
+
         if (this.mob.isUsingItem()) {
             if (!hasLos && this.seeTime < -60) {
                 this.mob.stopUsingItem();
             } else if (hasLos) {
                 int useTicks = this.mob.getTicksUsingItem();
                 if (useTicks >= 20) {
-                    SummonCombatService ai = plugin.getSummonCombatService();
-                    Player p = resolveOwner();
-                    org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
-                    long now = Bukkit.getCurrentTick();
-                    // Gate by cooldown; consume on projectile impact in DamageProxy for consistent conversion.
-                    if (ai == null || ai.canAttackNow(bSummon, p, now)) {
+                    boolean consumed = ai == null || ai.tryConsumeAttackCooldown(bSummon, owner, now);
+                    if (consumed) {
+                        if (ai != null) {
+                            try { ai.markPendingProjectileCooldownConsumed(bSummon, now); } catch (Throwable ignored) {}
+                        }
                         this.mob.stopUsingItem();
-                        this.rangedMob.performRangedAttack(target, BowItem.getPowerForTime(useTicks));
+                        try {
+                            this.rangedMob.performRangedAttack(target, BowItem.getPowerForTime(useTicks));
+                        } catch (Throwable t) {
+                            if (DebugLog.isEnabled()) {
+                                GlovedPlugin.logDebug("[Summon] Bow performRangedAttack failed for " + bSummon.getUniqueId() + ": " + t);
+                            }
+                        }
                         if (DebugLog.isEnabled()) {
                             GlovedPlugin.logDebug("[Summon] Bow shot fired by " + bSummon.getUniqueId()
-                                    + " owner=" + p.getUniqueId() + " target=" + target.getBukkitEntity().getUniqueId());
+                                    + " owner=" + owner.getUniqueId() + " target=" + target.getBukkitEntity().getUniqueId()
+                                    + " cdConsumedAtFire=true");
                         }
+                        this.attackTime = 20; // fallback pacing; real cadence comes from attack cooldown
                     } else {
-                        // keep drawing briefly, but avoid spamming attempts
+                        // Cooldown not ready at release; stop drawing and retry later.
                         this.mob.stopUsingItem();
+                        this.attackTime = 4;
                     }
                 }
             }
-        } else if (this.seeTime >= -60) {
+        } else if (ready && hasLos && this.seeTime >= -60) {
             try {
                 this.mob.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.mob, Items.BOW));
             } catch (Throwable ignored) {}
+        } else if (this.attackTime < 0) {
+            this.attackTime = 0;
         }
     }
 }
