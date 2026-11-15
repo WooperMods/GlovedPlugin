@@ -275,13 +275,13 @@ public final class SoulLoreBuilder {
                 int mx = Math.max(0, soul.getMasteryXp());
                 int maxL = mcfg.getMaxLevel();
                 String rank = mcfg.rankName(ml);
-                String label = "§bMastery §fLv " + ml + " §7(" + rank + ") ";
+                out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ")"));
                 if (ml >= maxL) {
-                    out.add(line(label + masteryXpBar(1.0, "§aMAX", "")));
+                    out.add(line(masteryXpBar(1.0, "§aMAX", "")));
                 } else {
                     int need = Math.max(1, mcfg.xpToNextLevel(ml));
                     double progress = Math.max(0.0, Math.min(1.0, mx / (double) need));
-                    out.add(line(label + masteryXpBar(progress, "§f" + mx + "§7/§f" + need + " XP", "")));
+                    out.add(line(masteryXpBar(progress, "§f" + mx + "§7/§f" + need + " XP", "")));
                 }
                 // show claimable milestone count (if any)
                 if (service != null && service.getMasteryService() != null) {
