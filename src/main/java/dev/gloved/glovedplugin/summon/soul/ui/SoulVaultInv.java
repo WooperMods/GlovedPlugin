@@ -191,7 +191,7 @@ public class SoulVaultInv implements InventoryHolder {
                 inv.setItem(52, filler());
             }
         } else {
-            inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close", UiIcons.CLOSE));
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.TEAMS));
             inv.setItem(52, combatModeItem());
         }
 
