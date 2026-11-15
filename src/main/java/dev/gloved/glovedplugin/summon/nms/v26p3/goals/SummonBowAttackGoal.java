@@ -134,11 +134,9 @@ public class SummonBowAttackGoal extends Goal {
         boolean ready = ai == null || ai.canAttackNow(bSummon, owner, now);
 
         if (this.mob.isUsingItem()) {
-            if (!hasLos && this.seeTime < -60) {
-                this.mob.stopUsingItem();
-            } else if (hasLos) {
-                int useTicks = this.mob.getTicksUsingItem();
-                if (useTicks >= 20) {
+            int useTicks = this.mob.getTicksUsingItem();
+            if (useTicks >= 20) {
+                if (hasLos) {
                     boolean consumed = ai == null || ai.tryConsumeAttackCooldown(bSummon, owner, now);
                     if (consumed) {
                         if (ai != null) {
@@ -155,19 +153,32 @@ public class SummonBowAttackGoal extends Goal {
                         if (DebugLog.isEnabled()) {
                             GlovedPlugin.logDebug("[Summon] Bow shot fired by " + bSummon.getUniqueId()
                                     + " owner=" + owner.getUniqueId() + " target=" + target.getBukkitEntity().getUniqueId()
-                                    + " cdConsumedAtFire=true");
+                                    + " cdConsumedAtFire=true power=" + BowItem.getPowerForTime(useTicks));
                         }
                         this.attackTime = 20; // fallback pacing; real cadence comes from attack cooldown
                     } else {
                         // Cooldown not ready at release; stop drawing and retry later.
                         this.mob.stopUsingItem();
                         this.attackTime = 4;
+                        if (DebugLog.isEnabled()) {
+                            GlovedPlugin.logDebug("[Summon] Bow release deferred (cooldown) by " + bSummon.getUniqueId());
+                        }
                     }
+                } else if (this.seeTime < -20 || useTicks > 60) {
+                    // Prevent getting stuck holding a fully drawn bow when LOS is lost.
+                    this.mob.stopUsingItem();
+                    this.attackTime = 4;
                 }
+            } else if (!hasLos && this.seeTime < -60) {
+                this.mob.stopUsingItem();
             }
         } else if (ready && hasLos && this.seeTime >= -60) {
             try {
                 this.mob.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.mob, Items.BOW));
+                if (DebugLog.isEnabled()) {
+                    GlovedPlugin.logDebug("[Summon] Bow draw started by " + bSummon.getUniqueId()
+                            + " target=" + target.getBukkitEntity().getUniqueId());
+                }
             } catch (Throwable ignored) {}
         } else if (this.attackTime < 0) {
             this.attackTime = 0;

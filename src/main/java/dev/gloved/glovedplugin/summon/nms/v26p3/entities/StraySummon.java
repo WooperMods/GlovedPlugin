@@ -56,6 +56,7 @@ public class StraySummon extends Stray implements SummonEntity {
         this.goalSelector.addGoal(8, new SummonLookAtOwnerGoal(this, plugin));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
         reassessWeaponGoal();
+        GlovedPlugin.logDebug("[Summon] StraySummon goals initialized uuid=" + getBukkitUniqueId());
     }
 
     @Override
@@ -71,6 +72,7 @@ public class StraySummon extends Stray implements SummonEntity {
         } catch (Throwable ignored) {}
         if (hasBow) this.goalSelector.addGoal(4, this.bowGoal);
         else this.goalSelector.addGoal(4, this.meleeGoal);
+        GlovedPlugin.logDebug("[Summon] StraySummon weapon goal uuid=" + getBukkitUniqueId() + " bow=" + hasBow);
     }
 
     @Override

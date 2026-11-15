@@ -57,6 +57,7 @@ public class SkeletonSummon extends Skeleton implements SummonEntity {
         this.goalSelector.addGoal(8, new SummonLookAtOwnerGoal(this, plugin));
         this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
         reassessWeaponGoal();
+        GlovedPlugin.logDebug("[Summon] SkeletonSummon goals initialized uuid=" + getBukkitUniqueId());
     }
 
     @Override
@@ -72,6 +73,7 @@ public class SkeletonSummon extends Skeleton implements SummonEntity {
         } catch (Throwable ignored) {}
         if (hasBow) this.goalSelector.addGoal(4, this.bowGoal);
         else this.goalSelector.addGoal(4, this.meleeGoal);
+        GlovedPlugin.logDebug("[Summon] SkeletonSummon weapon goal uuid=" + getBukkitUniqueId() + " bow=" + hasBow);
     }
 
     @Override
