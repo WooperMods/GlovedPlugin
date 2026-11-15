@@ -76,6 +76,8 @@ public final class UiPackService {
         List<IconDef> icons = List.of(
                 new IconDef(UiIcons.ARROW_LEFT, "arrow_left.png"),
                 new IconDef(UiIcons.ARROW_RIGHT, "arrow_right.png"),
+                new IconDef(UiIcons.ARROW_LEFT_DISABLED, "arrow_left_disabled.png"),
+                new IconDef(UiIcons.ARROW_RIGHT_DISABLED, "arrow_right_disabled.png"),
                 new IconDef(UiIcons.BACK, "back.png"),
                 new IconDef(UiIcons.CLOSE, "close.png"),
                 new IconDef(UiIcons.HOME, "home.png"),
@@ -135,7 +137,7 @@ public final class UiPackService {
                 "License: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)\n" +
                 "Changes: selected, resized to 16x16, and recolored/rotated as needed for UI use.\n\n" +
                 "Icons used:\n" +
-                "- arrow_left/arrow_right: delapouite/plain-arrow (rotated)\n" +
+                "- arrow_left/arrow_right (+ disabled variants): delapouite/plain-arrow (rotated, disabled dimmed)\n" +
                 "- back: lorc/return-arrow\n" +
                 "- close: sbed/cancel\n" +
                 "- home: delapouite/house\n" +

@@ -132,8 +132,8 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
             pickingTrait = false;
         }
 
-        int maxPage = Math.max(0, (allSouls.size() - 1) / GRID_SIZE);
-        page = Math.max(0, Math.min(page, maxPage));
+        int maxSoulPage = Math.max(0, (allSouls.size() - 1) / GRID_SIZE);
+        page = Math.max(0, Math.min(page, maxSoulPage));
 
         inventory.clear();
         for (int i = 0; i < SIZE; i++) inventory.setItem(i, SoulTableUiItems.filler());
@@ -144,17 +144,25 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
                 SoulTableUiKeys.ACTION_GUIDE, List.of("§7Infusion adds or replaces traits",
                         "§7(endgame). Applies on next summon.", "", "§eClick to open")));
 
+        int navPage;
+        int navMaxPage;
+        String navContext;
         if (pickingTrait && soul != null) {
-            renderTraitPicker(soul);
+            int maxTraitPage = renderTraitPicker(soul);
+            navPage = traitPage;
+            navMaxPage = maxTraitPage;
+            navContext = "Trait page";
         } else {
+            pickingTrait = false;
             renderSoulGrid();
+            navPage = page;
+            navMaxPage = maxSoulPage;
+            navContext = "Soul page";
         }
         renderBottom(soul);
 
-        inventory.setItem(SLOT_PREV, SoulTableUiItems.actionItem(plugin, Material.ARROW, "§ePrevious Page",
-                SoulTableUiKeys.ACTION_PREV, List.of(pickingTrait ? "§7Trait page" : "§7Soul page")));
-        inventory.setItem(SLOT_NEXT, SoulTableUiItems.actionItem(plugin, Material.ARROW, "§eNext Page",
-                SoulTableUiKeys.ACTION_NEXT, List.of(pickingTrait ? "§7Trait page" : "§7Soul page")));
+        inventory.setItem(SLOT_PREV, SoulTableUiItems.pageNavItem(plugin, false, navPage > 0, navPage, navMaxPage, navContext));
+        inventory.setItem(SLOT_NEXT, SoulTableUiItems.pageNavItem(plugin, true, navPage < navMaxPage, navPage, navMaxPage, navContext));
     }
 
     private void renderSoulGrid() {
@@ -177,7 +185,7 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
         inventory.setItem(44, prereqInfo(soul));
     }
 
-    private void renderTraitPicker(SoulInstance soul) {
+    private int renderTraitPicker(SoulInstance soul) {
         SoulTableService svc = tableService();
         List<SoulTraitDefinition> eligible = svc != null
                 ? svc.eligibleInfusionTraits(soul, mode == Mode.REPLACE ? replaceTraitId : null)
@@ -197,6 +205,7 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
         inventory.setItem(43, selectedSoulInfo(soul));
         inventory.setItem(44, prereqInfo(soul));
         for (int i = 0; i < TRAIT_SLOTS.length; i++) inventory.setItem(TRAIT_SLOTS[i], traitSlotItem(soul, i));
+        return maxTraitPage;
     }
 
     private ItemStack modeItem() {

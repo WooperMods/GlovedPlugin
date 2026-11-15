@@ -55,6 +55,33 @@ public final class SoulTableUiItems {
         return UiIcons.apply(item, iconForAction(action));
     }
 
+    public static ItemStack pageNavItem(GlovedPlugin plugin, boolean next, boolean enabled, int page, int maxPage, String context) {
+        if (maxPage <= 0) return filler();
+        String action = next ? SoulTableUiKeys.ACTION_NEXT : SoulTableUiKeys.ACTION_PREV;
+        String baseName = next ? "Next Page" : "Previous Page";
+        String name = enabled ? "§e" + baseName : "§8" + baseName;
+        Material mat = enabled ? Material.ARROW : Material.GRAY_STAINED_GLASS_PANE;
+        String icon = next
+                ? (enabled ? UiIcons.ARROW_RIGHT : UiIcons.ARROW_RIGHT_DISABLED)
+                : (enabled ? UiIcons.ARROW_LEFT : UiIcons.ARROW_LEFT_DISABLED);
+        List<String> lore = new ArrayList<>();
+        if (context != null && !context.isBlank()) lore.add("§7" + context);
+        lore.add("§7Page §f" + (page + 1) + "§7/§f" + (maxPage + 1));
+        if (!enabled) lore.add(next ? "§8No next page." : "§8No previous page.");
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LEGACY.deserialize(name).decoration(TextDecoration.ITALIC, false));
+            List<Component> components = new ArrayList<>();
+            for (String line : lore) components.add(LEGACY.deserialize(line).decoration(TextDecoration.ITALIC, false));
+            meta.lore(components);
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            if (enabled) SoulTableUiKeys.tagAction(meta, plugin, action);
+            item.setItemMeta(meta);
+        }
+        return UiIcons.apply(item, icon);
+    }
+
     public static ItemStack backToHubItem(GlovedPlugin plugin) {
         ItemStack item = SoulTableItem.createDisplayStack();
         ItemMeta meta = item.getItemMeta();

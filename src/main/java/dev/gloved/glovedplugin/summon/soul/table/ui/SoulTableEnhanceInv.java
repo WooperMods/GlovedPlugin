@@ -115,8 +115,7 @@ public final class SoulTableEnhanceInv implements SoulTableScreen {
             inventory.setItem(GRID_START + i, SoulTableUiItems.soulItem(plugin, soul, viewerId, selected.contains(soul.getSoulId())));
         }
 
-        inventory.setItem(SLOT_PREV, SoulTableUiItems.actionItem(plugin, Material.ARROW, "§ePrevious Page",
-                SoulTableUiKeys.ACTION_PREV, List.of("§7Page §f" + (page + 1) + "§7/§f" + (maxPage + 1))));
+        inventory.setItem(SLOT_PREV, SoulTableUiItems.pageNavItem(plugin, false, page > 0, page, maxPage, null));
         List<SoulInstance> chosen = selectedSouls();
         inventory.setItem(SLOT_SEL_1, SoulTableUiItems.selectionSlotItem(plugin, chosen.size() > 0 ? chosen.get(0) : null, viewerId, 0));
         inventory.setItem(SLOT_ESSENCE, essenceItem(chosen));
@@ -126,8 +125,7 @@ public final class SoulTableEnhanceInv implements SoulTableScreen {
         inventory.setItem(SLOT_GUIDE, SoulTableUiItems.actionItem(plugin, Material.BOOK, "§b§lSoul Guide",
                 SoulTableUiKeys.ACTION_GUIDE, List.of("§7Learn about traits, bonuses, stats,",
                         "§7and what each table action does.", "", "§eClick to open")));
-        inventory.setItem(SLOT_NEXT, SoulTableUiItems.actionItem(plugin, Material.ARROW, "§eNext Page",
-                SoulTableUiKeys.ACTION_NEXT, List.of("§7Page §f" + (page + 1) + "§7/§f" + (maxPage + 1))));
+        inventory.setItem(SLOT_NEXT, SoulTableUiItems.pageNavItem(plugin, true, page < maxPage, page, maxPage, null));
     }
 
     private ItemStack essenceItem(List<SoulInstance> chosen) {

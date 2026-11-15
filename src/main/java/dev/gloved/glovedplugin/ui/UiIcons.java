@@ -18,6 +18,8 @@ public final class UiIcons {
     // Navigation
     public static final String ARROW_LEFT = "ui/arrow_left";
     public static final String ARROW_RIGHT = "ui/arrow_right";
+    public static final String ARROW_LEFT_DISABLED = "ui/arrow_left_disabled";
+    public static final String ARROW_RIGHT_DISABLED = "ui/arrow_right_disabled";
     public static final String BACK = "ui/back";
     public static final String CLOSE = "ui/close";
 

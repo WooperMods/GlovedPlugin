@@ -56,6 +56,8 @@ public class SoulVaultInv implements InventoryHolder {
     private final SoulRarity filterRarity;
     private final String sortMode;
     private final List<SoulInstance> pageSouls;
+    private final int totalFiltered;
+    private final int maxPage;
     // Team slot assignment picker context (null = legacy/browse mode)
     private final Integer pickerTeam;
     private final Integer pickerSlot;
@@ -68,13 +70,16 @@ public class SoulVaultInv implements InventoryHolder {
                         Integer pickerTeam, Integer pickerSlot) {
         this.plugin = plugin;
         this.viewerId = viewerId;
-        this.page = Math.max(0, page);
         this.filterType = filterType;
         this.filterRarity = filterRarity;
         this.sortMode = sortMode == null ? "default" : sortMode;
         this.pickerTeam = pickerTeam;
         this.pickerSlot = pickerSlot;
-        this.pageSouls = loadPage();
+        PageData pd = loadPage(Math.max(0, page));
+        this.page = pd.page;
+        this.pageSouls = pd.items;
+        this.totalFiltered = pd.total;
+        this.maxPage = pd.maxPage;
     }
 
     public static NamespacedKey soulIdKey(GlovedPlugin plugin) {
@@ -94,9 +99,11 @@ public class SoulVaultInv implements InventoryHolder {
     public Integer getPickerSlot() { return pickerSlot; }
     public boolean isPickerMode() { return pickerTeam != null && pickerSlot != null; }
 
-    private List<SoulInstance> loadPage() {
+    private record PageData(List<SoulInstance> items, int page, int total, int maxPage) {}
+
+    private PageData loadPage(int requestedPage) {
         SoulService svc = plugin.getSoulService();
-        if (svc == null) return List.of();
+        if (svc == null) return new PageData(List.of(), 0, 0, 0);
         List<SoulInstance> list = svc.listSoulsFiltered(viewerId, filterType, filterRarity, 0, 200);
         Comparator<SoulInstance> cmp = switch (sortMode.toLowerCase(Locale.ROOT)) {
             case "quality" -> Comparator.comparingDouble((SoulInstance x) -> SoulQuality.percent(x)).reversed();
@@ -110,10 +117,14 @@ public class SoulVaultInv implements InventoryHolder {
         };
         list = new ArrayList<>(list);
         list.sort(cmp);
-        int from = page * 45;
-        if (from >= list.size()) return List.of();
-        int to = Math.min(list.size(), from + 45);
-        return list.subList(from, to);
+        int total = list.size();
+        int max = Math.max(0, (total - 1) / 45);
+        int p = Math.min(Math.max(0, requestedPage), max);
+        if (total == 0) return new PageData(List.of(), 0, 0, 0);
+        int from = p * 45;
+        if (from >= total) return new PageData(List.of(), p, total, max);
+        int to = Math.min(total, from + 45);
+        return new PageData(list.subList(from, to), p, total, max);
     }
 
     public void open(Player player) {
@@ -130,9 +141,13 @@ public class SoulVaultInv implements InventoryHolder {
         int essence = st != null ? st.essence() : 0;
         String title;
         if (isPickerMode()) {
-            title = "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1) + " (" + (page + 1) + ")";
+            title = maxPage > 0
+                    ? "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1) + " (" + (page + 1) + "/" + (maxPage + 1) + ")"
+                    : "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1);
         } else {
-            title = TITLE_PREFIX + " (" + (page + 1) + ") " + total + "/" + cap;
+            title = maxPage > 0
+                    ? TITLE_PREFIX + " (" + (page + 1) + "/" + (maxPage + 1) + ") " + total + "/" + cap
+                    : TITLE_PREFIX + " " + total + "/" + cap;
         }
         Inventory inv = Bukkit.createInventory(this, 54, LegacyComponentSerializer.legacySection().deserialize("§5" + title));
 
@@ -141,9 +156,22 @@ public class SoulVaultInv implements InventoryHolder {
         }
 
         // controls row
-        inv.setItem(45, navItem(Material.ARROW, "§ePrevious Page", "prev", UiIcons.ARROW_LEFT));
+        if (maxPage > 0) {
+            if (page > 0) {
+                inv.setItem(45, navItem(Material.ARROW, "§ePrevious Page", "prev", UiIcons.ARROW_LEFT));
+            } else {
+                inv.setItem(45, navItem(Material.GRAY_STAINED_GLASS_PANE, "§7Previous Page", null, UiIcons.ARROW_LEFT_DISABLED));
+            }
+            if (page < maxPage) {
+                inv.setItem(53, navItem(Material.ARROW, "§eNext Page", "next", UiIcons.ARROW_RIGHT));
+            } else {
+                inv.setItem(53, navItem(Material.GRAY_STAINED_GLASS_PANE, "§7Next Page", null, UiIcons.ARROW_RIGHT_DISABLED));
+            }
+        } else {
+            inv.setItem(45, filler());
+            inv.setItem(53, filler());
+        }
         inv.setItem(49, infoItem(total, cap, essence));
-        inv.setItem(53, navItem(Material.ARROW, "§eNext Page", "next", UiIcons.ARROW_RIGHT));
         inv.setItem(47, navItem(Material.PAPER, "§bFilter: " + (filterType == null || filterType.isBlank() ? "ALL" : filterType), "filter", null));
         inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity", null));
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort", null));
@@ -187,6 +215,17 @@ public class SoulVaultInv implements InventoryHolder {
             it.setItemMeta(meta);
         }
         return UiIcons.apply(it, iconModel);
+    }
+
+    private ItemStack filler() {
+        ItemStack it = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = it.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LegacyComponentSerializer.legacySection().deserialize(" ").decoration(TextDecoration.ITALIC, false));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            it.setItemMeta(meta);
+        }
+        return it;
     }
 
     private ItemStack infoItem(int total, int cap, int essence) {
