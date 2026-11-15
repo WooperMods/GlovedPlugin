@@ -197,14 +197,24 @@ public class SoulVaultInv implements InventoryHolder {
 
         // help
         if (isPickerMode()) {
+            boolean hasAssigned = false;
+            try {
+                if (svc != null && pickerTeam != null && pickerSlot != null) {
+                    var teamSlots = svc.getTeam(viewerId, pickerTeam);
+                    UUID assignedId = teamSlots != null ? teamSlots.get(pickerSlot) : null;
+                    hasAssigned = assignedId != null;
+                }
+            } catch (Throwable ignored) {}
             ItemStack help = navItem(Material.BOOK, "§dControls", "help", UiIcons.GUIDE);
             ItemMeta hm = help.getItemMeta();
             if (hm != null) {
-                hm.lore(List.of(
-                        LegacyComponentSerializer.legacySection().deserialize("§7Left Click: §aAssign to Team " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false),
-                        LegacyComponentSerializer.legacySection().deserialize("§7Right Click: §fInspect soul").decoration(TextDecoration.ITALIC, false),
-                        LegacyComponentSerializer.legacySection().deserialize("§7Use §cClear Slot §7or §eBack to Teams §7below").decoration(TextDecoration.ITALIC, false)
-                ));
+                List<Component> lore = new ArrayList<>();
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left Click: §aAssign to Team " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right Click: §fInspect soul").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize(hasAssigned
+                        ? "§7Use §cClear Slot §7or §eBack to Teams §7below"
+                        : "§7Use §eBack to Teams §7below").decoration(TextDecoration.ITALIC, false));
+                hm.lore(lore);
                 help.setItemMeta(hm);
             }
             inv.setItem(46, help);
