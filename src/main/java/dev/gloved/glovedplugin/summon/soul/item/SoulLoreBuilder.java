@@ -269,31 +269,36 @@ public final class SoulLoreBuilder {
             out.add(line("§dEnhancement §fLv " + level + " §8(§a+" + fmt(bonus, 1) + "%§8)"));
         }
 
-        // Soul Mastery (per-soul progression, MVP)
+        return out;
+    }
+
+    /** Mastery section shown near the top of soul lore (below title, above stats). */
+    public static List<Component> masterySection(GlovedPlugin plugin, SoulInstance soul) {
+        List<Component> out = new ArrayList<>();
+        if (plugin == null || soul == null) return out;
         try {
-            var sc = plugin != null ? plugin.getSummonConfig() : null;
+            var sc = plugin.getSummonConfig();
             var mcfg = sc != null ? sc.getSoulMasteryConfig() : null;
-            if (mcfg != null && mcfg.isEnabled()) {
-                int ml = Math.max(0, soul.getMasteryLevel());
-                int mx = Math.max(0, soul.getMasteryXp());
-                int maxL = mcfg.getMaxLevel();
-                String rank = mcfg.rankName(ml);
-                out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ")"));
-                if (ml >= maxL) {
-                    out.add(line(masteryXpBar(1.0, "§aMAX", "")));
-                } else {
-                    int need = Math.max(1, mcfg.xpToNextLevel(ml));
-                    double progress = Math.max(0.0, Math.min(1.0, mx / (double) need));
-                    out.add(line(masteryXpBar(progress, "§f" + mx + "§7/§f" + need + " XP", "")));
-                }
-                // show claimable milestone count (if any)
-                if (service != null && service.getMasteryService() != null) {
-                    int claimable = service.getMasteryService().claimableMilestones(soul).size();
-                    if (claimable > 0) out.add(line("§e★ " + claimable + " mastery milestone" + (claimable == 1 ? "" : "s") + " claimable"));
-                }
+            if (mcfg == null || !mcfg.isEnabled()) return out;
+            SoulService service = plugin.getSoulService();
+            int ml = Math.max(0, soul.getMasteryLevel());
+            int mx = Math.max(0, soul.getMasteryXp());
+            int maxL = mcfg.getMaxLevel();
+            String rank = mcfg.rankName(ml);
+            out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ")"));
+            if (ml >= maxL) {
+                out.add(line(masteryXpBar(1.0, "§aMAX", "")));
+            } else {
+                int need = Math.max(1, mcfg.xpToNextLevel(ml));
+                double progress = Math.max(0.0, Math.min(1.0, mx / (double) need));
+                out.add(line(masteryXpBar(progress, "§f" + mx + "§7/§f" + need + " XP", "")));
+            }
+            // show claimable milestone count (if any)
+            if (service != null && service.getMasteryService() != null) {
+                int claimable = service.getMasteryService().claimableMilestones(soul).size();
+                if (claimable > 0) out.add(line("§e★ " + claimable + " mastery milestone" + (claimable == 1 ? "" : "s") + " claimable"));
             }
         } catch (Throwable ignored) {}
-
         return out;
     }
 
