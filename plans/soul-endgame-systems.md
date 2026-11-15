@@ -1,6 +1,6 @@
 # Soul Endgame Systems — Follow-up Plan (Post Infusion & Condensation)
 
-> **Builds on:** implemented `plans/soul-infusion-and-condensation.md` baseline (Condense, Soul Catalyst crafting, Infusion, supporting config/items/services/UI/pack) plus follow-up adjustments. This document defines the next wave of endgame/progression systems that build on that foundation.
+> **Builds on:** implemented `plans/soul-infusion-and-condensation.md` baseline (Condense, Soul Catalyst crafting, Infusion, supporting config/items/services/UI/pack) and the implemented Soul Groups loadout system (`plans/soul-team-loadout-overhaul.md`) plus follow-up adjustments. This document defines the next wave of endgame/progression systems that build on that foundation.
 
 ## 0. Summary
 
@@ -21,12 +21,14 @@ Add layered systems to deepen soul buildcraft, create short/mid/long-term goals,
 - **Early taste, late mastery:** systems should onboard players into goals and pay off more deeply over time.
 
 **Cross-cutting implementation notes**
-- Layer onto existing souls (rarity, base stats, affixes, traits, enhancement, essence, Soul Table) and the Condense → Catalyst → Infusion loop.
+- Layer onto existing souls (rarity, base stats, affixes, traits, enhancement, essence, Soul Table), the Soul Groups loadout system, and the Condense → Catalyst → Infusion loop.
+- Respect current Soul Groups behavior: **4 groups per player, 4 slots per group, 1 summon per valid slot** (mixed soul types), activate/recall/hotswap semantics, and per-summon full effective stats (no legacy `groupCapacity`/group-division gameplay). Design future progression/buildcraft (cores, affinity, mastery, etc.) to apply per soul/summon and to compose cleanly with group activation.
 - Prefer additive config/data and avoid DB schema changes initially where possible (PDC/JSON fields, config registries, account-level storage consistent with repo patterns); finalize storage at implementation time.
 - Keep most rewards horizontal/utility/cosmetic or bounded; preserve caps/ICDs/diminishing returns to limit power creep.
 - Build/verify with `./build.sh`. Follow repo config conventions (bundled resource + runtime fallback + backfill, preserve existing keys).
 
 **Current baseline notes (implemented, relevant to this plan)**
+- **Soul Groups loadout (current):** players have **4 saved groups** with **4 slots each**; each valid slot summons **1** soul (mixed types allowed, 1 summon per slot). One group is active at a time: activating the active group recalls/toggles off, activating another group hotswaps. Empty/invalid slots are skipped/cleaned on activation. **Soul Focus:** right-click opens the Soul Groups view, left-click performs quick activate/recall of the selected group; `/gloved soul menu` opens the Groups view. Commands use `/gloved soul group ...` with `group`/`groups` (and compatibility alias `team`/`teams`). Player-facing terminology is **Group/Groups**; config keys, DB schema, PDC keys, and internal APIs remain team-based for compatibility (e.g. `souls.teams.*`, `soul_teams`). Legacy `groupCapacity` ("Summons count") is retired from gameplay/UI/previews/lore (kept only as compatibility data where present).
 - **Condensed Soul Essence item:** PDC-tagged, stackable material (default `AMETHYST_SHARD`, non-placeable/non-vanilla-interactable); configurable name/material/rate via `souls.table.essence.condense.*`. Lore shows total/value and per-item rate (no redundant title line). Right-click redeems **1** condensed item at a time (cancels normal interaction/placement) and grants Essence; rapid redeems show an accumulated action-bar total. Condensed Essence can also appear as a rare bonus in newly generated Lootr chest inventories (`elite.condensed-essence.*`, configurable).
 - **Soul Catalyst (current):** single crafted catalyst item used for Infusion (no tiers/variants yet). Current lore describes infusion use; future tier/variant work should preserve/extend PDC identity and config-driven recipes/rules.
 - **Config/UI conventions:** item/display color codes in soul-table config use `&` in YAML and are normalized to `§` in code. Player-facing Soul Table/Guide/Infusion copy avoids config/admin/internal implementation wording.
@@ -89,7 +91,7 @@ Provide long-term, account-wide goals and a sense of discovery/completion beyond
 - **Completion tiers:** e.g. Discovered → Collected → Refined (enhanced/infused) → Mastered. Each tier grants progress/rewards once per account.
 - **Account rewards (mostly horizontal/QoL/cosmetic, light efficiency):**
   - Cosmetic: badges, summon titles/effects, UI frames.
-  - QoL: vault/sort/filter conveniences, loadout slots (if added), favorites/pins.
+  - QoL: vault/sort/filter conveniences, favorites/pins, and (if expanded in future) additional Soul Group slots/groups beyond the current 4×4 baseline.
   - Light efficiency (bounded): small essence conversion/crafting efficiency perks, occasional fragment drops, or reduced friction.
 - **Discovery moments:** first-time capture/infusion/mastery shows a codex toast and tracks progress.
 
@@ -201,7 +203,7 @@ Ensure Essence/condensed materials always have meaningful uses, enabling players
 - **Affinity attunement/re-attunement:** thematic/soft-synergy customization with meaningful cost.
 - **Targeted crafting & exchanges:** fragments↔materials, focused catalysts, components.
 - **Mastery/Codex accelerators (bounded, optional):** capped convenience, not required power.
-- **Convenience/QoL unlocks (limited/account-level):** e.g. loadout slots, vault/cosmetic unlocks where appropriate.
+- **Convenience/QoL unlocks (limited/account-level):** e.g. additional Soul Group slots/groups beyond the current baseline (if ever expanded), vault/cosmetic unlocks where appropriate.
 
 ### Design principles
 - No single dominant sink; each serves a different goal (power, customization, collection, QoL).
