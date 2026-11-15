@@ -177,7 +177,19 @@ public class SoulVaultInv implements InventoryHolder {
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort", null));
         if (isPickerMode()) {
             inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.TEAMS));
-            inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot", UiIcons.CLOSE));
+            boolean hasAssigned = false;
+            try {
+                if (svc != null && pickerTeam != null && pickerSlot != null) {
+                    var teamSlots = svc.getTeam(viewerId, pickerTeam);
+                    UUID assignedId = teamSlots != null ? teamSlots.get(pickerSlot) : null;
+                    hasAssigned = assignedId != null;
+                }
+            } catch (Throwable ignored) {}
+            if (hasAssigned) {
+                inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot", UiIcons.CLOSE));
+            } else {
+                inv.setItem(52, filler());
+            }
         } else {
             inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close", UiIcons.CLOSE));
             inv.setItem(52, combatModeItem());
