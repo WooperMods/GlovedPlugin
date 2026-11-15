@@ -91,6 +91,9 @@ public final class SoulLoreBuilder {
      */
     public static List<Component> statsSection(GlovedPlugin plugin, SoulInstance soul, UUID viewerId, boolean showAffixQuality) {
         List<Component> out = new ArrayList<>();
+        if (soul != null) {
+            out.addAll(masterySection(plugin, soul));
+        }
         out.add(header("Stats"));
         if (soul == null) {
             out.add(line("§7- None"));
