@@ -176,7 +176,7 @@ public class SoulVaultInv implements InventoryHolder {
         inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity", null));
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort", null));
         if (isPickerMode()) {
-            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.BACK));
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.TEAMS));
             inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot", UiIcons.CLOSE));
         } else {
             inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close", UiIcons.CLOSE));
