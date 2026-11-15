@@ -213,6 +213,7 @@ public class SummonManager {
 
     /**
      * Applies rolled soul base stats (enhanced) plus affix multipliers to a freshly spawned minion.
+     * Team/loadout overhaul: 1 summon per soul slot, full effective per-summon stats (no group division).
      *
      * <p>Never touches {@code Attribute.FOLLOW_RANGE}: follow/target range is a fixed
      * {@link SummonProfile#FOLLOW_RANGE} AI limit and is intentionally not a soul stat.</p>
@@ -226,8 +227,7 @@ public class SummonManager {
                 : (soul.getBaseStats() != null
                         ? soul.getBaseStats()
                         : SoulBaseStats.defaults(soul.getEntityType()));
-        int groupSize = 1;
-        try { groupSize = Math.max(1, svc != null ? svc.effectiveGroupCapacity(soul) : soul.getGroupCapacity()); } catch (Throwable ignored) {}
+        final int groupSize = 1; // team/loadout: one summon per soul slot, full stats
 
         double speedMult = clamp(snap.speedMultiplier(), 0.5, 1.6);
         // Movement: base scaled by SWIFT with diminishing returns near the cap (higher speed => less affix impact).
@@ -270,7 +270,7 @@ public class SummonManager {
                 fly.setBaseValue(clamp(flyBase * speedMult, 0.05, flyCap));
             }
         } catch (Throwable ignored) {}
-        // Offense / defense stats: absolute rolled values (affix multipliers where they exist), split across group.
+        // Offense / defense stats: absolute rolled values (affix multipliers where they exist), full per-summon.
         setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, (base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)) / groupSize));
         setBase(mob, Attribute.ATTACK_SPEED, base.attackSpeed());
         // DEF: soul armor stat (base cap 13.75, ~55% base negation; enhancement can exceed caps).
@@ -287,7 +287,7 @@ public class SummonManager {
         } catch (Throwable ignored) {}
 
         // Apply bounded health scaling for damageable minions.
-        // Soul's final (rolled+enhanced base * VIGOROUS + owner AuraSkills health bonus) is divided across the group.
+        // Soul's final (rolled+enhanced base * VIGOROUS + owner AuraSkills health bonus), full per-summon.
         try {
             var hp = mob.getAttribute(Attribute.MAX_HEALTH);
             if (hp != null) {
@@ -482,6 +482,88 @@ public class SummonManager {
         } catch (Throwable ignored) {}
         tracker.removeAllForPlayer(owner.getUniqueId());
         return count;
+    }
+
+    public int recallActiveTeam(Player owner) {
+        return recallAll(owner);
+    }
+
+    public int getActiveTeamIndex(UUID ownerId) {
+        return tracker != null ? tracker.getActiveTeamIndex(ownerId) : -1;
+    }
+
+    public boolean hasActiveTeamSummons(UUID ownerId) {
+        try {
+            return tracker != null && !tracker.getActiveMinions(ownerId).isEmpty();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    public static final class TeamSpawnResult {
+        public final boolean ok;
+        public final int spawned;
+        public final int failed;
+        public final List<UUID> spawnedIds;
+        public final String reason;
+
+        public TeamSpawnResult(boolean ok, int spawned, int failed, List<UUID> spawnedIds, String reason) {
+            this.ok = ok;
+            this.spawned = spawned;
+            this.failed = failed;
+            this.spawnedIds = spawnedIds != null ? spawnedIds : List.of();
+            this.reason = reason;
+        }
+    }
+
+    /** Spawns 1 summon per resolved team slot (full per-summon stats, team-tagged). Preferred rollback on partial failure. */
+    public TeamSpawnResult spawnResolvedTeam(Player player, int teamIndex, List<TeamSlotSpawn> slots, LivingEntity target) {
+        if (player == null || slots == null || slots.isEmpty()) {
+            return new TeamSpawnResult(false, 0, 0, List.of(), "empty");
+        }
+        List<UUID> spawnedIds = new ArrayList<>();
+        int failed = 0;
+        Location spawnLoc = resolveSpawnLocation(player, target);
+        for (TeamSlotSpawn slot : slots) {
+            if (slot == null || slot.soul == null) { failed++; continue; }
+            try {
+                SummonProfile profile = config != null ? config.getProfile(slot.soul.getEntityType()) : null;
+                if (profile == null) profile = config != null ? config.getProfile(slot.soul.getFamilyKey()) : null;
+                if (profile == null) {
+                    GlovedPlugin.logDebug("[Summon] Team spawn: no summon profile for soul " + slot.soul.getFamilyKey());
+                    failed++;
+                    continue;
+                }
+                var result = SummonEntitySpawner.spawnConfiguredGroup(
+                        plugin, config, this, tracker, combatService, player, profile, slot.soul, target, spawnLoc, 1,
+                        null, teamIndex, slot.slotIndex);
+                if (result != null && result.spawnedCount > 0 && result.spawnedIds != null) {
+                    spawnedIds.addAll(result.spawnedIds);
+                } else {
+                    failed++;
+                }
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[Summon] Team spawn failed for slot " + slot.slotIndex + ": " + t);
+                failed++;
+            }
+        }
+        if (failed > 0) {
+            // Preferred rollback: keep team state consistent
+            for (UUID id : spawnedIds) {
+                try { tracker.despawn(id); } catch (Throwable ignored) {}
+            }
+            return new TeamSpawnResult(false, 0, failed, List.of(), "partial-failure-rolled-back");
+        }
+        return new TeamSpawnResult(true, spawnedIds.size(), 0, spawnedIds, "ok");
+    }
+
+    public static final class TeamSlotSpawn {
+        public final int slotIndex;
+        public final SoulInstance soul;
+        public TeamSlotSpawn(int slotIndex, SoulInstance soul) {
+            this.slotIndex = slotIndex;
+            this.soul = soul;
+        }
     }
 
     /** Spawns a full soul group for the given soul up to that soul's authoritative effective capacity (exclusive single-group model). */

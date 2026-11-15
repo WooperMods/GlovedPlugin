@@ -211,76 +211,22 @@ public class SoulService {
         return baseStatsOf(soul).enhanced(soul.getEnhanceLevel(), perLevel, soul.getRarity(), statCfg);
     }
 
-    /** Base group capacity rolled/generated on the soul (before affix/enhancement modifiers). */
+    /** @deprecated Summons count/group capacity retired by team/loadout overhaul; kept for compatibility. */
+    @Deprecated
     public int baseGroupCapacity(SoulInstance soul) {
-        if (soul == null) return 1;
-        return Math.max(1, soul.getGroupCapacity());
+        return 1;
     }
 
-    /**
-     * Effective/authoritative group capacity (summons created) for a soul:
-     * base (rarity-rolled) + enhancement milestones + CAPACITY affix %.
-     * Boss hard per-type overrides are kept as a final ceiling exception.
-     */
+    /** @deprecated Summons count/group capacity retired by team/loadout overhaul; kept for compatibility. */
+    @Deprecated
     public int effectiveGroupCapacity(SoulInstance soul) {
-        if (soul == null) return 1;
-        int base = Math.max(1, soul.getGroupCapacity());
-
-        // Enhancement path: milestone increases (can raise count beyond base/global-like caps, like other stats).
-        int enhanceBonus = 0;
-        int lvl = Math.max(0, soul.getEnhanceLevel());
-        if (lvl >= 5) enhanceBonus += 1;
-        if (lvl >= 10) enhanceBonus += 1;
-
-        int baseWithEnhance = Math.max(1, base + enhanceBonus);
-
-        double pct = 0.0;
-        try { pct = Math.max(0.0, Math.min(1.0, getSnapshot(soul).capacityBonus())); } catch (Throwable ignored) {}
-        int computed = (int) Math.floor(baseWithEnhance * (1.0 + pct) + 1e-9);
-        if (pct > 0.0 && computed == baseWithEnhance) {
-            // Ensure a meaningful mild % affix can contribute at low capacities.
-            computed = baseWithEnhance + 1;
-        }
-        if (computed < 1) computed = 1;
-
-        // Absolute safety ceiling (high enough to allow ~8+ via rarity/affix/enhance).
-        int ceiling = 12;
-
-        // Hard per-type override is an absolute ceiling exception (e.g. boss overrides kept).
-        try {
-            SoulConfig cfg = soulConfig();
-            if (cfg != null) {
-                String family = soul.getFamilyKey();
-                if (family == null || family.isBlank()) {
-                    family = soul.getEntityType() != null ? soul.getEntityType().name() : null;
-                }
-                Integer hard = cfg.getTypeMaxActiveOverride(family);
-                if (hard == null && soul.getEntityType() != null) {
-                    hard = cfg.getTypeMaxActiveOverride(soul.getEntityType().name());
-                }
-                if (hard != null) ceiling = Math.min(ceiling, Math.max(1, hard));
-            }
-        } catch (Throwable ignored) {}
-
-        return Math.max(1, Math.min(computed, ceiling));
+        return 1;
     }
 
-    /** Breakdown for UI: [base, enhanceBonus, affixBonusCount, effectiveFinal]. */
+    /** @deprecated Summons count/group capacity retired by team/loadout overhaul; kept for compatibility. */
+    @Deprecated
     public int[] computeGroupCapacityBreakdown(SoulInstance soul) {
-        if (soul == null) return new int[]{1, 0, 0, 1};
-        int base = Math.max(1, soul.getGroupCapacity());
-        int lvl = Math.max(0, soul.getEnhanceLevel());
-        int enhanceBonus = (lvl >= 5 ? 1 : 0) + (lvl >= 10 ? 1 : 0);
-        int beforeAffix = Math.max(1, base + enhanceBonus);
-        double pct = 0.0;
-        try { pct = Math.max(0.0, Math.min(1.0, getSnapshot(soul).capacityBonus())); } catch (Throwable ignored) {}
-        int computed = (int) Math.floor(beforeAffix * (1.0 + pct) + 1e-9);
-        if (pct > 0.0 && computed == beforeAffix) computed = beforeAffix + 1;
-        int effective = effectiveGroupCapacity(soul);
-        int affixBonus = Math.max(0, effective - Math.min(effective, beforeAffix));
-        // if capped down by ceilings, affixBonus shown as 0 or reduced; keep simple
-        if (computed > effective) affixBonus = Math.max(0, effective - beforeAffix);
-        return new int[]{base, enhanceBonus, affixBonus, effective};
+        return new int[]{1, 0, 0, 1};
     }
 
     public int getSummoningLevel(UUID owner) {
@@ -615,9 +561,19 @@ public class SoulService {
                 repository.updateVaultCapacity(owner, cap, cap);
                 st = repository.getOrCreatePlayerState(owner, cap);
             }
+            ensureTeamsSeeded(owner, cap);
             return st;
         }
         catch (SQLException e) { return null; }
+    }
+
+    private void ensureTeamsSeeded(UUID owner, int defaultCapacity) {
+        if (owner == null) return;
+        try {
+            repository.seedDefaultTeamsFromLegacy(owner, defaultCapacity);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to seed team data for " + owner + ": " + e);
+        }
     }
 
     public String getSummonCombatMode(UUID owner) {
@@ -748,21 +704,287 @@ public class SoulService {
         } catch (SQLException e) { return false; }
     }
 
+    /** @deprecated Legacy selected-soul model replaced by team/loadout. Returns first valid soul in selected team (compat). */
+    @Deprecated
     public SoulInstance getSelectedSoul(UUID owner) {
         if (owner == null) return null;
-        SoulInstance cached = selectedSoulCache.get(owner);
-        if (cached != null) return cached;
+        try {
+            int team = getSelectedTeam(owner);
+            var slots = getTeam(owner, team);
+            for (int i = 0; i < 4; i++) {
+                UUID sid = slots.get(i);
+                if (sid == null) continue;
+                SoulInstance s = getSoul(sid);
+                if (s != null && owner.equals(s.getOwnerId())) return s;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    // ---------- Team/loadout APIs ----------
+
+    public int getSelectedTeam(UUID owner) {
+        if (owner == null) return 1;
         try {
             SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
-            SoulRepository.PlayerSoulState st = repository.getOrCreatePlayerState(owner, cap);
-            int slot = st.selectedSlot();
-            UUID soulId = repository.getLoadoutSoulId(owner, slot);
-            if (soulId == null) return null;
-            SoulInstance soul = repository.getSoul(soulId);
-            if (soul != null) selectedSoulCache.put(owner, soul);
-            return soul;
-        } catch (SQLException e) { return null; }
+            ensureTeamsSeeded(owner, cap);
+            return repository.getSelectedTeam(owner, cap);
+        } catch (SQLException e) {
+            return 1;
+        }
+    }
+
+    public void setSelectedTeam(UUID owner, int teamIndex) {
+        if (owner == null) return;
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            repository.setSelectedTeam(owner, Math.max(1, Math.min(3, teamIndex)), cap);
+            invalidateSelectedCache(owner);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to set selected team for " + owner + ": " + e);
+        }
+    }
+
+    public Map<Integer, UUID> getTeam(UUID owner, int teamIndex) {
+        if (owner == null) return Map.of();
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            teamIndex = Math.max(1, Math.min(3, teamIndex));
+            return repository.getTeamSlots(owner, teamIndex);
+        } catch (SQLException e) {
+            return Map.of();
+        }
+    }
+
+    public Map<Integer, Map<Integer, UUID>> listTeams(UUID owner) {
+        if (owner == null) return Map.of();
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            return repository.listTeams(owner);
+        } catch (SQLException e) {
+            return Map.of();
+        }
+    }
+
+    public boolean setTeamSlot(UUID owner, int teamIndex, int slotIndex, UUID soulId) {
+        if (owner == null) return false;
+        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        slotIndex = Math.max(0, Math.min(3, slotIndex));
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            if (soulId != null) {
+                SoulInstance soul = repository.getSoul(soulId);
+                if (soul == null || !owner.equals(soul.getOwnerId())) return false;
+                boolean allowDupSame = cfg != null && cfg.isTeamsAllowDuplicateSoulInSameTeam();
+                if (!allowDupSame && repository.isSoulAssignedToTeam(owner, teamIndex, soulId, slotIndex)) {
+                    return false;
+                }
+            }
+            repository.setTeamSlot(owner, teamIndex, slotIndex, soulId);
+            invalidateSelectedCache(owner);
+            return true;
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to set team slot for " + owner + ": " + e);
+            return false;
+        }
+    }
+
+    public void clearTeamSlot(UUID owner, int teamIndex, int slotIndex) {
+        if (owner == null) return;
+        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        slotIndex = Math.max(0, Math.min(3, slotIndex));
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            repository.clearTeamSlot(owner, teamIndex, slotIndex);
+            invalidateSelectedCache(owner);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to clear team slot for " + owner + ": " + e);
+        }
+    }
+
+    public void clearTeam(UUID owner, int teamIndex) {
+        if (owner == null) return;
+        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        try {
+            SoulConfig cfg = soulConfig();
+            int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
+            ensureTeamsSeeded(owner, cap);
+            repository.clearTeam(owner, teamIndex);
+            invalidateSelectedCache(owner);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to clear team for " + owner + ": " + e);
+        }
+    }
+
+    public void clearSoulFromAllTeams(UUID owner, UUID soulId) {
+        if (owner == null || soulId == null) return;
+        try {
+            repository.clearSoulFromAllTeams(owner, soulId);
+            invalidateSelectedCache(owner);
+        } catch (SQLException e) {
+            GlovedPlugin.logDebug("[Souls] Failed to clear soul from teams for " + owner + ": " + e);
+        }
+    }
+
+    public record TeamActivationResult(CastResult result, int spawned, int skippedInvalid, int teamIndex, String detail) {
+        public static TeamActivationResult fail(CastResult r, int teamIndex, String detail) { return new TeamActivationResult(r, 0, 0, teamIndex, detail); }
+        public static TeamActivationResult recalled(int teamIndex) { return new TeamActivationResult(CastResult.RECALLED, 0, 0, teamIndex, null); }
+        public static TeamActivationResult ok(CastResult r, int teamIndex, int spawned, int skipped) { return new TeamActivationResult(r, spawned, skipped, teamIndex, null); }
+    }
+
+    public boolean recallActiveTeam(Player player) {
+        if (player == null) return false;
+        var mgr = plugin.getSummonManager();
+        if (mgr == null) return false;
+        int recalled = mgr.recallAll(player);
+        if (recalled > 0) {
+            player.sendMessage("§d[Souls] §eRecalled §f" + recalled + "§e summon" + (recalled == 1 ? "" : "s") + "§7.");
+        }
+        return recalled > 0;
+    }
+
+    public TeamActivationResult activateTeam(Player player, int teamIndex) {
+        if (player == null) return TeamActivationResult.fail(CastResult.NO_PLAYER, teamIndex, "no-player");
+        SoulConfig cfg = soulConfig();
+        if (cfg == null || !cfg.isEnabled()) return TeamActivationResult.fail(CastResult.DISABLED, teamIndex, "disabled");
+        var summonCfg = plugin.getSummonConfig();
+        var summonMgr = plugin.getSummonManager();
+        var tracker = plugin.getSummonTracker();
+        if (summonCfg == null || summonMgr == null || tracker == null || !summonCfg.isEnabled()) {
+            return TeamActivationResult.fail(CastResult.NO_SYSTEM, teamIndex, "no-system");
+        }
+        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        setSelectedTeam(player.getUniqueId(), teamIndex);
+
+        // Resolve and validate team slots (skip/clean invalid)
+        Map<Integer, UUID> slots = getTeam(player.getUniqueId(), teamIndex);
+        List<SummonManager.TeamSlotSpawn> toSpawn = new ArrayList<>(4);
+        int skippedInvalid = 0;
+        for (int slot = 0; slot < 4; slot++) {
+            UUID soulId = slots.get(slot);
+            if (soulId == null) continue;
+            SoulInstance soul = repositoryGetSoulSafe(soulId);
+            boolean valid = soul != null && player.getUniqueId().equals(soul.getOwnerId());
+            if (!valid) {
+                clearTeamSlot(player.getUniqueId(), teamIndex, slot);
+                skippedInvalid++;
+                continue;
+            }
+            // basic allow check for activation context
+            if (!cfg.isAllowed(soul.getEntityType())) {
+                clearTeamSlot(player.getUniqueId(), teamIndex, slot);
+                skippedInvalid++;
+                continue;
+            }
+            toSpawn.add(new SummonManager.TeamSlotSpawn(slot, soul));
+        }
+        if (toSpawn.isEmpty()) {
+            if (skippedInvalid > 0) {
+                player.sendMessage("§c[Souls] Team " + teamIndex + " has no valid summons §7(cleaned " + skippedInvalid + " invalid slot" + (skippedInvalid == 1 ? "" : "s") + ").");
+            } else {
+                player.sendMessage("§c[Souls] Team " + teamIndex + " is empty.");
+            }
+            return TeamActivationResult.fail(CastResult.NO_SELECTED_SOUL, teamIndex, "empty-or-invalid-team");
+        }
+
+        boolean hasActive = summonMgr.hasActiveTeamSummons(player.getUniqueId());
+        int activeTeam = summonMgr.getActiveTeamIndex(player.getUniqueId());
+        boolean recallOnly = hasActive && activeTeam == teamIndex;
+        if (recallOnly) {
+            int recalled = summonMgr.recallAll(player);
+            player.sendMessage("§d[Souls] §eRecalled Team " + teamIndex + " §7(" + recalled + " summon" + (recalled == 1 ? "" : "s") + ")");
+            return TeamActivationResult.recalled(teamIndex);
+        }
+
+        // Pre-spawn checks before mana spend / irreversible transitions
+        if (!player.isOnline() || player.isDead() || player.getWorld() == null) {
+            return TeamActivationResult.fail(CastResult.NO_PLAYER, teamIndex, "invalid-player-state");
+        }
+
+        double manaCost = Math.max(0.0, cfg.getCastActivateManaCost());
+        boolean manaEnabled = cfg.isCastManaEnabled() && manaCost > 0.0 && summonCfg != null && summonCfg.isManaEnabled();
+        if (manaEnabled && !hasEnoughAuraMana(player, manaCost)) {
+            player.sendMessage("§c[Souls] Not enough mana to activate Team " + teamIndex + " §7(" + String.format(Locale.ROOT, "%.1f", manaCost) + ").");
+            return TeamActivationResult.fail(CastResult.NO_MANA, teamIndex, "no-mana");
+        }
+
+        boolean isHotswap = hasActive && activeTeam != -1 && activeTeam != teamIndex;
+        if (hasActive && activeTeam == -1) {
+            // Mixed/legacy active state: normalize by recall before team activation
+            isHotswap = true;
+        }
+
+        if (isHotswap) {
+            summonMgr.recallAll(player);
+        }
+
+        if (manaEnabled && !summonMgr.tryConsumeSoulCastMana(player, manaCost)) {
+            player.sendMessage("§c[Souls] Could not spend mana to activate Team " + teamIndex + ".");
+            return TeamActivationResult.fail(CastResult.NO_MANA, teamIndex, "mana-spend-failed");
+        }
+
+        SummonManager.TeamSpawnResult spawnRes = summonMgr.spawnResolvedTeam(player, teamIndex, toSpawn, null);
+        if (spawnRes == null || !spawnRes.ok || spawnRes.spawned <= 0) {
+            player.sendMessage("§c[Souls] Failed to activate Team " + teamIndex + " §7(spawn failed).");
+            return TeamActivationResult.fail(CastResult.FAILED, teamIndex, spawnRes != null ? spawnRes.reason : "spawn-failed");
+        }
+
+        try {
+            var prog = plugin.getSummonProgression();
+            if (prog != null) {
+                for (SummonManager.TeamSlotSpawn tss : toSpawn) {
+                    try { prog.onSoulCast(player, tss.soul != null ? tss.soul.getFamilyKey() : null); } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        StringBuilder msg = new StringBuilder("§d[Souls] ");
+        if (isHotswap) msg.append("§bHotswapped to Team ").append(teamIndex);
+        else msg.append("§aActivated Team ").append(teamIndex);
+        msg.append(" §7(").append(spawnRes.spawned).append(" summon").append(spawnRes.spawned == 1 ? "" : "s");
+        if (skippedInvalid > 0) msg.append(", skipped ").append(skippedInvalid).append(" invalid");
+        msg.append(")");
+        player.sendMessage(msg.toString());
+        CastResult result = isHotswap ? CastResult.OK : CastResult.OK; // CastResult has no HOTSWAPPED; detail conveyed in message/state
+        return TeamActivationResult.ok(result, teamIndex, spawnRes.spawned, skippedInvalid);
+    }
+
+    private SoulInstance repositoryGetSoulSafe(UUID soulId) {
+        try { return repository.getSoul(soulId); } catch (SQLException e) { return null; }
+    }
+
+    private boolean hasEnoughAuraMana(Player player, double cost) {
+        if (cost <= 0.0) return true;
+        try {
+            if (!soulConfig().isCastManaEnabled()) return true;
+            if (plugin.getServer().getPluginManager().getPlugin("AuraSkills") == null) {
+                return plugin.getSummonConfig() == null || plugin.getSummonConfig().isManaAllowWhenAuraSkillsMissing();
+            }
+            Class<?> apiClass = Class.forName("dev.aurelium.auraskills.api.AuraSkillsApi");
+            Object api = apiClass.getMethod("get").invoke(null);
+            if (api == null) return plugin.getSummonConfig() == null || plugin.getSummonConfig().isManaAllowWhenAuraSkillsMissing();
+            Object user = apiClass.getMethod("getUser", UUID.class).invoke(api, player.getUniqueId());
+            if (user == null) return plugin.getSummonConfig() == null || plugin.getSummonConfig().isManaAllowWhenAuraSkillsMissing();
+            try {
+                Object loaded = user.getClass().getMethod("isLoaded").invoke(user);
+                if (loaded instanceof Boolean b && !b) return plugin.getSummonConfig() == null || plugin.getSummonConfig().isManaAllowWhenAuraSkillsMissing();
+            } catch (Throwable ignored) {}
+            double mana = ((Number) user.getClass().getMethod("getMana").invoke(user)).doubleValue();
+            return mana + 1.0e-9 >= cost;
+        } catch (Throwable t) {
+            return plugin.getSummonConfig() == null || plugin.getSummonConfig().isManaAllowWhenAuraSkillsMissing();
+        }
     }
 
     public boolean toggleFavorite(UUID owner, SoulInstance soul) {
@@ -874,7 +1096,6 @@ public class SoulService {
                 .append(" §c").append(String.format(java.util.Locale.ROOT, "%.2f", atk)).append(" ATK")
                 .append(" §b").append(String.format(java.util.Locale.ROOT, "%.2f", mv)).append(" bps")
                 .append(" §a").append(String.format(java.util.Locale.ROOT, "%.2f", aps)).append(" APS\n");
-        sb.append("§7Summons: §f").append(effectiveGroupCapacity(s)).append(" §7(base ").append(Math.max(1, s.getGroupCapacity())).append(")\n");
         sb.append("§7Enhancement: §fLv ").append(Math.max(0, s.getEnhanceLevel())).append("\n");
         sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().displayName() : "-")
                 .append(" §7Flags: ").append(s.isFavorite() ? "§e[Fav]" : "§7-").append("\n");
@@ -1090,8 +1311,8 @@ public class SoulService {
     }
 
     /**
-     * Breakdown of spawned max health (full soul stat, pre group-division): [baseIncludingOwner, affixBonus(VIGOROUS), ownerBonus, total].
-     * Used for display/tooltips; actual per-minion health is divided across intended group size at spawn.
+     * Breakdown of spawned max health (full effective per-summon): [baseIncludingOwner, affixBonus(VIGOROUS), ownerBonus, total].
+     * Team/loadout: no group division at spawn.
      */
     public double[] computeSpawnedMaxHealthBreakdown(UUID ownerId, SoulInstance soul) {
         if (soul == null) return new double[]{0, 0, 0, 0};
@@ -1138,83 +1359,16 @@ public class SoulService {
         return b[3];
     }
 
+    /**
+     * Quick team activation (Soul Focus): activate/recall the selected team.
+     * Team/loadout overhaul replaces legacy selected-soul casting.
+     */
     public CastAttempt castSelected(Player player) {
         if (player == null) return CastAttempt.of(CastResult.NO_PLAYER);
-        SoulConfig cfg = soulConfig();
-        if (cfg == null || !cfg.isEnabled()) return CastAttempt.of(CastResult.DISABLED);
-        var summonCfg = plugin.getSummonConfig();
-        var summonMgr = plugin.getSummonManager();
-        if (summonCfg == null || summonMgr == null || !summonCfg.isEnabled()) return CastAttempt.of(CastResult.NO_SYSTEM);
-
-        SoulInstance soul = getSelectedSoul(player.getUniqueId());
-        if (soul == null) {
-            player.sendMessage("§cNo soul selected. Use /gloved soul menu or /gloved soul select/equip.");
-            return CastAttempt.of(CastResult.NO_SELECTED_SOUL);
-        }
-
-        // SoulId-exclusive toggle/hotswap: one active soul instance group per owner.
-        var tracker = plugin.getSummonTracker();
-        java.util.UUID selectedId = soul.getSoulId();
-        java.util.UUID activeSoulId = summonMgr.getActiveSoulId(player.getUniqueId());
-        boolean hasActive = false;
-        try { hasActive = tracker != null && !tracker.getActiveMinions(player.getUniqueId()).isEmpty(); } catch (Throwable ignored) {}
-
-        if (selectedId != null && selectedId.equals(activeSoulId)) {
-            // Same selected soul active -> recall/toggle off (no mana, no cooldown)
-            int recalled = summonMgr.recallAll(player);
-            debug("Recalled soul " + shortId(soul) + " by " + player.getName() + " recalled=" + recalled);
-            return new CastAttempt(CastResult.RECALLED, 0, selectedId.toString());
-        }
-
-        // Validate selected soul before hotswap recall so we don't recall if cast cannot proceed.
-        if (!cfg.isAllowed(soul.getEntityType())) {
-            player.sendMessage("§cThat soul type is not currently allowed.");
-            return CastAttempt.of(CastResult.NOT_ALLOWED);
-        }
-        SummonProfile profile = summonCfg.getProfile(soul.getEntityType());
-        if (profile == null) {
-            player.sendMessage("§cCould not resolve summon template for " + soul.getFamilyKey() + ".");
-            return CastAttempt.of(CastResult.NOT_ALLOWED);
-        }
-
-        long rem = summonMgr.getSoulCastCooldownRemainingMs(player.getUniqueId());
-        int cdTicks = computeCastCooldownTicks(soul, cfg);
-        if (cdTicks > 0 && rem > 0) {
-            player.sendMessage("§cSoul cast on cooldown: §f" + String.format(java.util.Locale.ROOT, "%.1fs", rem / 1000.0));
-            return CastAttempt.of(CastResult.ON_COOLDOWN, String.valueOf(rem));
-        }
-
-        double manaCost = computeCastManaCost(soul, cfg);
-        boolean manaActive = cfg.isCastManaEnabled() && manaCost > 0.0
-                && summonCfg != null && summonCfg.isManaEnabled();
-        if (manaActive && !summonMgr.tryConsumeSoulCastMana(player, manaCost)) {
-            player.sendMessage("§cNot enough mana to cast this soul. §7(" + String.format(java.util.Locale.ROOT, "%.1f", manaCost) + ")");
-            return CastAttempt.of(CastResult.NO_MANA);
-        }
-
-        // Different active soul (or mixed/legacy active state) -> hotswap recall, then cast selected soul.
-        if (hasActive) {
-            int recalled = summonMgr.recallAll(player);
-            debug("Hotswap recall for " + player.getName() + " recalled=" + recalled + " before casting " + shortId(soul));
-        }
-
-        int spawned = summonMgr.spawnSoulGroupToCap(player, profile, soul, null);
-        if (spawned <= 0) {
-            player.sendMessage("§eCannot summon now (spawn blocked).");
-            return CastAttempt.of(CastResult.CAPPED);
-        }
-
-        if (cdTicks > 0) {
-            summonMgr.setSoulCastCooldown(player.getUniqueId(), cdTicks * 50L);
-        }
-        try {
-            var prog = plugin.getSummonProgression();
-            if (prog != null) prog.onSoulCast(player, soul.getFamilyKey());
-        } catch (Throwable ignored) {}
-
-        debug("Cast soul " + shortId(soul) + " by " + player.getName() + " family=" + soul.getFamilyKey() + " rarity=" + soul.getRarity()
-                + " mana=" + manaCost + " manaActive=" + manaActive + " cdTicks=" + cdTicks + " spawned=" + spawned);
-        return CastAttempt.ok(spawned);
+        int team = getSelectedTeam(player.getUniqueId());
+        TeamActivationResult res = activateTeam(player, team);
+        if (res == null) return CastAttempt.of(CastResult.FAILED);
+        return new CastAttempt(res.result(), res.spawned(), res.detail());
     }
 
     public static String describe(SoulInstance s) {

@@ -55,14 +55,24 @@ public class SoulVaultInv implements InventoryHolder {
     private final SoulRarity filterRarity;
     private final String sortMode;
     private final List<SoulInstance> pageSouls;
+    // Team slot assignment picker context (null = legacy/browse mode)
+    private final Integer pickerTeam;
+    private final Integer pickerSlot;
 
     public SoulVaultInv(GlovedPlugin plugin, UUID viewerId, int page, String filterType, SoulRarity filterRarity, String sortMode) {
+        this(plugin, viewerId, page, filterType, filterRarity, sortMode, null, null);
+    }
+
+    public SoulVaultInv(GlovedPlugin plugin, UUID viewerId, int page, String filterType, SoulRarity filterRarity, String sortMode,
+                        Integer pickerTeam, Integer pickerSlot) {
         this.plugin = plugin;
         this.viewerId = viewerId;
         this.page = Math.max(0, page);
         this.filterType = filterType;
         this.filterRarity = filterRarity;
         this.sortMode = sortMode == null ? "default" : sortMode;
+        this.pickerTeam = pickerTeam;
+        this.pickerSlot = pickerSlot;
         this.pageSouls = loadPage();
     }
 
@@ -79,6 +89,9 @@ public class SoulVaultInv implements InventoryHolder {
     public String getFilterType() { return filterType; }
     public SoulRarity getFilterRarity() { return filterRarity; }
     public String getSortMode() { return sortMode; }
+    public Integer getPickerTeam() { return pickerTeam; }
+    public Integer getPickerSlot() { return pickerSlot; }
+    public boolean isPickerMode() { return pickerTeam != null && pickerSlot != null; }
 
     private List<SoulInstance> loadPage() {
         SoulService svc = plugin.getSoulService();
@@ -114,7 +127,12 @@ public class SoulVaultInv implements InventoryHolder {
         var st = svc != null ? svc.getState(viewerId) : null;
         int cap = st != null ? st.vaultCapacity() : 0;
         int essence = st != null ? st.essence() : 0;
-        String title = TITLE_PREFIX + " (" + (page + 1) + ") " + total + "/" + cap;
+        String title;
+        if (isPickerMode()) {
+            title = "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1) + " (" + (page + 1) + ")";
+        } else {
+            title = TITLE_PREFIX + " (" + (page + 1) + ") " + total + "/" + cap;
+        }
         Inventory inv = Bukkit.createInventory(this, 54, LegacyComponentSerializer.legacySection().deserialize("§5" + title));
 
         for (int i = 0; i < pageSouls.size() && i < 45; i++) {
@@ -128,8 +146,13 @@ public class SoulVaultInv implements InventoryHolder {
         inv.setItem(47, navItem(Material.PAPER, "§bFilter: " + (filterType == null || filterType.isBlank() ? "ALL" : filterType), "filter"));
         inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity"));
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort"));
-        inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close"));
-        inv.setItem(52, combatModeItem());
+        if (isPickerMode()) {
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back"));
+            inv.setItem(52, navItem(Material.BARRIER, "§cClear Slot", "clear_slot"));
+        } else {
+            inv.setItem(51, navItem(Material.BARRIER, "§cClose", "close"));
+            inv.setItem(52, combatModeItem());
+        }
 
         // help
         ItemStack help = new ItemStack(Material.BOOK);
@@ -233,9 +256,14 @@ public class SoulVaultInv implements InventoryHolder {
             String flags = (soul.isFavorite() ? "§e★ Fav " : "");
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Equip/Select  §bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§eSneak + Left Click§7 Toggle favorite").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§bDrop§7 Extract item  §cSprint + Drop§7 Salvage").decoration(TextDecoration.ITALIC, false));
+            if (isPickerMode()) {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Assign to Team " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
+            } else {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Equip/Select  §bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§eSneak + Left Click§7 Toggle favorite").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§bDrop§7 Extract item  §cSprint + Drop§7 Salvage").decoration(TextDecoration.ITALIC, false));
+            }
             meta.lore(lore);
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             meta.getPersistentDataContainer().set(soulIdKey(plugin), PersistentDataType.STRING, soul.getSoulId().toString());

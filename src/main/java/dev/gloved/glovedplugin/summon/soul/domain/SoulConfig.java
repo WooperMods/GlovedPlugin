@@ -58,10 +58,18 @@ public final class SoulConfig {
     private final EnumMap<SoulRarity, Integer> essenceValues = new EnumMap<>(SoulRarity.class);
     private double essenceOverflowMultiplier = 1.0;
 
-    // loadout/selection
+    // loadout/selection (legacy soul-loadout selection; team/loadout system is primary for summoning)
     private int loadoutBaseSlots = 1;
     private int loadoutLevelsPerSlot = 10;
     private int loadoutMaxSlots = 5;
+
+    // team/loadout system (soul team overhaul)
+    private boolean teamsEnabled = true;
+    private int teamCount = 3;
+    private int teamSlotsPerTeam = 4;
+    private boolean teamsAllowSameSoulInMultipleTeams = true;
+    private boolean teamsAllowDuplicateSoulInSameTeam = false;
+    private boolean teamsSkipInvalidSlotsOnActivate = true;
 
     // cast
     private int castSharedGcdTicks = 40;
@@ -69,6 +77,12 @@ public final class SoulConfig {
     private boolean castManaEnabled = true;
     private double castBaseManaCost = 12.0;
     private boolean replaceIfCapped = false;
+    // Team activation defaults: fast recovery (no GCD, recall free/instant, mana configurable on activate/hotswap)
+    private double castActivateManaCost = 0.0;
+    private int castActivateCooldownTicks = 0;
+    private int castHotswapCooldownTicks = 0;
+    private int castRecallCooldownTicks = 0;
+    private boolean castFreeRecall = true;
 
     // caps
     private int globalMaxActiveBase = 2;
@@ -239,6 +253,16 @@ public final class SoulConfig {
             cfg.essenceOverflowMultiplier = cfg.vaultOverflowMultiplier;
         }
 
+        ConfigurationSection teams = s.getConfigurationSection("teams");
+        if (teams != null) {
+            cfg.teamsEnabled = teams.getBoolean("enabled", true);
+            cfg.teamCount = Math.max(1, teams.getInt("count", 3));
+            cfg.teamSlotsPerTeam = Math.max(1, teams.getInt("slots-per-team", 4));
+            cfg.teamsAllowSameSoulInMultipleTeams = teams.getBoolean("allow-same-soul-in-multiple-teams", true);
+            cfg.teamsAllowDuplicateSoulInSameTeam = teams.getBoolean("allow-duplicate-soul-in-same-team", false);
+            cfg.teamsSkipInvalidSlotsOnActivate = teams.getBoolean("skip-invalid-slots-on-activate", true);
+        }
+
         ConfigurationSection cast = s.getConfigurationSection("cast");
         if (cast != null) {
             cfg.castSharedGcdTicks = Math.max(0, cast.getInt("shared-gcd-ticks", 40));
@@ -247,6 +271,11 @@ public final class SoulConfig {
             cfg.castBaseManaCost = Math.max(0.0, cast.getDouble("base-mana-cost", 12.0));
             String rp = cast.getString("replace-policy", "BLOCK_IF_CAPPED");
             cfg.replaceIfCapped = rp != null && rp.toUpperCase(Locale.ROOT).contains("REPLACE");
+            cfg.castActivateManaCost = Math.max(0.0, cast.getDouble("activate-mana-cost", 0.0));
+            cfg.castActivateCooldownTicks = Math.max(0, cast.getInt("activate-cooldown-ticks", 0));
+            cfg.castHotswapCooldownTicks = Math.max(0, cast.getInt("hotswap-cooldown-ticks", 0));
+            cfg.castRecallCooldownTicks = Math.max(0, cast.getInt("recall-cooldown-ticks", 0));
+            cfg.castFreeRecall = cast.getBoolean("free-recall", true);
         }
 
         ConfigurationSection caps = s.getConfigurationSection("caps");
@@ -327,11 +356,22 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.essence.values.LEGENDARY", 42);
         setIfMissing(cfg, "souls.essence.values.MYTHIC", 95);
         setIfMissing(cfg, "souls.essence.overflow-multiplier", 1.0);
+        setIfMissing(cfg, "souls.teams.enabled", true);
+        setIfMissing(cfg, "souls.teams.count", 3);
+        setIfMissing(cfg, "souls.teams.slots-per-team", 4);
+        setIfMissing(cfg, "souls.teams.allow-same-soul-in-multiple-teams", true);
+        setIfMissing(cfg, "souls.teams.allow-duplicate-soul-in-same-team", false);
+        setIfMissing(cfg, "souls.teams.skip-invalid-slots-on-activate", true);
         setIfMissing(cfg, "souls.cast.shared-gcd-ticks", 0);
         setIfMissing(cfg, "souls.cast.base-cooldown-ticks", 0);
         setIfMissing(cfg, "souls.cast.mana-enabled", true);
         setIfMissing(cfg, "souls.cast.base-mana-cost", 12.0);
         setIfMissing(cfg, "souls.cast.replace-policy", "BLOCK_IF_CAPPED");
+        setIfMissing(cfg, "souls.cast.activate-mana-cost", 0.0);
+        setIfMissing(cfg, "souls.cast.activate-cooldown-ticks", 0);
+        setIfMissing(cfg, "souls.cast.hotswap-cooldown-ticks", 0);
+        setIfMissing(cfg, "souls.cast.recall-cooldown-ticks", 0);
+        setIfMissing(cfg, "souls.cast.free-recall", true);
         setIfMissing(cfg, "souls.caps.global-max-active-base", 2);
         setIfMissing(cfg, "souls.caps.global-max-active-per-level", 0.15);
         setIfMissing(cfg, "souls.caps.global-max-active-max", 8);
@@ -446,6 +486,21 @@ public final class SoulConfig {
     public boolean isCastManaEnabled() { return castManaEnabled; }
     public double getCastBaseManaCost() { return castBaseManaCost; }
     public boolean isReplaceIfCapped() { return replaceIfCapped; }
+
+    // Team/loadout config
+    public boolean isTeamsEnabled() { return teamsEnabled; }
+    public int getTeamCount() { return Math.max(1, teamCount); }
+    public int getTeamSlotsPerTeam() { return Math.max(1, teamSlotsPerTeam); }
+    public boolean isTeamsAllowSameSoulInMultipleTeams() { return teamsAllowSameSoulInMultipleTeams; }
+    public boolean isTeamsAllowDuplicateSoulInSameTeam() { return teamsAllowDuplicateSoulInSameTeam; }
+    public boolean isTeamsSkipInvalidSlotsOnActivate() { return teamsSkipInvalidSlotsOnActivate; }
+
+    // Team activation/cast config
+    public double getCastActivateManaCost() { return Math.max(0.0, castActivateManaCost); }
+    public int getCastActivateCooldownTicks() { return Math.max(0, castActivateCooldownTicks); }
+    public int getCastHotswapCooldownTicks() { return Math.max(0, castHotswapCooldownTicks); }
+    public int getCastRecallCooldownTicks() { return Math.max(0, castRecallCooldownTicks); }
+    public boolean isCastFreeRecall() { return castFreeRecall; }
     public String getNametagFormat() { return nametagFormat; }
     public boolean isNametagEnabled() { return nametagEnabled; }
     public Map<SoulRarity, Integer> getRarityWeights() { return Collections.unmodifiableMap(rarityWeights); }

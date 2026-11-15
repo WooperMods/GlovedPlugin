@@ -36,7 +36,6 @@ public class SummonAbilityIndicator implements Listener {
                     SoulService souls = plugin.getSoulService();
                     if (souls == null) return;
                     SummonManager mgr = plugin.getSummonManager();
-                    SummonInstanceTracker tracker = plugin.getSummonTracker();
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         if (p == null || !p.isOnline()) continue;
                         // Only show while holding the Soul Focus
@@ -44,39 +43,35 @@ public class SummonAbilityIndicator implements Listener {
                                 && !SoulItem.isSoulItem(p.getInventory().getItemInOffHand())) {
                             continue;
                         }
-                        SoulInstance sel = souls.getSelectedSoul(p.getUniqueId());
-                        if (sel == null) continue;
-                        SoulConfig scfg = souls.soulConfig();
-                        String base = "§dSoul§7: §f" + SoulService.describe(sel);
-                        String status = "§aReady";
+                        int selectedTeam = 1;
+                        try { selectedTeam = souls.getSelectedTeam(p.getUniqueId()); } catch (Throwable ignored) {}
+                        int activeTeam = -1;
+                        boolean hasActive = false;
                         try {
                             if (mgr != null) {
-                                long rem = mgr.getSoulCastCooldownRemainingMs(p.getUniqueId());
-                                if (rem > 0) {
-                                    status = "§cCD " + String.format(Locale.ROOT, "%.1fs", rem / 1000.0);
-                                } else {
-                                    boolean activeSameSoul = false;
-                                    try {
-                                        if (tracker != null && sel.getSoulId() != null) {
-                                            java.util.UUID activeSoulId = mgr.getActiveSoulId(p.getUniqueId());
-                                            activeSameSoul = sel.getSoulId().equals(activeSoulId);
-                                        }
-                                    } catch (Throwable ignored) {}
-                                    if (activeSameSoul) {
-                                        status = "§eRecall";
-                                    } else {
-                                        double manaCost = souls.computeCastManaCost(sel, scfg);
-                                        boolean manaOn = scfg != null && scfg.isCastManaEnabled() && manaCost > 0.0
-                                                && config != null && config.isManaEnabled();
-                                        if (manaOn) {
-                                            status = "§aReady §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
-                                        } else {
-                                            status = "§aReady";
-                                        }
-                                    }
-                                }
+                                activeTeam = mgr.getActiveTeamIndex(p.getUniqueId());
+                                hasActive = mgr.hasActiveTeamSummons(p.getUniqueId());
                             }
                         } catch (Throwable ignored) {}
+                        String status;
+                        if (hasActive && activeTeam == selectedTeam) {
+                            status = "§eRecall";
+                        } else if (hasActive) {
+                            status = "§bHotswap";
+                        } else {
+                            status = "§aReady";
+                        }
+                        SoulConfig scfg = souls.soulConfig();
+                        try {
+                            double manaCost = scfg != null ? scfg.getCastActivateManaCost() : 0.0;
+                            boolean manaOn = scfg != null && scfg.isCastManaEnabled() && manaCost > 0.0
+                                    && config != null && config.isManaEnabled();
+                            if (manaOn && !(hasActive && activeTeam == selectedTeam)) {
+                                status += " §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
+                            }
+                        } catch (Throwable ignored) {}
+                        String base = "§dSoul Teams§7: §fSelected " + selectedTeam;
+                        if (hasActive) base += " §7| Active " + (activeTeam > 0 ? activeTeam : "?");
                         try {
                             p.sendActionBar(Component.text(base + " §8| " + status));
                         } catch (Throwable ignored) {}

@@ -55,8 +55,9 @@ public final class SoulGenerator {
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
         boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
         String typeKey = type != null ? type.name() : null;
-        int groupCapacity = rollBaseGroupCapacity(rarity, cat, typeKey, cfg);
-        boolean allowCapacityAffix = canRollCapacityAffix(rarity, groupCapacity, typeKey, cfg);
+        // Team/loadout overhaul: summons count/group capacity retired from gameplay (compat value only).
+        int groupCapacity = 1;
+        boolean allowCapacityAffix = false;
         List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCapacityAffix, allowCommander);
         dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext traitCtx =
                 new dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext(
@@ -153,32 +154,25 @@ public final class SoulGenerator {
         return rollAffixesForRarity(rarity, cfg, null, type);
     }
 
-    /** Rerolls the affix list for a rarity, optionally excluding Duration/Count/Commander based on config and soul type. */
+    /** Rerolls the affix list for a rarity, optionally excluding Duration/Commander based on config and soul type. */
     public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg,
                                                            dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
                                                            EntityType type) {
         if (rarity == null) return List.of();
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
         boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
-        // Without rolled group capacity context we can only exclude hard per-type override == 1.
-        boolean allowCount = !hasHardCountCapOfOne(cfg, type);
+        // Team/loadout overhaul: Summons count (CAPACITY) retired from gameplay.
+        boolean allowCount = false;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
     }
 
-    /** Rerolls affixes with full CAPACITY eligibility context (rolled group capacity known). */
+    /** Rerolls affixes (compat overload): CAPACITY/summons-count affix retired by team/loadout overhaul. */
     public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg,
                                                            dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
                                                            EntityType type, int rolledGroupCapacity) {
-        if (rarity == null) return List.of();
-        boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
-        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
-        String typeKey = type != null ? type.name() : null;
-        boolean allowCount = canRollCapacityAffix(rarity, rolledGroupCapacity, typeKey, cfg);
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
-        int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
-        return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
+        return rollAffixesForRarity(rarity, cfg, summonCfg, type);
     }
 
     /** Rerolls the affix list for a rarity, optionally excluding the Duration (ENDURING) affix. */

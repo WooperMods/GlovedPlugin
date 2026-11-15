@@ -39,6 +39,7 @@ import dev.gloved.glovedplugin.summon.soul.item.SoulItem;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableScreen;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableUiRouter;
+import dev.gloved.glovedplugin.summon.soul.ui.SoulTeamsInv;
 import dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv;
 
 /**
@@ -94,6 +95,10 @@ public class MenuHandler implements Listener {
             handleSoulVaultClick(event, vault, player);
             return;
         }
+        if (event.getView().getTopInventory().getHolder() instanceof SoulTeamsInv teams) {
+            handleSoulTeamsClick(event, teams, player);
+            return;
+        }
         if (SoulTableUiRouter.handleClick(event, player)) {
             return;
         }
@@ -128,9 +133,18 @@ public class MenuHandler implements Listener {
         } catch (Throwable ignored) {}
         if (nav != null) {
             switch (nav) {
-                case "prev" -> new SoulVaultInv(plugin, player.getUniqueId(), Math.max(0, vault.getPage() - 1), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
-                case "next" -> new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage() + 1, vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                case "prev" -> new SoulVaultInv(plugin, player.getUniqueId(), Math.max(0, vault.getPage() - 1), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
+                case "next" -> new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage() + 1, vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                 case "close" -> player.closeInventory();
+                case "back" -> new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                case "clear_slot" -> {
+                    if (vault.isPickerMode() && svc != null) {
+                        svc.clearTeamSlot(player.getUniqueId(), vault.getPickerTeam(), vault.getPickerSlot());
+                        player.sendMessage(Component.text("§d[Souls] §7Cleared Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
+                        try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                    }
+                    new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                }
                 case "sort" -> {
                     String next = switch (vault.getSortMode().toLowerCase(java.util.Locale.ROOT)) {
                         case "default" -> "quality";
@@ -139,7 +153,7 @@ public class MenuHandler implements Listener {
                         case "type", "family" -> "recent";
                         default -> "default";
                     };
-                    new SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), vault.getFilterRarity(), next).open(player);
+                    new SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), vault.getFilterRarity(), next, vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                 }
                 case "rarity" -> {
                     SoulRarity cur = vault.getFilterRarity();
@@ -150,22 +164,23 @@ public class MenuHandler implements Listener {
                         int i = (cur.ordinal() + 1) % (vals.length + 1);
                         if (i < vals.length) next = vals[i];
                     }
-                    new SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), next, vault.getSortMode()).open(player);
+                    new SoulVaultInv(plugin, player.getUniqueId(), 0, vault.getFilterType(), next, vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                 }
                 case "filter" -> {
-                    // simple cycle: ALL -> player's recent families in page/list not tracked; fall back to ALL/ZOMBIE/SKELETON/CREEPER/SPIDER common examples by cycling a small set
                     String[] presets = {null, "ZOMBIE", "SKELETON", "CREEPER", "SPIDER", "BEE", "IRON_GOLEM"};
                     String cur = vault.getFilterType();
                     int idx = 0;
                     for (int i = 0; i < presets.length; i++) if (java.util.Objects.equals(cur, presets[i]) || (cur != null && cur.equalsIgnoreCase(presets[i] == null ? "" : presets[i]))) { idx = i; break; }
                     String next = presets[(idx + 1) % presets.length];
-                    new SoulVaultInv(plugin, player.getUniqueId(), 0, next, vault.getFilterRarity(), vault.getSortMode()).open(player);
+                    new SoulVaultInv(plugin, player.getUniqueId(), 0, next, vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                 }
                 case "combat" -> {
-                    String next = svc.toggleSummonCombatMode(player.getUniqueId());
-                    String label = "DEFENSIVE".equalsIgnoreCase(next) ? "§eDefensive" : "§cAggressive";
-                    player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§d[Souls] §7Summon combat mode set to " + label + "§7."));
-                    new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+                    if (!vault.isPickerMode()) {
+                        String next = svc.toggleSummonCombatMode(player.getUniqueId());
+                        String label = "DEFENSIVE".equalsIgnoreCase(next) ? "§eDefensive" : "§cAggressive";
+                        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§d[Souls] §7Summon combat mode set to " + label + "§7."));
+                    }
+                    new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                 }
                 default -> {}
             }
@@ -182,7 +197,6 @@ public class MenuHandler implements Listener {
         java.util.UUID soulId;
         try { soulId = java.util.UUID.fromString(idStr); } catch (Exception e) { return; }
 
-        // debounce rapid clicks to prevent double salvage/extract races
         long now = System.currentTimeMillis();
         Long prev = lastVaultAction.get(player.getUniqueId());
         if (prev != null && now - prev < 200L) return;
@@ -191,10 +205,30 @@ public class MenuHandler implements Listener {
         SoulInstance soul = svc.getSoul(soulId);
         if (soul == null || !player.getUniqueId().equals(soul.getOwnerId())) return;
 
-        if (event.isShiftClick() && event.isLeftClick()) {
+        if (event.isShiftClick() && event.isLeftClick() && !vault.isPickerMode()) {
             boolean ok = svc.toggleFavorite(player.getUniqueId(), soul);
             if (ok) player.sendMessage(Component.text("Soul " + SoulService.shortId(soul) + (soul.isFavorite() ? " favorited." : " unfavorited.")));
-            new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
+            new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
+            return;
+        }
+
+        if (vault.isPickerMode()) {
+            if (event.getClick() == org.bukkit.event.inventory.ClickType.RIGHT) {
+                for (String line : svc.inspect(player.getUniqueId(), soul).split("\n")) player.sendMessage(Component.text(line));
+                return;
+            }
+            if (event.getClick() == org.bukkit.event.inventory.ClickType.LEFT) {
+                boolean ok = svc.setTeamSlot(player.getUniqueId(), vault.getPickerTeam(), vault.getPickerSlot(), soul.getSoulId());
+                if (!ok) {
+                    player.sendMessage(Component.text("§c[Souls] Cannot assign that soul to Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + " (duplicate in same team or invalid)."));
+                    new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
+                    return;
+                }
+                svc.setSelectedTeam(player.getUniqueId(), vault.getPickerTeam());
+                player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
+                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+            }
             return;
         }
 
@@ -203,11 +237,11 @@ public class MenuHandler implements Listener {
                 var res = svc.salvage(player.getUniqueId(), soul);
                 if (res.ok()) player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§d[Soul] §7Salvaged " + SoulService.describe(soul) + " → §b+" + res.essenceGained() + " Essence"));
                 else player.sendMessage(LegacyComponentSerializer.legacySection().deserialize("§c[Soul] Cannot salvage: " + res.reason()));
+                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                 new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                 return;
             }
             case DROP -> {
-                // Deduplication: remove any existing physical copies of this soul (vault authoritative)
                 try {
                     java.util.UUID soulUuid = soul.getSoulId();
                     org.bukkit.inventory.Inventory inv = player.getInventory();
@@ -215,32 +249,15 @@ public class MenuHandler implements Listener {
                         org.bukkit.inventory.ItemStack is = inv.getItem(i);
                         if (is != null && SoulDropItem.isSoulDrop(plugin, is)) {
                             SoulInstance s = SoulDropItem.readSoul(plugin, is);
-                            if (s != null && s.getSoulId().equals(soulUuid)) {
-                                inv.setItem(i, null);
-                            }
+                            if (s != null && s.getSoulId().equals(soulUuid)) inv.setItem(i, null);
                         }
                     }
                     org.bukkit.inventory.ItemStack off = player.getInventory().getItemInOffHand();
                     if (off != null && SoulDropItem.isSoulDrop(plugin, off)) {
                         SoulInstance s = SoulDropItem.readSoul(plugin, off);
-                        if (s != null && s.getSoulId().equals(soulUuid)) {
-                            player.getInventory().setItemInOffHand(null);
-                        }
-                    }
-                    for (org.bukkit.entity.Entity e : player.getNearbyEntities(32, 32, 32)) {
-                        if (e instanceof org.bukkit.entity.Item itemEnt) {
-                            org.bukkit.inventory.ItemStack is = itemEnt.getItemStack();
-                            if (is != null && SoulDropItem.isSoulDrop(plugin, is)) {
-                                SoulInstance s = SoulDropItem.readSoul(plugin, is);
-                                if (s != null && s.getSoulId().equals(soulUuid)) {
-                                    itemEnt.remove();
-                                }
-                            }
-                        }
+                        if (s != null && s.getSoulId().equals(soulUuid)) player.getInventory().setItemInOffHand(null);
                     }
                 } catch (Throwable ignored) {}
-                // Validate we can create the physical item BEFORE deleting the soul from the vault.
-                // If item creation throws, we must not lose the soul.
                 org.bukkit.inventory.ItemStack item;
                 try {
                     item = SoulDropItem.create(plugin, soul);
@@ -251,11 +268,9 @@ public class MenuHandler implements Listener {
                     }
                 } catch (Throwable t) {
                     player.sendMessage(Component.text("Cannot extract soul: item creation failed."));
-                    GlovedPlugin.logDebug("[Souls] Extract item creation failed for soul " + soul.getSoulId() + ": " + t);
                     new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                     return;
                 }
-
                 var res = svc.extractForItem(player.getUniqueId(), soul);
                 if (!res.ok()) {
                     player.sendMessage(Component.text("Cannot extract soul: " + res.reason()));
@@ -267,38 +282,113 @@ public class MenuHandler implements Listener {
                     for (org.bukkit.inventory.ItemStack it : leftover.values()) {
                         if (it == null || it.getType().isAir()) continue;
                         org.bukkit.entity.Item dropped = player.getWorld().dropItemNaturally(player.getLocation(), it);
-                        // tradeable: allow any player to pick up
                         try { dropped.setPickupDelay(10); } catch (Throwable ignored) {}
                         try { dropped.setGlowing(true); } catch (Throwable ignored) {}
-                        try {
-                            dropped.setCustomName(SoulDropItem.getDisplayName(soul));
-                            dropped.setCustomNameVisible(true);
-                        } catch (Throwable ignored) {}
+                        try { dropped.setCustomName(SoulDropItem.getDisplayName(soul)); dropped.setCustomNameVisible(true); } catch (Throwable ignored) {}
                     }
                     player.sendMessage(Component.text("Extracted " + SoulService.describe(soul) + " as a soul item (dropped at your feet; inventory full)."));
                 } else {
                     player.sendMessage(Component.text("Extracted " + SoulService.describe(soul) + " as a soul item."));
                 }
-                try { player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 0.8f, 1.1f); } catch (Throwable ignored) {}
+                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                 new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                 return;
             }
             case RIGHT -> {
-                for (String line : svc.inspect(soul).split("\n")) player.sendMessage(Component.text(line));
+                for (String line : svc.inspect(player.getUniqueId(), soul).split("\n")) player.sendMessage(Component.text(line));
                 return;
             }
             case LEFT -> {
-                var st = svc.getState(player.getUniqueId());
-                int slot = st != null ? st.selectedSlot() : 0;
-                boolean ok = svc.equipSoul(player.getUniqueId(), slot, soul) && svc.selectSlot(player.getUniqueId(), slot);
+                int team = svc.getSelectedTeam(player.getUniqueId());
+                int targetSlot = 0;
+                var teamSlots = svc.getTeam(player.getUniqueId(), team);
+                for (int i = 0; i < 4; i++) { if (!teamSlots.containsKey(i)) { targetSlot = i; break; } }
+                boolean ok = svc.setTeamSlot(player.getUniqueId(), team, targetSlot, soul.getSoulId());
                 if (ok) {
-                    player.sendMessage(Component.text("Equipped & selected " + SoulGenerator.describe(soul) + " in slot " + slot + "."));
-                    SoulItem.refresh(player, plugin);
+                    player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Team " + team + " slot " + (targetSlot + 1) + "."));
+                    try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                 } else {
-                    player.sendMessage(Component.text("Failed to equip/select soul."));
+                    player.sendMessage(Component.text("§c[Souls] Failed to assign soul (duplicate in same team or invalid)."));
                 }
                 new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode()).open(player);
                 return;
+            }
+            default -> {}
+        }
+    }
+
+    private void handleSoulTeamsClick(InventoryClickEvent event, SoulTeamsInv teams, Player player) {
+        event.setCancelled(true);
+        if (teams.getViewerId() != null && !teams.getViewerId().equals(player.getUniqueId())) {
+            player.closeInventory();
+            return;
+        }
+        int raw = event.getRawSlot();
+        if (raw < 0 || raw >= event.getView().getTopInventory().getSize()) return;
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir()) return;
+        var svc = plugin.getSoulService();
+        if (svc == null) return;
+
+        String nav = null;
+        Integer team = null;
+        Integer slot = null;
+        try {
+            var meta = clicked.getItemMeta();
+            if (meta != null) {
+                var pdc = meta.getPersistentDataContainer();
+                nav = pdc.get(SoulTeamsInv.navKey(plugin), org.bukkit.persistence.PersistentDataType.STRING);
+                if (pdc.has(SoulTeamsInv.teamKey(plugin), org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                    team = pdc.get(SoulTeamsInv.teamKey(plugin), org.bukkit.persistence.PersistentDataType.INTEGER);
+                }
+                if (pdc.has(SoulTeamsInv.slotKey(plugin), org.bukkit.persistence.PersistentDataType.INTEGER)) {
+                    slot = pdc.get(SoulTeamsInv.slotKey(plugin), org.bukkit.persistence.PersistentDataType.INTEGER);
+                }
+            }
+        } catch (Throwable ignored) {}
+        if (nav == null) return;
+
+        switch (nav) {
+            case "close" -> player.closeInventory();
+            case "help" -> {}
+            case "select_team" -> {
+                if (team != null) {
+                    svc.setSelectedTeam(player.getUniqueId(), team);
+                    try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                    new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                }
+            }
+            case "activate" -> {
+                if (team != null) {
+                    svc.activateTeam(player, team);
+                    try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                    new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                }
+            }
+            case "recall" -> {
+                svc.recallActiveTeam(player);
+                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+            }
+            case "slot" -> {
+                if (team == null || slot == null) return;
+                if (event.getClick() == org.bukkit.event.inventory.ClickType.RIGHT) {
+                    java.util.UUID existing = null;
+                    try {
+                        var teamSlots = svc.getTeam(player.getUniqueId(), team);
+                        existing = teamSlots != null ? teamSlots.get(slot) : null;
+                    } catch (Throwable ignored) {}
+                    if (existing == null) return;
+                    svc.clearTeamSlot(player.getUniqueId(), team, slot);
+                    player.sendMessage(Component.text("§d[Souls] §7Cleared Team " + team + " slot " + (slot + 1) + "."));
+                    try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+                    new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                    return;
+                }
+                if (event.getClick() == org.bukkit.event.inventory.ClickType.LEFT) {
+                    svc.setSelectedTeam(player.getUniqueId(), team);
+                    new SoulVaultInv(plugin, player.getUniqueId(), 0, null, null, "default", team, slot).open(player);
+                }
             }
             default -> {}
         }
@@ -590,6 +680,7 @@ public class MenuHandler implements Listener {
         int topSize = view.getTopInventory().getSize();
         if (view.getTopInventory().getHolder() instanceof MenuEditorInv
                 || view.getTopInventory().getHolder() instanceof SoulVaultInv
+                || view.getTopInventory().getHolder() instanceof SoulTeamsInv
                 || view.getTopInventory().getHolder() instanceof SoulTableScreen) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {

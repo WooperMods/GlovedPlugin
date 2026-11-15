@@ -148,12 +148,24 @@ souls:
       levels-per-slot: 10
       max-slots: 5
 
+  teams:
+    enabled: true
+    count: 3
+    slots-per-team: 4
+    allow-same-soul-in-multiple-teams: true
+    allow-duplicate-soul-in-same-team: false
+    skip-invalid-slots-on-activate: true
   cast:
     shared-gcd-ticks: 0
     base-cooldown-ticks: 0
     mana-enabled: true
     base-mana-cost: 12.0
     replace-policy: BLOCK_IF_CAPPED
+    activate-mana-cost: 0.0
+    activate-cooldown-ticks: 0
+    hotswap-cooldown-ticks: 0
+    recall-cooldown-ticks: 0
+    free-recall: true
 
   caps:
     global-max-active-base: 2

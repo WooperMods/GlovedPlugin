@@ -47,24 +47,34 @@ public final class SoulItem {
 
     private static java.util.List<Component> buildLore(Player player, GlovedPlugin plugin) {
         java.util.ArrayList<Component> lore = new java.util.ArrayList<>();
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aCast / Recall selected soul").decoration(TextDecoration.ITALIC, false));
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right-click: §bOpen Soul Vault").decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aQuick activate/recall selected team").decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right-click: §bOpen Soul Teams").decoration(TextDecoration.ITALIC, false));
         lore.add(Component.empty());
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Selected: " + selectedSoulText(player, plugin)).decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7" + teamStatusText(player, plugin)).decoration(TextDecoration.ITALIC, false));
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§8Bound to your soul collection").decoration(TextDecoration.ITALIC, false));
         return lore;
     }
 
-    private static String selectedSoulText(Player player, GlovedPlugin plugin) {
+    private static String teamStatusText(Player player, GlovedPlugin plugin) {
         try {
             GlovedPlugin gp = plugin != null ? plugin : JavaPlugin.getPlugin(GlovedPlugin.class);
-            if (player == null || gp == null || gp.getSoulService() == null) return "§7None";
-            SoulInstance soul = gp.getSoulService().getSelectedSoul(player.getUniqueId());
-            if (soul == null) return "§7None";
-            String sep = soul.getRarity() == SoulRarity.MYTHIC ? " §r§c" : " ";
-            return soul.getRarity().coloredNameLegacy() + sep + prettyMobName(soul.getFamilyKey()) + " Soul";
+            if (player == null || gp == null || gp.getSoulService() == null) return "Selected team: §71";
+            int selected = gp.getSoulService().getSelectedTeam(player.getUniqueId());
+            int active = -1;
+            boolean hasActive = false;
+            try {
+                if (gp.getSummonManager() != null) {
+                    active = gp.getSummonManager().getActiveTeamIndex(player.getUniqueId());
+                    hasActive = gp.getSummonManager().hasActiveTeamSummons(player.getUniqueId());
+                }
+            } catch (Throwable ignored) {}
+            String activeText;
+            if (!hasActive) activeText = "§7None";
+            else if (active > 0) activeText = "§aTeam " + active;
+            else activeText = "§eActive";
+            return "Selected team: §f" + selected + " §7| Active: " + activeText;
         } catch (Throwable ignored) {
-            return "§7None";
+            return "Selected team: §71 §7| Active: §7None";
         }
     }
 
@@ -127,8 +137,15 @@ public final class SoulItem {
         give(player, plugin);
     }
 
-    public static void openVault(GlovedPlugin plugin, Player player) {
+    /** Opens Teams view (soul team/loadout management). */
+    public static void openTeams(GlovedPlugin plugin, Player player) {
         if (plugin == null || player == null) return;
-        new SoulVaultInv(plugin, player.getUniqueId(), 0, null, null, "default").open(player);
+        new dev.gloved.glovedplugin.summon.soul.ui.SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+    }
+
+    /** @deprecated Use {@link #openTeams(GlovedPlugin, Player)}. Kept for compatibility. */
+    @Deprecated
+    public static void openVault(GlovedPlugin plugin, Player player) {
+        openTeams(plugin, player);
     }
 }

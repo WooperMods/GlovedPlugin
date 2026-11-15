@@ -158,10 +158,14 @@ public class SoulRepository {
                     String tableTab = "COMBINE";
                     try { tableTab = rs.getString("soul_table_tab"); } catch (SQLException ignored) {}
                     if (tableTab == null || tableTab.isBlank()) tableTab = "COMBINE";
+                    int selectedTeam = 1;
+                    try { selectedTeam = rs.getInt("selected_team"); } catch (SQLException ignored) {}
+                    if (selectedTeam < 1 || selectedTeam > 3) selectedTeam = 1;
                     return new PlayerSoulState(owner,
                             rs.getInt("essence"),
                             rs.getInt("vault_capacity"),
                             rs.getInt("selected_slot"),
+                            selectedTeam,
                             rs.getString("pity_json"),
                             mode,
                             tableTab);
@@ -169,20 +173,21 @@ public class SoulRepository {
             }
         }
         long now = System.currentTimeMillis();
-        String ins = "INSERT INTO soul_player_state (owner_uuid, essence, vault_capacity, pity_json, selected_slot, doctrine, updated_at, combat_mode, soul_table_tab) VALUES (?,?,?,?,?,?,?,?,?)";
+        String ins = "INSERT INTO soul_player_state (owner_uuid, essence, vault_capacity, pity_json, selected_slot, selected_team, doctrine, updated_at, combat_mode, soul_table_tab) VALUES (?,?,?,?,?,?,?,?,?,?)";
         try (PreparedStatement ps = conn().prepareStatement(ins)) {
             ps.setString(1, owner.toString());
             ps.setInt(2, 0);
             ps.setInt(3, Math.max(1, defaultCapacity));
             ps.setString(4, "{}");
             ps.setInt(5, 0);
-            ps.setString(6, null);
-            ps.setLong(7, now);
-            ps.setString(8, "AGGRESSIVE");
-            ps.setString(9, "COMBINE");
+            ps.setInt(6, 1);
+            ps.setString(7, null);
+            ps.setLong(8, now);
+            ps.setString(9, "AGGRESSIVE");
+            ps.setString(10, "COMBINE");
             ps.executeUpdate();
         }
-        return new PlayerSoulState(owner, 0, Math.max(1, defaultCapacity), 0, "{}", "AGGRESSIVE", "COMBINE");
+        return new PlayerSoulState(owner, 0, Math.max(1, defaultCapacity), 0, 1, "{}", "AGGRESSIVE", "COMBINE");
     }
 
     public synchronized void setCombatMode(UUID owner, String combatMode, int defaultCapacity) throws SQLException {
@@ -431,15 +436,198 @@ public class SoulRepository {
     }
 
     public synchronized void deleteSoul(UUID soulId) throws SQLException {
-        // remove from loadouts first
+        // remove from loadouts and team slots first
         try (PreparedStatement ps = conn().prepareStatement("DELETE FROM soul_loadouts WHERE soul_id = ?")) {
             ps.setString(1, soulId.toString());
+            ps.executeUpdate();
+        }
+        try (PreparedStatement ps = conn().prepareStatement("UPDATE soul_teams SET soul_id = NULL, updated_at = ? WHERE soul_id = ?")) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, soulId.toString());
             ps.executeUpdate();
         }
         try (PreparedStatement ps = conn().prepareStatement("DELETE FROM souls WHERE soul_id = ?")) {
             ps.setString(1, soulId.toString());
             ps.executeUpdate();
         }
+    }
+
+    // ---------- Team / loadout presets (soul team overhaul) ----------
+
+    public synchronized int getSelectedTeam(UUID owner, int defaultCapacity) throws SQLException {
+        PlayerSoulState st = getOrCreatePlayerState(owner, defaultCapacity);
+        int t = st.selectedTeam();
+        return (t >= 1 && t <= 3) ? t : 1;
+    }
+
+    public synchronized void setSelectedTeam(UUID owner, int selectedTeam, int defaultCapacity) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        int t = Math.max(1, Math.min(3, selectedTeam));
+        String upd = "UPDATE soul_player_state SET selected_team = ?, updated_at = ? WHERE owner_uuid = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setInt(1, t);
+            ps.setLong(2, System.currentTimeMillis());
+            ps.setString(3, owner.toString());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized boolean hasAnyTeamData(UUID owner) throws SQLException {
+        String sql = "SELECT 1 FROM soul_teams WHERE owner_uuid = ? LIMIT 1";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    public synchronized UUID getTeamSlotSoul(UUID owner, int teamIndex, int slotIndex) throws SQLException {
+        String sql = "SELECT soul_id FROM soul_teams WHERE owner_uuid = ? AND team_index = ? AND slot_index = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setInt(2, teamIndex);
+            ps.setInt(3, slotIndex);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                String s = rs.getString("soul_id");
+                if (s == null || s.isBlank()) return null;
+                try { return UUID.fromString(s); } catch (Exception ignored) { return null; }
+            }
+        }
+    }
+
+    public synchronized java.util.Map<Integer, UUID> getTeamSlots(UUID owner, int teamIndex) throws SQLException {
+        String sql = "SELECT slot_index, soul_id FROM soul_teams WHERE owner_uuid = ? AND team_index = ? ORDER BY slot_index ASC";
+        java.util.LinkedHashMap<Integer, UUID> out = new java.util.LinkedHashMap<>();
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setInt(2, teamIndex);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int slot = rs.getInt("slot_index");
+                    String sid = rs.getString("soul_id");
+                    if (sid == null || sid.isBlank()) continue;
+                    try { out.put(slot, UUID.fromString(sid)); } catch (Exception ignored) {}
+                }
+            }
+        }
+        return out;
+    }
+
+    public synchronized java.util.Map<Integer, java.util.Map<Integer, UUID>> listTeams(UUID owner) throws SQLException {
+        String sql = "SELECT team_index, slot_index, soul_id FROM soul_teams WHERE owner_uuid = ? ORDER BY team_index ASC, slot_index ASC";
+        java.util.LinkedHashMap<Integer, java.util.Map<Integer, UUID>> teams = new java.util.LinkedHashMap<>();
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int team = rs.getInt("team_index");
+                    int slot = rs.getInt("slot_index");
+                    String sid = rs.getString("soul_id");
+                    java.util.Map<Integer, UUID> slots = teams.computeIfAbsent(team, k -> new java.util.LinkedHashMap<>());
+                    if (sid == null || sid.isBlank()) continue;
+                    try { slots.put(slot, UUID.fromString(sid)); } catch (Exception ignored) {}
+                }
+            }
+        }
+        return teams;
+    }
+
+    public synchronized void setTeamSlot(UUID owner, int teamIndex, int slotIndex, UUID soulId) throws SQLException {
+        String sql = "INSERT INTO soul_teams (owner_uuid, team_index, slot_index, soul_id, updated_at) VALUES (?,?,?,?,?) " +
+                "ON CONFLICT(owner_uuid, team_index, slot_index) DO UPDATE SET soul_id=excluded.soul_id, updated_at=excluded.updated_at";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setInt(2, teamIndex);
+            ps.setInt(3, slotIndex);
+            if (soulId == null) ps.setNull(4, Types.VARCHAR); else ps.setString(4, soulId.toString());
+            ps.setLong(5, System.currentTimeMillis());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized void clearTeamSlot(UUID owner, int teamIndex, int slotIndex) throws SQLException {
+        setTeamSlot(owner, teamIndex, slotIndex, null);
+    }
+
+    public synchronized void clearTeam(UUID owner, int teamIndex) throws SQLException {
+        for (int slot = 0; slot < 4; slot++) {
+            setTeamSlot(owner, teamIndex, slot, null);
+        }
+    }
+
+    public synchronized void clearSoulFromAllTeams(UUID owner, UUID soulId) throws SQLException {
+        if (owner == null || soulId == null) return;
+        String sql = "UPDATE soul_teams SET soul_id = NULL, updated_at = ? WHERE owner_uuid = ? AND soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, owner.toString());
+            ps.setString(3, soulId.toString());
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized boolean isSoulAssignedToTeam(UUID owner, int teamIndex, UUID soulId, Integer excludingSlot) throws SQLException {
+        if (owner == null || soulId == null) return false;
+        String sql = "SELECT slot_index FROM soul_teams WHERE owner_uuid = ? AND team_index = ? AND soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, owner.toString());
+            ps.setInt(2, teamIndex);
+            ps.setString(3, soulId.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int slot = rs.getInt("slot_index");
+                    if (excludingSlot != null && slot == excludingSlot) continue;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public synchronized void ensureDefaultTeams(UUID owner) throws SQLException {
+        if (owner == null) return;
+        for (int team = 1; team <= 3; team++) {
+            for (int slot = 0; slot < 4; slot++) {
+                String sql = "INSERT OR IGNORE INTO soul_teams (owner_uuid, team_index, slot_index, soul_id, updated_at) VALUES (?,?,?,?,?)";
+                try (PreparedStatement ps = conn().prepareStatement(sql)) {
+                    ps.setString(1, owner.toString());
+                    ps.setInt(2, team);
+                    ps.setInt(3, slot);
+                    ps.setNull(4, Types.VARCHAR);
+                    ps.setLong(5, System.currentTimeMillis());
+                    ps.executeUpdate();
+                }
+            }
+        }
+    }
+
+    /** Idempotent migration: seed Team 1 from legacy loadouts/selected slot when no team data exists. */
+    public synchronized void seedDefaultTeamsFromLegacy(UUID owner, int defaultCapacity) throws SQLException {
+        if (owner == null) return;
+        getOrCreatePlayerState(owner, defaultCapacity);
+        if (hasAnyTeamData(owner)) return;
+        ensureDefaultTeams(owner);
+
+        PlayerSoulState st = getOrCreatePlayerState(owner, defaultCapacity);
+        int selectedSlot = Math.max(0, st.selectedSlot());
+        java.util.LinkedHashSet<UUID> ordered = new java.util.LinkedHashSet<>();
+        UUID selected = getLoadoutSoulId(owner, selectedSlot);
+        if (selected != null) ordered.add(selected);
+        for (java.util.Map.Entry<Integer, UUID> e : listLoadout(owner).entrySet()) {
+            if (e.getValue() != null) ordered.add(e.getValue());
+        }
+
+        int slot = 0;
+        for (UUID soulId : ordered) {
+            if (slot >= 4) break;
+            if (soulId == null) continue;
+            SoulInstance s = getSoul(soulId);
+            if (s == null || !owner.equals(s.getOwnerId())) continue;
+            setTeamSlot(owner, 1, slot++, soulId);
+        }
+        setSelectedTeam(owner, 1, defaultCapacity);
     }
 
     /**
@@ -851,6 +1039,6 @@ public class SoulRepository {
 
     private record AffixDto(String type, double value) {}
 
-    public record PlayerSoulState(UUID owner, int essence, int vaultCapacity, int selectedSlot, String pityJson, String combatMode, String soulTableTab) {}
+    public record PlayerSoulState(UUID owner, int essence, int vaultCapacity, int selectedSlot, int selectedTeam, String pityJson, String combatMode, String soulTableTab) {}
     public record CodexEntry(String familyKey, String highestRarity, int capturedCount) {}
 }

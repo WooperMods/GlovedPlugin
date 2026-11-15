@@ -79,6 +79,7 @@ public class SoulDatabase {
             );
             addPlayerStateColumnIfMissing(stmt, "combat_mode", "ALTER TABLE soul_player_state ADD COLUMN combat_mode TEXT NOT NULL DEFAULT 'AGGRESSIVE'");
             addPlayerStateColumnIfMissing(stmt, "soul_table_tab", "ALTER TABLE soul_player_state ADD COLUMN soul_table_tab TEXT NOT NULL DEFAULT 'COMBINE'");
+            addPlayerStateColumnIfMissing(stmt, "selected_team", "ALTER TABLE soul_player_state ADD COLUMN selected_team INTEGER NOT NULL DEFAULT 1");
 
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS soul_codex (" +
@@ -105,6 +106,20 @@ public class SoulDatabase {
             );
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_soul_tables_chunk ON soul_tables(world, x, z);");
             stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_soul_tables_pos ON soul_tables(world, x, y, z);");
+
+            // Team/loadout presets (soul team overhaul): one active team, 4 slots per team, 1 summon per slot.
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS soul_teams (" +
+                "owner_uuid TEXT NOT NULL," +
+                "team_index INTEGER NOT NULL," +
+                "slot_index INTEGER NOT NULL," +
+                "soul_id TEXT," +
+                "updated_at INTEGER NOT NULL," +
+                "PRIMARY KEY (owner_uuid, team_index, slot_index)" +
+                ");"
+            );
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_soul_teams_owner ON soul_teams(owner_uuid, team_index);");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_soul_teams_soul ON soul_teams(soul_id);");
         }
         plugin.getLogger().info("[Souls] SQLite database initialized (souls.db)");
     }

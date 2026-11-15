@@ -108,9 +108,8 @@ public final class SoulLoreBuilder {
         boolean showEnh = enhLevel > 0;
 
         SoulStatSnapshot snap = service != null ? service.getSnapshot(soul) : SoulStatSnapshot.fromSoul(soul);
-        int groupSize = Math.max(1, service != null ? service.effectiveGroupCapacity(soul) : soul.getGroupCapacity());
 
-        // HP breakdown: full soul stat (pre group-division). Runtime per-minion HP is divided on spawn.
+        // HP breakdown: full effective per-summon stat (team/loadout: no group division).
         String hpLine;
         double totalHp = service != null ? service.computeSpawnedMaxHealth(viewerId, soul) : enhancedBase.health();
         {
@@ -137,7 +136,7 @@ public final class SoulLoreBuilder {
 
         // DEF breakdown computed below in display order.
 
-        // ATK DMG: full soul stat (pre group-division). Runtime per-minion damage is divided on spawn/hit.
+        // ATK DMG: full effective per-summon stat (team/loadout: no group division).
         double avgDmg = service != null ? service.estimateAverageHitDamage(viewerId, soul) : enhancedBase.attackDamage();
         double baseAtk = enhancedBase.attackDamage();
         double preEnhAtk = preEnhBase.attackDamage();
@@ -238,29 +237,26 @@ public final class SoulLoreBuilder {
         out.add(line(atkSpdLine));
         out.add(line(moveLine));
 
-        // Summons (authoritative soul stat): base + enhancement milestones + Summons affix %, capped.
-        int effectiveCap = groupSize;
-        String capLine = "§7Summons §3" + effectiveCap;
-        if (service != null) {
-            int[] cb = service.computeGroupCapacityBreakdown(soul); // base, enhanceBonus, affixBonusCount, effective
-            double capPct = soul != null ? soul.affixValue(SoulAffixType.CAPACITY) : 0.0;
-            boolean hasEnh = cb[1] > 0;
-            boolean hasAffix = Math.abs(capPct) >= 0.00005;
-            boolean differs = cb[3] != cb[0] || hasEnh || hasAffix;
-            if (differs) {
-                int beforeAffix = Math.max(1, cb[0] + cb[1]);
-                int expected = (int) Math.floor(beforeAffix * (1.0 + Math.max(0.0, capPct)) + 1e-9);
-                if (capPct > 0.0 && expected == beforeAffix) expected = beforeAffix + 1;
-                boolean capped = cb[3] < expected;
-                String effColor = capped ? "§c" : "§3";
-                StringBuilder parts = new StringBuilder();
-                parts.append("§7").append(cb[0]);
-                if (hasEnh) parts.append("§8+§d").append(cb[1]);
-                if (hasAffix) parts.append("§8+§a").append(fmtPercent(capPct * 100.0));
-                capLine = "§7Summons " + effColor + cb[3] + " §8(" + parts + "§8)";
+        boolean hasAffixLines = false;
+        if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {
+            out.add(line("§8-"));
+            hasAffixLines = true;
+        } else {
+            for (SoulAffixRoll affix : soul.getAffixes()) {
+                if (affix == null) continue;
+                // Team/loadout overhaul: Summons count (CAPACITY) retired from gameplay/UI.
+                if (affix.type() == SoulAffixType.CAPACITY) continue;
+                String affixText = showAffixQuality
+                        ? SoulAffixType.format(soul.getRarity(), affix)
+                        : SoulAffixType.format(affix);
+                out.add(line("§a" + affixText));
+                hasAffixLines = true;
+            }
+            if (!hasAffixLines) {
+                out.add(line("§8-"));
+                hasAffixLines = true;
             }
         }
-        out.add(line(capLine));
 
         int level = soul.getEnhanceLevel();
         if (level > 0) {
@@ -268,18 +264,6 @@ public final class SoulLoreBuilder {
             double perLevel = tableCfg != null ? tableCfg.getEnhancePerLevelBonus() : 0.025;
             double bonus = perLevel * 100.0 * level;
             out.add(line("§dEnhancement §fLv " + level + " §8(§a+" + fmt(bonus, 1) + "%§8)"));
-        }
-
-        if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {
-            out.add(line("§8-"));
-        } else {
-            for (SoulAffixRoll affix : soul.getAffixes()) {
-                if (affix == null) continue;
-                String affixText = showAffixQuality
-                        ? SoulAffixType.format(soul.getRarity(), affix)
-                        : SoulAffixType.format(affix);
-                out.add(line("§a" + affixText));
-            }
         }
         return out;
     }

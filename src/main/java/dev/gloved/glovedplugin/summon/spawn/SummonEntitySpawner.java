@@ -68,6 +68,28 @@ public final class SummonEntitySpawner {
             int toSpawn,
             String successDebugPrefix
     ) {
+        return spawnConfiguredGroup(plugin, config, manager, tracker, combatService, player, profile, soul, target, baseSpawnLoc, toSpawn, successDebugPrefix, null, null);
+    }
+
+    /**
+     * Team-aware spawn path: tags summon_team_index / summon_team_slot when provided.
+     */
+    public static SpawnResult spawnConfiguredGroup(
+            GlovedPlugin plugin,
+            SummonConfig config,
+            SummonManager manager,
+            SummonInstanceTracker tracker,
+            SummonCombatService combatService,
+            Player player,
+            SummonProfile profile,
+            SoulInstance soul,
+            LivingEntity target,
+            Location baseSpawnLoc,
+            int toSpawn,
+            String successDebugPrefix,
+            Integer teamIndex,
+            Integer teamSlot
+    ) {
         List<UUID> spawned = new ArrayList<>();
         if (player == null || profile == null || toSpawn <= 0) {
             return new SpawnResult(0, spawned, baseSpawnLoc);
@@ -164,6 +186,12 @@ public final class SummonEntitySpawner {
             if (soul != null) {
                 NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
                 pdc.set(soulKey, PersistentDataType.STRING, soul.getSoulId().toString());
+            }
+            if (teamIndex != null) {
+                pdc.set(new NamespacedKey(plugin, "summon_team_index"), PersistentDataType.INTEGER, teamIndex);
+            }
+            if (teamSlot != null) {
+                pdc.set(new NamespacedKey(plugin, "summon_team_slot"), PersistentDataType.INTEGER, teamSlot);
             }
 
             if (soul != null) {

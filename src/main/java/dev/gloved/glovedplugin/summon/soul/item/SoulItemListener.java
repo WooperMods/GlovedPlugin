@@ -189,7 +189,7 @@ public class SoulItemListener implements Listener {
             Action a = event.getAction();
             if (a == Action.RIGHT_CLICK_AIR || a == Action.RIGHT_CLICK_BLOCK) {
                 event.setCancelled(true);
-                SoulItem.openVault(plugin, player);
+                SoulItem.openTeams(plugin, player);
                 return;
             }
             if (a == Action.LEFT_CLICK_AIR || a == Action.LEFT_CLICK_BLOCK) {
@@ -199,7 +199,9 @@ public class SoulItemListener implements Listener {
                     player.sendMessage("§cSoul system unavailable.");
                     return;
                 }
+                // Quick team activation/recall (selected team)
                 svc.castSelected(player);
+                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
             }
             return;
         }

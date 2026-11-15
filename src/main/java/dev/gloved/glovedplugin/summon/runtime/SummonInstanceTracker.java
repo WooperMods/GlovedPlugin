@@ -5,6 +5,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.*;
@@ -177,6 +178,35 @@ public class SummonInstanceTracker {
 
     public int getTrackedMinionCount() {
         return activeEntities.size();
+    }
+
+    /** Returns the active team index for the owner's tracked summons, or -1 if none/mixed/untracked. */
+    public int getActiveTeamIndex(UUID playerId) {
+        List<LivingEntity> mins = getActiveMinions(playerId);
+        if (mins.isEmpty()) return -1;
+        NamespacedKey teamKey = new NamespacedKey(plugin, "summon_team_index");
+        int found = -1;
+        for (LivingEntity le : mins) {
+            if (le == null || le.isDead()) continue;
+            Integer team = le.getPersistentDataContainer().get(teamKey, PersistentDataType.INTEGER);
+            if (team == null) return -1; // legacy/unmapped active summon state
+            if (found == -1) found = team;
+            else if (found != team) return -1;
+        }
+        return found;
+    }
+
+    public boolean hasActiveTeamSummons(UUID playerId, int teamIndex) {
+        if (teamIndex <= 0) return false;
+        List<LivingEntity> mins = getActiveMinions(playerId);
+        if (mins.isEmpty()) return false;
+        NamespacedKey teamKey = new NamespacedKey(plugin, "summon_team_index");
+        for (LivingEntity le : mins) {
+            if (le == null || le.isDead()) continue;
+            Integer t = le.getPersistentDataContainer().get(teamKey, PersistentDataType.INTEGER);
+            if (t != null && t == teamIndex) return true;
+        }
+        return false;
     }
 
     public void removeAllForPlayer(UUID playerId) {
