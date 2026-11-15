@@ -29,9 +29,11 @@ import dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv;
 
 public class SoulItemListener implements Listener {
     private static final long CONDENSE_REDEEM_ACCUM_WINDOW_MS = 1200L;
+    private static final long SOUL_FOCUS_CAST_DEBOUNCE_MS = 250L;
 
     private final GlovedPlugin plugin;
     private final Map<UUID, RedeemAccum> condensedRedeemAccum = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastSoulFocusCastAt = new ConcurrentHashMap<>();
 
     private record RedeemAccum(long lastAtMs, int amount) {}
 
@@ -194,6 +196,11 @@ public class SoulItemListener implements Listener {
             }
             if (a == Action.LEFT_CLICK_AIR || a == Action.LEFT_CLICK_BLOCK) {
                 event.setCancelled(true);
+                long now = System.currentTimeMillis();
+                Long prev = lastSoulFocusCastAt.put(player.getUniqueId(), now);
+                if (prev != null && now - prev < SOUL_FOCUS_CAST_DEBOUNCE_MS) {
+                    return;
+                }
                 SoulService svc = plugin.getSoulService();
                 if (svc == null) {
                     player.sendMessage("§cSoul system unavailable.");

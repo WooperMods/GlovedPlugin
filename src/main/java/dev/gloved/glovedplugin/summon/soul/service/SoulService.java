@@ -62,6 +62,8 @@ public class SoulService {
     // Hot-path caches for spawned minion combat/stat lookups
     private final Map<UUID, SoulInstance> soulByIdCache = new ConcurrentHashMap<>();
     private final Map<UUID, SoulStatSnapshot> snapshotBySoulIdCache = new ConcurrentHashMap<>();
+    // Guard against duplicate interact events causing activate -> instant recall toggle.
+    private final Map<UUID, Long> lastTeamSpawnAt = new ConcurrentHashMap<>();
 
     public SoulService(GlovedPlugin plugin, SoulDatabase database) {
         this.plugin = plugin;
@@ -912,6 +914,11 @@ public class SoulService {
         int activeTeam = summonMgr.getActiveTeamIndex(player.getUniqueId());
         boolean recallOnly = hasActive && activeTeam == teamIndex;
         if (recallOnly) {
+            long nowMs = System.currentTimeMillis();
+            long lastSpawn = lastTeamSpawnAt.getOrDefault(player.getUniqueId(), 0L);
+            if (nowMs - lastSpawn < 500L) {
+                return TeamActivationResult.ok(CastResult.OK, teamIndex, 0, 0);
+            }
             int recalled = summonMgr.recallAll(player);
             player.sendMessage("§d[Souls] §eRecalled Team " + teamIndex + " §7(" + recalled + " summon" + (recalled == 1 ? "" : "s") + ")");
             return TeamActivationResult.recalled(teamIndex);
@@ -949,6 +956,7 @@ public class SoulService {
             player.sendMessage("§c[Souls] Failed to activate Team " + teamIndex + " §7(spawn failed).");
             return TeamActivationResult.fail(CastResult.FAILED, teamIndex, spawnRes != null ? spawnRes.reason : "spawn-failed");
         }
+        lastTeamSpawnAt.put(player.getUniqueId(), System.currentTimeMillis());
 
         try {
             var prog = plugin.getSummonProgression();
@@ -966,8 +974,7 @@ public class SoulService {
         if (skippedInvalid > 0) msg.append(", skipped ").append(skippedInvalid).append(" invalid");
         msg.append(")");
         player.sendMessage(msg.toString());
-        CastResult result = isHotswap ? CastResult.OK : CastResult.OK; // CastResult has no HOTSWAPPED; detail conveyed in message/state
-        return TeamActivationResult.ok(result, teamIndex, spawnRes.spawned, skippedInvalid);
+        return TeamActivationResult.ok(CastResult.OK, teamIndex, spawnRes.spawned, skippedInvalid);
     }
 
     private SoulInstance repositoryGetSoulSafe(UUID soulId) {
