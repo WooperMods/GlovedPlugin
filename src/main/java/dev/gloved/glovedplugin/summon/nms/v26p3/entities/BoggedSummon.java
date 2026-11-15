@@ -42,7 +42,6 @@ public class BoggedSummon extends Bogged implements SummonEntity {
         this.plugin = plugin;
         try {
             this.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
-            this.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.ARROW));
         } catch (Throwable ignored) {}
     }
 
