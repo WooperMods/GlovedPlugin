@@ -92,9 +92,8 @@ public class SoulTeamsInv implements InventoryHolder {
         }
 
         // Controls row 5
-        inv.setItem(45, navItem(Material.BOOK, "§dHelp", "help", UiIcons.GUIDE,
-                "§7Soul Focus: §fRMB §7Teams, §fLMB §7Quick cast/recall",
-                "§7Slot: §fLMB §7assign, §fRMB §7clear"));
+        inv.setItem(45, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
+                "§7Browse, manage, extract, and salvage souls"));
         inv.setItem(49, navItem(Material.BARRIER, "§eRecall Active Team", "recall", UiIcons.BACK));
         inv.setItem(53, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 

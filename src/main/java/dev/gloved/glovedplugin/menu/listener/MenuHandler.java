@@ -351,6 +351,7 @@ public class MenuHandler implements Listener {
         switch (nav) {
             case "close" -> player.closeInventory();
             case "help" -> {}
+            case "vault" -> new SoulVaultInv(plugin, player.getUniqueId(), 0, null, null, "default").open(player);
             case "select_team" -> {
                 if (team != null) {
                     svc.setSelectedTeam(player.getUniqueId(), team);
