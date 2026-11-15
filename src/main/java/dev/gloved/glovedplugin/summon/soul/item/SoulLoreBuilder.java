@@ -275,11 +275,13 @@ public final class SoulLoreBuilder {
                 int mx = Math.max(0, soul.getMasteryXp());
                 int maxL = mcfg.getMaxLevel();
                 String rank = mcfg.rankName(ml);
+                out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ")"));
                 if (ml >= maxL) {
-                    out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ") §aMAX"));
+                    out.add(line(masteryXpBar(1.0, "§aMAX", "")));
                 } else {
                     int need = Math.max(1, mcfg.xpToNextLevel(ml));
-                    out.add(line("§bMastery §fLv " + ml + " §7(" + rank + ") §8[§f" + mx + "§7/§f" + need + " XP§8]"));
+                    double progress = Math.max(0.0, Math.min(1.0, mx / (double) need));
+                    out.add(line(masteryXpBar(progress, "§f" + mx + "§7/§f" + need + " XP", "")));
                 }
                 // show claimable milestone count (if any)
                 if (service != null && service.getMasteryService() != null) {
@@ -311,6 +313,22 @@ public final class SoulLoreBuilder {
                 ? String.format(Locale.ROOT, "%.0f", pct)
                 : String.format(Locale.ROOT, "%.1f", pct);
         return num + "%";
+    }
+
+    private static String masteryXpBar(double progress, String suffix, String prefix) {
+        double p = Math.max(0.0, Math.min(1.0, progress));
+        int segments = 20;
+        int filled = (int) Math.round(p * segments);
+        if (p > 0.0 && filled == 0) filled = 1;
+        if (p >= 1.0) filled = segments;
+        StringBuilder bar = new StringBuilder("§8[§a");
+        for (int i = 0; i < segments; i++) {
+            if (i == filled) bar.append("§8");
+            bar.append("|");
+        }
+        bar.append("§8]");
+        if (suffix != null && !suffix.isBlank()) bar.append(" ").append(suffix);
+        return bar.toString();
     }
 
     public static String pretty(String key) {
