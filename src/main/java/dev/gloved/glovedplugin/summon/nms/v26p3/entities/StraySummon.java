@@ -89,6 +89,36 @@ public class StraySummon extends Stray implements SummonEntity {
         return groupData;
     }
 
+    @Override
+    public void performRangedAttack(net.minecraft.world.entity.LivingEntity target, float velocity) {
+        try {
+            org.bukkit.entity.LivingEntity bukkitShooter = (org.bukkit.entity.LivingEntity) this.getBukkitEntity();
+            org.bukkit.entity.LivingEntity bukkitTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();
+            if (bukkitShooter == null || bukkitTarget == null || bukkitShooter.getWorld() == null) return;
+
+            org.bukkit.Location from = bukkitShooter.getEyeLocation();
+            org.bukkit.Location to = bukkitTarget.getEyeLocation();
+            org.bukkit.util.Vector dir = to.toVector().subtract(from.toVector());
+            if (dir.lengthSquared() < 1.0E-6) return;
+            dir.normalize();
+
+            double power = Math.max(0.1D, Math.min(1.0D, velocity));
+            org.bukkit.util.Vector vel = dir.multiply(power * 3.0D);
+            vel.setY(vel.getY() + (to.getY() - from.getY()) * 0.02D);
+
+            org.bukkit.entity.Arrow arrow = bukkitShooter.launchProjectile(org.bukkit.entity.Arrow.class, vel);
+            try { arrow.setShooter(bukkitShooter); } catch (Throwable ignored) {}
+            try { arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED); } catch (Throwable ignored) {}
+            try { arrow.setCritical(power >= 1.0F); } catch (Throwable ignored) {}
+            try {
+                arrow.addCustomEffect(new org.bukkit.potion.PotionEffect(
+                        org.bukkit.potion.PotionEffectType.SLOWNESS, 600, 0), true);
+            } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            try { super.performRangedAttack(target, velocity); } catch (Throwable ignored) {}
+        }
+    }
+
     @Override public UUID getOwnerId() { return sharedData != null ? sharedData.getOwnerId() : null; }
     @Override public SummonSharedData getSharedData() { return sharedData; }
     @Override public UUID getBukkitUniqueId() { try { return this.getBukkitEntity().getUniqueId(); } catch (Throwable t) { return null; } }
