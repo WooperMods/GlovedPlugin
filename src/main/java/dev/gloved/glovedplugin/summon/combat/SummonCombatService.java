@@ -415,10 +415,11 @@ public class SummonCombatService {
         try {
             if (abilityService != null && summonConfig != null) {
                 var hr = abilityService.applyCritAndDamage(owner, minion, target, baseDamage, summonConfig, soul, soulSnap);
-                finalDamage = hr.damage;
+                finalDamage = hr.damage; // actual HP delta dealt
                 crit = hr.crit;
                 targetDebuffedBefore = hr.targetDebuffedBefore;
             } else {
+                double healthBefore = target.isDead() ? 0.0 : target.getHealth();
                 try { if (target.getNoDamageTicks() > 0) target.setNoDamageTicks(0); } catch (Throwable ignored) {}
                 DamageSource src = DamageSource.builder(DamageType.GENERIC)
                         .withDirectEntity(minion)
@@ -430,6 +431,19 @@ public class SummonCombatService {
                 } finally {
                     DamageProxy.endPipelineDamage();
                 }
+                double healthAfter = target.isDead() ? 0.0 : target.getHealth();
+                if (!target.isDead() && healthAfter >= healthBefore - 1.0e-6) {
+                    // One retry after forcing no-damage ticks clear in case event pipeline/state interfered.
+                    try { target.setNoDamageTicks(0); } catch (Throwable ignored) {}
+                    try {
+                        DamageProxy.beginPipelineDamage();
+                        target.damage(baseDamage, src);
+                    } finally {
+                        DamageProxy.endPipelineDamage();
+                    }
+                }
+                finalDamage = Math.max(0.0, healthBefore - (target.isDead() ? 0.0 : target.getHealth()));
+                if (target.isDead() && healthBefore > 0.0 && finalDamage <= 0.0) finalDamage = Math.max(finalDamage, healthBefore);
             }
             applyKnockback(minion, owner, target);
             try {

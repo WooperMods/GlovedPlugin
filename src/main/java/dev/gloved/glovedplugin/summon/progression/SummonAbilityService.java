@@ -52,6 +52,7 @@ public class SummonAbilityService {
     }
 
     public static final class HitResult {
+        /** Actual damage dealt to target HP (0 if blocked/no effect). */
         public final double damage;
         public final boolean crit;
         public final boolean targetDebuffedBefore;
@@ -208,6 +209,7 @@ public class SummonAbilityService {
             GlovedPlugin.logDebug("[SummonCrit] " + (owner != null ? owner.getName() : "?") + " minion crit " + baseDamage + " -> " + cr.damage
                     + " (x" + cr.multiplier + ", source=" + (cfg != null ? cfg.getCritSource() : "?") + ", soul=" + (soul != null) + ")");
         }
+        double actualDealt = 0.0;
         try {
             double healthBefore = target.isDead() ? 0.0 : target.getHealth();
             // Clear hurt resistance so custom minion hits can apply reliably (e.g. rapid hits / special mobs).
@@ -242,16 +244,18 @@ public class SummonAbilityService {
                 } finally {
                     DamageProxy.endPipelineDamage();
                 }
-                double retryAfter = target.isDead() ? 0.0 : target.getHealth();
-                if (!target.isDead() && retryAfter >= healthAfter - 1.0e-6) {
+                healthAfter = target.isDead() ? 0.0 : target.getHealth();
+                if (!target.isDead() && healthAfter >= healthBefore - 1.0e-6) {
                     GlovedPlugin.logDebug("[SummonAbility] Primary damage retry still had no effect on " + target.getType() + "/" + target.getName()
-                            + " attempted=" + cr.damage + " retryHealthAfter=" + retryAfter);
+                            + " attempted=" + cr.damage + " retryHealthAfter=" + healthAfter);
                 }
             }
+            actualDealt = Math.max(0.0, healthBefore - (target.isDead() ? 0.0 : target.getHealth()));
+            if (target.isDead() && healthBefore > 0.0 && actualDealt <= 0.0) actualDealt = Math.max(actualDealt, healthBefore);
         } catch (Throwable t) {
             GlovedPlugin.logDebug("[SummonAbility] Primary damage failed: " + t);
         }
-        return new HitResult(cr.damage, cr.crit, debuffedBefore);
+        return new HitResult(actualDealt, cr.crit, debuffedBefore);
     }
 
     public void onAfterPrimaryHit(Player owner, LivingEntity minion, LivingEntity primaryTarget, String profileName,
