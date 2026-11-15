@@ -39,6 +39,7 @@ public class StraySummon extends Stray implements SummonEntity {
         this.plugin = plugin;
         try {
             this.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
+            this.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.ARROW));
         } catch (Throwable ignored) {}
     }
 
