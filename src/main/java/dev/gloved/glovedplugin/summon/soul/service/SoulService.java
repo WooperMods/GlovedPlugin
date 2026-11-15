@@ -185,6 +185,14 @@ public class SoulService {
         }
     }
 
+    private int teamCount(SoulConfig cfg) {
+        return cfg != null ? Math.max(1, cfg.getTeamCount()) : 4;
+    }
+
+    private int teamSlots(SoulConfig cfg) {
+        return cfg != null ? Math.max(1, cfg.getTeamSlotsPerTeam()) : 4;
+    }
+
     /** Soul Table / stat config (may be null before the summon module initialises). */
     public SoulTableConfig tableConfig() {
         try {
@@ -709,9 +717,10 @@ public class SoulService {
     public SoulInstance getSelectedSoul(UUID owner) {
         if (owner == null) return null;
         try {
+            SoulConfig cfg = soulConfig();
             int team = getSelectedTeam(owner);
             var slots = getTeam(owner, team);
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < teamSlots(cfg); i++) {
                 UUID sid = slots.get(i);
                 if (sid == null) continue;
                 SoulInstance s = getSoul(sid);
@@ -741,7 +750,7 @@ public class SoulService {
             SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
-            repository.setSelectedTeam(owner, Math.max(1, Math.min(3, teamIndex)), cap);
+            repository.setSelectedTeam(owner, Math.max(1, Math.min(teamCount(cfg), teamIndex)), cap);
             invalidateSelectedCache(owner);
         } catch (SQLException e) {
             GlovedPlugin.logDebug("[Souls] Failed to set selected team for " + owner + ": " + e);
@@ -754,7 +763,7 @@ public class SoulService {
             SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
-            teamIndex = Math.max(1, Math.min(3, teamIndex));
+            teamIndex = Math.max(1, Math.min(teamCount(cfg), teamIndex));
             return repository.getTeamSlots(owner, teamIndex);
         } catch (SQLException e) {
             return Map.of();
@@ -775,10 +784,10 @@ public class SoulService {
 
     public boolean setTeamSlot(UUID owner, int teamIndex, int slotIndex, UUID soulId) {
         if (owner == null) return false;
-        teamIndex = Math.max(1, Math.min(3, teamIndex));
-        slotIndex = Math.max(0, Math.min(3, slotIndex));
+        SoulConfig cfg = soulConfig();
+        teamIndex = Math.max(1, Math.min(teamCount(cfg), teamIndex));
+        slotIndex = Math.max(0, Math.min(teamSlots(cfg) - 1, slotIndex));
         try {
-            SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
             if (soulId != null) {
@@ -800,10 +809,10 @@ public class SoulService {
 
     public void clearTeamSlot(UUID owner, int teamIndex, int slotIndex) {
         if (owner == null) return;
-        teamIndex = Math.max(1, Math.min(3, teamIndex));
-        slotIndex = Math.max(0, Math.min(3, slotIndex));
+        SoulConfig cfg = soulConfig();
+        teamIndex = Math.max(1, Math.min(teamCount(cfg), teamIndex));
+        slotIndex = Math.max(0, Math.min(teamSlots(cfg) - 1, slotIndex));
         try {
-            SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
             repository.clearTeamSlot(owner, teamIndex, slotIndex);
@@ -815,9 +824,9 @@ public class SoulService {
 
     public void clearTeam(UUID owner, int teamIndex) {
         if (owner == null) return;
-        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        SoulConfig cfg = soulConfig();
+        teamIndex = Math.max(1, Math.min(teamCount(cfg), teamIndex));
         try {
-            SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
             repository.clearTeam(owner, teamIndex);
@@ -864,14 +873,15 @@ public class SoulService {
         if (summonCfg == null || summonMgr == null || tracker == null || !summonCfg.isEnabled()) {
             return TeamActivationResult.fail(CastResult.NO_SYSTEM, teamIndex, "no-system");
         }
-        teamIndex = Math.max(1, Math.min(3, teamIndex));
+        teamIndex = Math.max(1, Math.min(teamCount(cfg), teamIndex));
         setSelectedTeam(player.getUniqueId(), teamIndex);
 
         // Resolve and validate team slots (skip/clean invalid)
         Map<Integer, UUID> slots = getTeam(player.getUniqueId(), teamIndex);
-        List<SummonManager.TeamSlotSpawn> toSpawn = new ArrayList<>(4);
+        int slotsPerTeam = teamSlots(cfg);
+        List<SummonManager.TeamSlotSpawn> toSpawn = new ArrayList<>(slotsPerTeam);
         int skippedInvalid = 0;
-        for (int slot = 0; slot < 4; slot++) {
+        for (int slot = 0; slot < slotsPerTeam; slot++) {
             UUID soulId = slots.get(slot);
             if (soulId == null) continue;
             SoulInstance soul = repositoryGetSoulSafe(soulId);

@@ -65,7 +65,7 @@ public final class SoulConfig {
 
     // team/loadout system (soul team overhaul)
     private boolean teamsEnabled = true;
-    private int teamCount = 3;
+    private int teamCount = 4;
     private int teamSlotsPerTeam = 4;
     private boolean teamsAllowSameSoulInMultipleTeams = true;
     private boolean teamsAllowDuplicateSoulInSameTeam = false;
@@ -256,7 +256,7 @@ public final class SoulConfig {
         ConfigurationSection teams = s.getConfigurationSection("teams");
         if (teams != null) {
             cfg.teamsEnabled = teams.getBoolean("enabled", true);
-            cfg.teamCount = Math.max(1, teams.getInt("count", 3));
+            cfg.teamCount = Math.max(1, teams.getInt("count", 4));
             cfg.teamSlotsPerTeam = Math.max(1, teams.getInt("slots-per-team", 4));
             cfg.teamsAllowSameSoulInMultipleTeams = teams.getBoolean("allow-same-soul-in-multiple-teams", true);
             cfg.teamsAllowDuplicateSoulInSameTeam = teams.getBoolean("allow-duplicate-soul-in-same-team", false);
@@ -357,7 +357,7 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.essence.values.MYTHIC", 95);
         setIfMissing(cfg, "souls.essence.overflow-multiplier", 1.0);
         setIfMissing(cfg, "souls.teams.enabled", true);
-        setIfMissing(cfg, "souls.teams.count", 3);
+        setIfMissing(cfg, "souls.teams.count", 4);
         setIfMissing(cfg, "souls.teams.slots-per-team", 4);
         setIfMissing(cfg, "souls.teams.allow-same-soul-in-multiple-teams", true);
         setIfMissing(cfg, "souls.teams.allow-duplicate-soul-in-same-team", false);

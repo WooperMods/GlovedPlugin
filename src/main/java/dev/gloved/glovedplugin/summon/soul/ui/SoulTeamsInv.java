@@ -66,6 +66,16 @@ public class SoulTeamsInv implements InventoryHolder {
         try { hasActive = plugin.getSummonManager() != null && plugin.getSummonManager().hasActiveTeamSummons(viewerId); } catch (Throwable ignored) {}
         if (activeTeam == -1 && hasActive) activeTeam = -999; // mixed/legacy
 
+        int teamCount = 4;
+        int slotsPerTeam = 4;
+        try {
+            var cfg = svc != null ? svc.soulConfig() : null;
+            if (cfg != null) {
+                teamCount = Math.max(1, Math.min(4, cfg.getTeamCount()));
+                slotsPerTeam = Math.max(1, Math.min(4, cfg.getTeamSlotsPerTeam()));
+            }
+        } catch (Throwable ignored) {}
+
         String title = "§5" + TITLE_PREFIX + " §7(Selected: " + selectedTeam + ")";
         Inventory inv = Bukkit.createInventory(this, 54, LegacyComponentSerializer.legacySection().deserialize(title));
 
@@ -73,29 +83,29 @@ public class SoulTeamsInv implements InventoryHolder {
         ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE, " ");
         for (int i = 0; i < 54; i++) inv.setItem(i, filler);
 
-        // Layout (rows 0,2,4 used for teams; row 5 controls):
-        // rN: [teamBtn][  ][s1][s2][s3][s4][  ][  ][activate]
-        int[] teamRows = {0, 2, 4};
-        for (int t = 1; t <= 3; t++) {
-            int rowBase = teamRows[t - 1] * 9;
+        // Vertical layout: teams in columns 2,4,6,8 with empty columns between.
+        // Per team column: row 0 = team label, rows 1..slotsPerTeam = soul slots, row 5 = activate/recall.
+        int[] teamColumns = {2, 4, 6, 8};
+        for (int t = 1; t <= teamCount; t++) {
+            int col = teamColumns[t - 1];
             boolean sel = t == selectedTeam;
             boolean act = t == activeTeam;
-            inv.setItem(rowBase + 0, teamLabelItem(t, sel, act));
+            inv.setItem(col, teamLabelItem(t, sel, act)); // row 0
             Map<Integer, UUID> slots = svc != null ? svc.getTeam(viewerId, t) : Map.of();
-            for (int s = 0; s < 4; s++) {
-                int invSlot = rowBase + 2 + s;
+            for (int s = 0; s < slotsPerTeam; s++) {
+                int invSlot = (1 + s) * 9 + col; // rows 1..4
                 UUID soulId = slots.get(s);
                 SoulInstance soul = soulId != null && svc != null ? svc.getSoul(soulId) : null;
                 inv.setItem(invSlot, teamSlotItem(t, s, soul, svc));
             }
-            inv.setItem(rowBase + 8, activateTeamItem(t, sel, act));
+            inv.setItem(5 * 9 + col, activateTeamItem(t, sel, act)); // row 5
         }
 
-        // Controls row 5
-        inv.setItem(45, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
+        // Global controls (column 0)
+        inv.setItem(0 * 9 + 0, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
                 "§7Browse, manage, extract, and salvage souls"));
-        inv.setItem(49, navItem(Material.BARRIER, "§eRecall Active Team", "recall", UiIcons.BACK));
-        inv.setItem(53, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
+        inv.setItem(4 * 9 + 0, navItem(Material.BARRIER, "§eRecall Active Team", "recall", UiIcons.BACK));
+        inv.setItem(5 * 9 + 0, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 
         return inv;
     }

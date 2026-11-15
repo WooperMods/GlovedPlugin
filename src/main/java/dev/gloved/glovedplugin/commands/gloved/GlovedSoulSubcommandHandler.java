@@ -273,7 +273,7 @@ private void handleSoulInfo(CommandSourceStack source, String[] args, SoulServic
         source.getSender().sendMessage(Component.text("Capture: base=" + fmtPct(soulCfg.getCaptureBaseChance()) + " luck=" + fmtPct(luck) + " minionKills=" + (soulCfg.isCaptureMinionKills() ? "on x" + soulCfg.getCaptureMinionKillMultiplier() : "off") + " pity=" + (soulCfg.isPityEnabled() ? "on" : "off"), net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         double activateMana = soulCfg.getCastActivateManaCost();
         String manaPart = (soulCfg.isCastManaEnabled() && activateMana > 0.0) ? " | teamActivateMana=" + String.format(java.util.Locale.ROOT, "%.1f", activateMana) : " | teamActivateMana=0";
-        source.getSender().sendMessage(Component.text("Soul config: enabled=" + soulCfg.isEnabled() + " teams=3x4 recall=instant/free" + manaPart, net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+        source.getSender().sendMessage(Component.text("Soul config: enabled=" + soulCfg.isEnabled() + " teams=" + soulCfg.getTeamCount() + "x" + soulCfg.getTeamSlotsPerTeam() + " recall=instant/free" + manaPart, net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
         if (state != null && state.pityJson() != null) {
             source.getSender().sendMessage(Component.text("Pity: " + state.pityJson(), net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY));
         }
@@ -285,24 +285,32 @@ private void handleSoulSelect(CommandSourceStack source, String[] args, SoulServ
         source.getSender().sendMessage(Component.text("Only players can select a soul team."));
         return;
     }
+    var cfg = svc.soulConfig();
+    int teamCount = cfg != null ? cfg.getTeamCount() : 4;
     if (args.length < 3) {
-        source.getSender().sendMessage(Component.text("Usage: /gloved soul team select <1-3>"));
+        source.getSender().sendMessage(Component.text("Usage: /gloved soul team select <1-" + teamCount + ">"));
         return;
     }
     int team;
-    try { team = Integer.parseInt(args[2]); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid team (use 1-3).")); return; }
-    if (team < 1 || team > 3) { source.getSender().sendMessage(Component.text("Invalid team (use 1-3).")); return; }
+    try { team = Integer.parseInt(args[2]); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid team (use 1-" + teamCount + ").")); return; }
+    if (team < 1 || team > teamCount) { source.getSender().sendMessage(Component.text("Invalid team (use 1-" + teamCount + ").")); return; }
     svc.setSelectedTeam(player.getUniqueId(), team);
     try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
     source.getSender().sendMessage(Component.text("Selected Team " + team + ".", net.kyori.adventure.text.format.NamedTextColor.GREEN));
 }
 
 private void handleSoulEquip(CommandSourceStack source, String[] args, SoulService svc) {
-    source.getSender().sendMessage(Component.text("Legacy equip removed. Use Soul Teams UI or /gloved soul team set <1-3> <0-3> <soulIdPrefix>.", net.kyori.adventure.text.format.NamedTextColor.YELLOW));
+    var cfg = svc.soulConfig();
+    int tc = cfg != null ? cfg.getTeamCount() : 4;
+    int sc = cfg != null ? cfg.getTeamSlotsPerTeam() : 4;
+    source.getSender().sendMessage(Component.text("Legacy equip removed. Use Soul Teams UI or /gloved soul team set <1-" + tc + "> <0-" + (sc - 1) + "> <soulIdPrefix>.", net.kyori.adventure.text.format.NamedTextColor.YELLOW));
 }
 
 private void handleSoulUnequip(CommandSourceStack source, String[] args, SoulService svc) {
-    source.getSender().sendMessage(Component.text("Legacy unequip removed. Use Soul Teams UI or /gloved soul team clear <1-3> <0-3|all>.", net.kyori.adventure.text.format.NamedTextColor.YELLOW));
+    var cfg = svc.soulConfig();
+    int tc = cfg != null ? cfg.getTeamCount() : 4;
+    int sc = cfg != null ? cfg.getTeamSlotsPerTeam() : 4;
+    source.getSender().sendMessage(Component.text("Legacy unequip removed. Use Soul Teams UI or /gloved soul team clear <1-" + tc + "> <0-" + (sc - 1) + "|all>.", net.kyori.adventure.text.format.NamedTextColor.YELLOW));
 }
 
 private void handleSoulLoadout(CommandSourceStack source, String[] args, SoulService svc) {
@@ -610,6 +618,9 @@ private void handleSoulTeam(CommandSourceStack source, String[] args, SoulServic
         source.getSender().sendMessage(Component.text("Only players can use soul teams."));
         return;
     }
+    var cfg = svc.soulConfig();
+    int teamCount = cfg != null ? cfg.getTeamCount() : 4;
+    int slotsPerTeam = cfg != null ? cfg.getTeamSlotsPerTeam() : 4;
     String action = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : "list";
     switch (action) {
         case "list" -> {
@@ -617,16 +628,16 @@ private void handleSoulTeam(CommandSourceStack source, String[] args, SoulServic
             int active = -1;
             try { if (plugin.getSummonManager() != null) active = plugin.getSummonManager().getActiveTeamIndex(player.getUniqueId()); } catch (Throwable ignored) {}
             source.getSender().sendMessage(Component.text("=== Soul Teams ===", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
-            for (int t = 1; t <= 3; t++) {
+            for (int t = 1; t <= teamCount; t++) {
                 var slots = svc.getTeam(player.getUniqueId(), t);
                 int filled = 0;
-                for (int s = 0; s < 4; s++) if (slots.get(s) != null) filled++;
+                for (int s = 0; s < slotsPerTeam; s++) if (slots.get(s) != null) filled++;
                 String markers = (t == selected ? " §e[Selected]" : "") + (t == active ? " §a[Active]" : "");
-                source.getSender().sendMessage(Component.text("Team " + t + ": " + filled + "/4 slots" + markers, net.kyori.adventure.text.format.NamedTextColor.GRAY));
+                source.getSender().sendMessage(Component.text("Team " + t + ": " + filled + "/" + slotsPerTeam + " slots" + markers, net.kyori.adventure.text.format.NamedTextColor.GRAY));
             }
         }
         case "select" -> {
-            if (args.length < 4) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team select <1-3>")); return; }
+            if (args.length < 4) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team select <1-" + teamCount + ">")); return; }
             int t; try { t = Integer.parseInt(args[3]); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid team.")); return; }
             svc.setSelectedTeam(player.getUniqueId(), t);
             try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
@@ -635,10 +646,10 @@ private void handleSoulTeam(CommandSourceStack source, String[] args, SoulServic
         case "info" -> {
             int t = svc.getSelectedTeam(player.getUniqueId());
             if (args.length >= 4) { try { t = Integer.parseInt(args[3]); } catch (Exception ignored) {} }
-            t = Math.max(1, Math.min(3, t));
+            t = Math.max(1, Math.min(teamCount, t));
             var slots = svc.getTeam(player.getUniqueId(), t);
             source.getSender().sendMessage(Component.text("=== Team " + t + " ===", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
-            for (int s = 0; s < 4; s++) {
+            for (int s = 0; s < slotsPerTeam; s++) {
                 java.util.UUID sid = slots.get(s);
                 String label = "(empty)";
                 if (sid != null) {
@@ -659,21 +670,21 @@ private void handleSoulTeam(CommandSourceStack source, String[] args, SoulServic
             try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
         }
         case "clear" -> {
-            if (args.length < 5) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team clear <1-3> <0-3|all>")); return; }
+            if (args.length < 5) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team clear <1-" + teamCount + "> <0-" + (slotsPerTeam - 1) + "|all>")); return; }
             int t; try { t = Integer.parseInt(args[3]); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid team.")); return; }
             String slotArg = args[4].toLowerCase(Locale.ROOT);
             if ("all".equals(slotArg)) {
                 svc.clearTeam(player.getUniqueId(), t);
                 source.getSender().sendMessage(Component.text("Cleared Team " + t + ".", net.kyori.adventure.text.format.NamedTextColor.GREEN));
             } else {
-                int s; try { s = Integer.parseInt(slotArg); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid slot (0-3 or all).")); return; }
+                int s; try { s = Integer.parseInt(slotArg); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid slot (0-" + (slotsPerTeam - 1) + " or all).")); return; }
                 svc.clearTeamSlot(player.getUniqueId(), t, s);
                 source.getSender().sendMessage(Component.text("Cleared Team " + t + " slot " + s + ".", net.kyori.adventure.text.format.NamedTextColor.GREEN));
             }
             try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
         }
         case "set" -> {
-            if (args.length < 6) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team set <1-3> <0-3> <soulIdPrefix>")); return; }
+            if (args.length < 6) { source.getSender().sendMessage(Component.text("Usage: /gloved soul team set <1-" + teamCount + "> <0-" + (slotsPerTeam - 1) + "> <soulIdPrefix>")); return; }
             int t,s; try { t = Integer.parseInt(args[3]); s = Integer.parseInt(args[4]); } catch (Exception e) { source.getSender().sendMessage(Component.text("Invalid team/slot.")); return; }
             SoulInstance soul = svc.findOwnedSoul(player.getUniqueId(), args[5]);
             if (soul == null) { source.getSender().sendMessage(Component.text("Soul not found or ambiguous.", net.kyori.adventure.text.format.NamedTextColor.RED)); return; }

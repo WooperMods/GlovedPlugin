@@ -160,7 +160,7 @@ public class SoulRepository {
                     if (tableTab == null || tableTab.isBlank()) tableTab = "COMBINE";
                     int selectedTeam = 1;
                     try { selectedTeam = rs.getInt("selected_team"); } catch (SQLException ignored) {}
-                    if (selectedTeam < 1 || selectedTeam > 3) selectedTeam = 1;
+                    if (selectedTeam < 1 || selectedTeam > 4) selectedTeam = 1;
                     return new PlayerSoulState(owner,
                             rs.getInt("essence"),
                             rs.getInt("vault_capacity"),
@@ -457,12 +457,12 @@ public class SoulRepository {
     public synchronized int getSelectedTeam(UUID owner, int defaultCapacity) throws SQLException {
         PlayerSoulState st = getOrCreatePlayerState(owner, defaultCapacity);
         int t = st.selectedTeam();
-        return (t >= 1 && t <= 3) ? t : 1;
+        return (t >= 1 && t <= 4) ? t : 1;
     }
 
     public synchronized void setSelectedTeam(UUID owner, int selectedTeam, int defaultCapacity) throws SQLException {
         getOrCreatePlayerState(owner, defaultCapacity);
-        int t = Math.max(1, Math.min(3, selectedTeam));
+        int t = Math.max(1, Math.min(4, selectedTeam));
         String upd = "UPDATE soul_player_state SET selected_team = ?, updated_at = ? WHERE owner_uuid = ?";
         try (PreparedStatement ps = conn().prepareStatement(upd)) {
             ps.setInt(1, t);
@@ -588,7 +588,7 @@ public class SoulRepository {
 
     public synchronized void ensureDefaultTeams(UUID owner) throws SQLException {
         if (owner == null) return;
-        for (int team = 1; team <= 3; team++) {
+        for (int team = 1; team <= 4; team++) {
             for (int slot = 0; slot < 4; slot++) {
                 String sql = "INSERT OR IGNORE INTO soul_teams (owner_uuid, team_index, slot_index, soul_id, updated_at) VALUES (?,?,?,?,?)";
                 try (PreparedStatement ps = conn().prepareStatement(sql)) {
