@@ -140,7 +140,7 @@ public class MenuHandler implements Listener {
                 case "clear_slot" -> {
                     if (vault.isPickerMode() && svc != null) {
                         svc.clearTeamSlot(player.getUniqueId(), vault.getPickerTeam(), vault.getPickerSlot());
-                        player.sendMessage(Component.text("§d[Souls] §7Cleared Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
+                        player.sendMessage(Component.text("§d[Souls] §7Cleared Group " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
                         try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                     }
                     new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
@@ -220,12 +220,12 @@ public class MenuHandler implements Listener {
             if (event.getClick() == org.bukkit.event.inventory.ClickType.LEFT) {
                 boolean ok = svc.setTeamSlot(player.getUniqueId(), vault.getPickerTeam(), vault.getPickerSlot(), soul.getSoulId());
                 if (!ok) {
-                    player.sendMessage(Component.text("§c[Souls] Cannot assign that soul to Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + " (duplicate in same team or invalid)."));
+                    player.sendMessage(Component.text("§c[Souls] Cannot assign that soul to Group " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + " (duplicate in same group or invalid)."));
                     new SoulVaultInv(plugin, player.getUniqueId(), vault.getPage(), vault.getFilterType(), vault.getFilterRarity(), vault.getSortMode(), vault.getPickerTeam(), vault.getPickerSlot()).open(player);
                     return;
                 }
                 svc.setSelectedTeam(player.getUniqueId(), vault.getPickerTeam());
-                player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Team " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
+                player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Group " + vault.getPickerTeam() + " slot " + (vault.getPickerSlot() + 1) + "."));
                 try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                 new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
             }
@@ -305,7 +305,7 @@ public class MenuHandler implements Listener {
                 for (int i = 0; i < 4; i++) { if (!teamSlots.containsKey(i)) { targetSlot = i; break; } }
                 boolean ok = svc.setTeamSlot(player.getUniqueId(), team, targetSlot, soul.getSoulId());
                 if (ok) {
-                    player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Team " + team + " slot " + (targetSlot + 1) + "."));
+                    player.sendMessage(Component.text("§d[Souls] §aAssigned " + SoulGenerator.describe(soul) + " §7to Group " + team + " slot " + (targetSlot + 1) + "."));
                     try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                 } else {
                     player.sendMessage(Component.text("§c[Souls] Failed to assign soul (duplicate in same team or invalid)."));
@@ -381,7 +381,7 @@ public class MenuHandler implements Listener {
                     } catch (Throwable ignored) {}
                     if (existing == null) return;
                     svc.clearTeamSlot(player.getUniqueId(), team, slot);
-                    player.sendMessage(Component.text("§d[Souls] §7Cleared Team " + team + " slot " + (slot + 1) + "."));
+                    player.sendMessage(Component.text("§d[Souls] §7Cleared Group " + team + " slot " + (slot + 1) + "."));
                     try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
                     new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
                     return;

@@ -70,7 +70,7 @@ public class SummonAbilityIndicator implements Listener {
                                 status += " §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
                             }
                         } catch (Throwable ignored) {}
-                        String base = "§dSoul Teams§7: §fSelected " + selectedTeam;
+                        String base = "§dSoul Groups§7: §fSelected " + selectedTeam;
                         if (hasActive) base += " §7| Active " + (activeTeam > 0 ? activeTeam : "?");
                         try {
                             p.sendActionBar(Component.text(base + " §8| " + status));

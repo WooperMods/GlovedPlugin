@@ -142,8 +142,8 @@ public class SoulVaultInv implements InventoryHolder {
         String title;
         if (isPickerMode()) {
             title = maxPage > 0
-                    ? "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1) + " (" + (page + 1) + "/" + (maxPage + 1) + ")"
-                    : "Select Soul T" + pickerTeam + " S" + (pickerSlot + 1);
+                    ? "Select Soul G" + pickerTeam + " S" + (pickerSlot + 1) + " (" + (page + 1) + "/" + (maxPage + 1) + ")"
+                    : "Select Soul G" + pickerTeam + " S" + (pickerSlot + 1);
         } else {
             title = maxPage > 0
                     ? TITLE_PREFIX + " (" + (page + 1) + "/" + (maxPage + 1) + ") " + total + "/" + cap
@@ -176,7 +176,7 @@ public class SoulVaultInv implements InventoryHolder {
         inv.setItem(48, navItem(Material.AMETHYST_SHARD, "§bRarity: " + (filterRarity == null ? "ALL" : filterRarity.name()), "rarity", null));
         inv.setItem(50, navItem(Material.COMPARATOR, "§bSort: " + sortMode, "sort", null));
         if (isPickerMode()) {
-            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.TEAMS));
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Groups", "back", UiIcons.TEAMS));
             boolean hasAssigned = false;
             try {
                 if (svc != null && pickerTeam != null && pickerSlot != null) {
@@ -191,7 +191,7 @@ public class SoulVaultInv implements InventoryHolder {
                 inv.setItem(52, filler());
             }
         } else {
-            inv.setItem(51, navItem(Material.ARROW, "§eBack to Teams", "back", UiIcons.TEAMS));
+            inv.setItem(51, navItem(Material.ARROW, "§eBack to Groups", "back", UiIcons.TEAMS));
             inv.setItem(52, combatModeItem());
         }
 
@@ -209,11 +209,11 @@ public class SoulVaultInv implements InventoryHolder {
             ItemMeta hm = help.getItemMeta();
             if (hm != null) {
                 List<Component> lore = new ArrayList<>();
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left Click: §aAssign to Team " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left Click: §aAssign to Group " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
                 lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right Click: §fInspect soul").decoration(TextDecoration.ITALIC, false));
                 lore.add(LegacyComponentSerializer.legacySection().deserialize(hasAssigned
-                        ? "§7Use §cClear Slot §7or §eBack to Teams §7below"
-                        : "§7Use §eBack to Teams §7below").decoration(TextDecoration.ITALIC, false));
+                        ? "§7Use §cClear Slot §7or §eBack to Groups §7below"
+                        : "§7Use §eBack to Groups §7below").decoration(TextDecoration.ITALIC, false));
                 hm.lore(lore);
                 help.setItemMeta(hm);
             }
@@ -337,7 +337,7 @@ public class SoulVaultInv implements InventoryHolder {
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
             if (isPickerMode()) {
-                lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Assign to Team " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Assign to Group " + pickerTeam + " Slot " + (pickerSlot + 1)).decoration(TextDecoration.ITALIC, false));
                 lore.add(LegacyComponentSerializer.legacySection().deserialize("§bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));
             } else {
                 lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft Click§7 Equip/Select  §bRight Click§7 Inspect").decoration(TextDecoration.ITALIC, false));

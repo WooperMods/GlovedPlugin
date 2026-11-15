@@ -33,7 +33,7 @@ import java.util.UUID;
  * Right-click Soul Focus opens this view. Click slot -> vault picker for assignment.
  */
 public class SoulTeamsInv implements InventoryHolder {
-    public static final String TITLE_PREFIX = "Soul Teams";
+    public static final String TITLE_PREFIX = "Soul Groups";
 
     private final GlovedPlugin plugin;
     private final UUID viewerId;
@@ -104,7 +104,7 @@ public class SoulTeamsInv implements InventoryHolder {
         // Global controls (column 0)
         inv.setItem(0 * 9 + 0, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
                 "§7Browse, manage, extract, and salvage souls"));
-        inv.setItem(4 * 9 + 0, navItem(Material.BARRIER, "§eRecall Active Team", "recall", UiIcons.BACK));
+        inv.setItem(4 * 9 + 0, navItem(Material.BARRIER, "§eRecall Active Group", "recall", UiIcons.BACK));
         inv.setItem(5 * 9 + 0, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 
         return inv;
@@ -115,7 +115,7 @@ public class SoulTeamsInv implements InventoryHolder {
         ItemStack it = new ItemStack(mat);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            String name = "§bTeam " + team + (active ? " §a(Active)" : selected ? " §e(Selected)" : "");
+            String name = "§bGroup " + team + (active ? " §a(Active)" : selected ? " §e(Selected)" : "");
             meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name).decoration(TextDecoration.ITALIC, false));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, "select_team");
@@ -129,7 +129,7 @@ public class SoulTeamsInv implements InventoryHolder {
         ItemStack it = new ItemStack(active ? Material.REDSTONE_TORCH : Material.ENDER_EYE);
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
-            String name = active ? "§eRecall Team " + team : "§aActivate Team " + team;
+            String name = active ? "§eRecall Group " + team : "§aActivate Group " + team;
             meta.displayName(LegacyComponentSerializer.legacySection().deserialize(name).decoration(TextDecoration.ITALIC, false));
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, "activate");

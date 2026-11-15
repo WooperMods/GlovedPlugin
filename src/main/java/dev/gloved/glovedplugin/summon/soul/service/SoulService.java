@@ -903,9 +903,9 @@ public class SoulService {
         }
         if (toSpawn.isEmpty()) {
             if (skippedInvalid > 0) {
-                player.sendMessage("§c[Souls] Team " + teamIndex + " has no valid summons §7(cleaned " + skippedInvalid + " invalid slot" + (skippedInvalid == 1 ? "" : "s") + ").");
+                player.sendMessage("§c[Souls] Group " + teamIndex + " has no valid summons §7(cleaned " + skippedInvalid + " invalid slot" + (skippedInvalid == 1 ? "" : "s") + ").");
             } else {
-                player.sendMessage("§c[Souls] Team " + teamIndex + " is empty.");
+                player.sendMessage("§c[Souls] Group " + teamIndex + " is empty.");
             }
             return TeamActivationResult.fail(CastResult.NO_SELECTED_SOUL, teamIndex, "empty-or-invalid-team");
         }
@@ -920,7 +920,7 @@ public class SoulService {
                 return TeamActivationResult.ok(CastResult.OK, teamIndex, 0, 0);
             }
             int recalled = summonMgr.recallAll(player);
-            player.sendMessage("§d[Souls] §eRecalled Team " + teamIndex + " §7(" + recalled + " summon" + (recalled == 1 ? "" : "s") + ")");
+            player.sendMessage("§d[Souls] §eRecalled Group " + teamIndex + " §7(" + recalled + " summon" + (recalled == 1 ? "" : "s") + ")");
             return TeamActivationResult.recalled(teamIndex);
         }
 
@@ -932,7 +932,7 @@ public class SoulService {
         double manaCost = Math.max(0.0, cfg.getCastActivateManaCost());
         boolean manaEnabled = cfg.isCastManaEnabled() && manaCost > 0.0 && summonCfg != null && summonCfg.isManaEnabled();
         if (manaEnabled && !hasEnoughAuraMana(player, manaCost)) {
-            player.sendMessage("§c[Souls] Not enough mana to activate Team " + teamIndex + " §7(" + String.format(Locale.ROOT, "%.1f", manaCost) + ").");
+            player.sendMessage("§c[Souls] Not enough mana to activate Group " + teamIndex + " §7(" + String.format(Locale.ROOT, "%.1f", manaCost) + ").");
             return TeamActivationResult.fail(CastResult.NO_MANA, teamIndex, "no-mana");
         }
 
@@ -947,13 +947,13 @@ public class SoulService {
         }
 
         if (manaEnabled && !summonMgr.tryConsumeSoulCastMana(player, manaCost)) {
-            player.sendMessage("§c[Souls] Could not spend mana to activate Team " + teamIndex + ".");
+            player.sendMessage("§c[Souls] Could not spend mana to activate Group " + teamIndex + ".");
             return TeamActivationResult.fail(CastResult.NO_MANA, teamIndex, "mana-spend-failed");
         }
 
         SummonManager.TeamSpawnResult spawnRes = summonMgr.spawnResolvedTeam(player, teamIndex, toSpawn, null);
         if (spawnRes == null || !spawnRes.ok || spawnRes.spawned <= 0) {
-            player.sendMessage("§c[Souls] Failed to activate Team " + teamIndex + " §7(spawn failed).");
+            player.sendMessage("§c[Souls] Failed to activate Group " + teamIndex + " §7(spawn failed).");
             return TeamActivationResult.fail(CastResult.FAILED, teamIndex, spawnRes != null ? spawnRes.reason : "spawn-failed");
         }
         lastTeamSpawnAt.put(player.getUniqueId(), System.currentTimeMillis());
@@ -968,8 +968,8 @@ public class SoulService {
         } catch (Throwable ignored) {}
 
         StringBuilder msg = new StringBuilder("§d[Souls] ");
-        if (isHotswap) msg.append("§bHotswapped to Team ").append(teamIndex);
-        else msg.append("§aActivated Team ").append(teamIndex);
+        if (isHotswap) msg.append("§bHotswapped to Group ").append(teamIndex);
+        else msg.append("§aActivated Group ").append(teamIndex);
         msg.append(" §7(").append(spawnRes.spawned).append(" summon").append(spawnRes.spawned == 1 ? "" : "s");
         if (skippedInvalid > 0) msg.append(", skipped ").append(skippedInvalid).append(" invalid");
         msg.append(")");

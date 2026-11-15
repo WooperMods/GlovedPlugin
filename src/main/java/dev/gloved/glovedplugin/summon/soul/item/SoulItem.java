@@ -47,8 +47,8 @@ public final class SoulItem {
 
     private static java.util.List<Component> buildLore(Player player, GlovedPlugin plugin) {
         java.util.ArrayList<Component> lore = new java.util.ArrayList<>();
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aQuick activate/recall selected team").decoration(TextDecoration.ITALIC, false));
-        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right-click: §bOpen Soul Teams").decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Left-click: §aQuick activate/recall selected group").decoration(TextDecoration.ITALIC, false));
+        lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Right-click: §bOpen Soul Groups").decoration(TextDecoration.ITALIC, false));
         lore.add(Component.empty());
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§7" + teamStatusText(player, plugin)).decoration(TextDecoration.ITALIC, false));
         lore.add(LegacyComponentSerializer.legacySection().deserialize("§8Bound to your soul collection").decoration(TextDecoration.ITALIC, false));
@@ -58,7 +58,7 @@ public final class SoulItem {
     private static String teamStatusText(Player player, GlovedPlugin plugin) {
         try {
             GlovedPlugin gp = plugin != null ? plugin : JavaPlugin.getPlugin(GlovedPlugin.class);
-            if (player == null || gp == null || gp.getSoulService() == null) return "Selected team: §71";
+            if (player == null || gp == null || gp.getSoulService() == null) return "Selected group: §71";
             int selected = gp.getSoulService().getSelectedTeam(player.getUniqueId());
             int active = -1;
             boolean hasActive = false;
@@ -70,11 +70,11 @@ public final class SoulItem {
             } catch (Throwable ignored) {}
             String activeText;
             if (!hasActive) activeText = "§7None";
-            else if (active > 0) activeText = "§aTeam " + active;
+            else if (active > 0) activeText = "§aGroup " + active;
             else activeText = "§eActive";
-            return "Selected team: §f" + selected + " §7| Active: " + activeText;
+            return "Selected group: §f" + selected + " §7| Active: " + activeText;
         } catch (Throwable ignored) {
-            return "Selected team: §71 §7| Active: §7None";
+            return "Selected group: §71 §7| Active: §7None";
         }
     }
 
