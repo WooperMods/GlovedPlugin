@@ -250,7 +250,7 @@ public final class SoulTableEnhanceInv implements SoulTableScreen {
             return;
         }
         SoulTableService.TableResult result = svc.enhance(viewerId, chosen.get(0).getSoulId());
-        finish(player, result, "Soul enhanced.", true);
+        finishEnhance(player, result);
     }
 
     private void finish(Player player, SoulTableService.TableResult result, String successMessage, boolean clear) {
@@ -267,5 +267,33 @@ public final class SoulTableEnhanceInv implements SoulTableScreen {
         player.sendMessage(SoulTableUiItems.chatPrefix().append(Component.text(result.message(), NamedTextColor.GRAY)));
         SoulTableUiItems.actionBar(player, successMessage, NamedTextColor.GREEN);
         refresh();
+    }
+
+    private void finishEnhance(Player player, SoulTableService.TableResult result) {
+        if (result == null) {
+            SoulTableUiItems.actionBar(player, "Operation failed.", NamedTextColor.RED);
+            return;
+        }
+        if (!result.ok()) {
+            SoulTableUiItems.actionBar(player, result.message(), NamedTextColor.RED);
+            refresh();
+            return;
+        }
+        UUID keepSelected = null;
+        SoulInstance resultSoul = result.result();
+        if (resultSoul != null) {
+            keepSelected = resultSoul.getSoulId();
+        } else if (!selected.isEmpty()) {
+            keepSelected = selected.iterator().next();
+        }
+        player.sendMessage(SoulTableUiItems.chatPrefix().append(Component.text(result.message(), NamedTextColor.GRAY)));
+        SoulTableUiItems.actionBar(player, "Soul enhanced.", NamedTextColor.GREEN);
+        refresh();
+        // Keep the enhanced soul selected so it can be leveled again without reselecting.
+        selected.clear();
+        if (keepSelected != null && soulIndex.containsKey(keepSelected)) {
+            selected.add(keepSelected);
+            refresh();
+        }
     }
 }
