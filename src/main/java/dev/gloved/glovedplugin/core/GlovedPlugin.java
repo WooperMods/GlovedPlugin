@@ -52,6 +52,7 @@ import dev.gloved.glovedplugin.summon.soul.table.SoulTableManager;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTablePackService;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableService;
+import dev.gloved.glovedplugin.summon.soul.table.SoulCatalystRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideListener;
 import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideRecipeManager;
 import dev.gloved.glovedplugin.summon.soul.trap.SoulTrapListener;
@@ -91,6 +92,7 @@ public final class GlovedPlugin extends JavaPlugin {
   private SoulTableService soulTableService;
   private SoulTablePackService soulTablePackService;
   private SoulTableRecipeManager soulTableRecipeManager;
+  private SoulCatalystRecipeManager soulCatalystRecipeManager;
   private SoulGuideRecipeManager soulGuideRecipeManager;
   private SummonNMS summonNMS;
 
@@ -212,6 +214,9 @@ public final class GlovedPlugin extends JavaPlugin {
     this.soulTableRecipeManager = new SoulTableRecipeManager(this);
     this.soulTableRecipeManager.registerRecipes();
     getServer().getPluginManager().registerEvents(this.soulTableRecipeManager, this);
+    this.soulCatalystRecipeManager = new SoulCatalystRecipeManager(this);
+    this.soulCatalystRecipeManager.registerRecipes();
+    getServer().getPluginManager().registerEvents(this.soulCatalystRecipeManager, this);
     this.soulGuideRecipeManager = new SoulGuideRecipeManager(this);
     this.soulGuideRecipeManager.registerRecipes();
     getServer().getPluginManager().registerEvents(this.soulGuideRecipeManager, this);
@@ -358,6 +363,9 @@ public final class GlovedPlugin extends JavaPlugin {
     if (this.soulTableRecipeManager != null) {
       this.soulTableRecipeManager.registerRecipes();
     }
+    if (this.soulCatalystRecipeManager != null) {
+      this.soulCatalystRecipeManager.registerRecipes();
+    }
     if (this.soulGuideRecipeManager != null) {
       this.soulGuideRecipeManager.registerRecipes();
     }
@@ -456,6 +464,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
   public SoulTableRecipeManager getSoulTableRecipeManager() {
     return soulTableRecipeManager;
+  }
+
+  public SoulCatalystRecipeManager getSoulCatalystRecipeManager() {
+    return soulCatalystRecipeManager;
   }
 
   public SummonCombatService getSummonCombatService() {

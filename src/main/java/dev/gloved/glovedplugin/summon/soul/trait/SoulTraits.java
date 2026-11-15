@@ -54,7 +54,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_VAMPIRIC)
                 .displayName("Vampiric")
-                .description("Your summons heal a bit when dealing damage.")
+                .description("Heals a bit when dealing damage.")
                 .order(0)
                 .hooks(new SoulTraitHooks() {
                     @Override
@@ -104,7 +104,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_BULWARK)
                 .displayName("Bulwark")
-                .description("Tougher summons that take less damage in fights.")
+                .description("Take less damage in combat.")
                 .order(2)
                 .hooks(new SoulTraitHooks() {
                     @Override
@@ -118,7 +118,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_HEXING)
                 .displayName("Hexing")
-                .description("More likely to weaken enemies when your summons hit.")
+                .description("More likely to weaken enemies on hit.")
                 .order(3)
                 .hooks(new SoulTraitHooks() {
                     @Override
@@ -160,7 +160,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_PACKBOUND)
                 .displayName("Packbound")
-                .description("Fights stronger when other summons are nearby.")
+                .description("Stronger when other summons are nearby.")
                 .order(6)
                 .rollIf(ctx -> ctx != null && ctx.effectiveGroupCapacity() > 1)
                 .hooks(new SoulTraitHooks() {
@@ -191,7 +191,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_ECHO_STEP)
                 .displayName("Echo Step")
-                .description("Quickly repositions on hit and briefly stuns the target.\nBriefly grants the summon high resistance.")
+                .description("Quickly repositions on hit and briefly stuns the target.\nBriefly grants high resistance.")
                 .order(8)
                 .hooks(new SoulTraitHooks() {
                     @Override
@@ -230,7 +230,7 @@ public final class SoulTraits {
 
         registry.register(SoulTraitBuilder.trait(ID_REFLECTION)
                 .displayName("Reflection")
-                .description("Can reflect incoming attacks back at attackers.\nDebuffed attackers take the full force.")
+                .description("Can reflect a portion of damage from an incoming attack back at attacker.\nDebuffed attackers take the full damage.")
                 .order(11)
                 .hooks(new SoulTraitHooks() {
                     @Override

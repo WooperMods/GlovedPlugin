@@ -6,6 +6,7 @@ import dev.gloved.glovedplugin.lootr.service.PlayerLootService;
 import dev.gloved.glovedplugin.lootr.model.ContainerId;
 import dev.gloved.glovedplugin.lootr.integration.EliteMobsIntegration;
 import dev.gloved.glovedplugin.lootr.util.InventorySerializer;
+import dev.gloved.glovedplugin.summon.soul.table.item.CondensedSoulEssenceItem;
 import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
@@ -218,6 +219,8 @@ public class ChestOpenListener implements Listener {
             }
         }
 
+        tryAddCondensedSoulEssence(inv);
+
         lootService.setFirstOpened(id, uuid, now);
         lootService.saveInventory(id, uuid, inv);
         inventoryMap.put(inv, id);
@@ -225,6 +228,41 @@ public class ChestOpenListener implements Listener {
         player.openInventory(inv);
         if (manager.getConfig().playSound) {
             player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
+        }
+    }
+
+    private void tryAddCondensedSoulEssence(Inventory inv) {
+        if (inv == null || !manager.getConfig().condensedEssenceEnabled) return;
+        double chance = manager.getConfig().condensedEssenceChance;
+        if (chance <= 0.0) return;
+        Random rand = new Random();
+        if (rand.nextDouble() >= chance) return;
+
+        int min = Math.max(1, manager.getConfig().condensedEssenceMinAmount);
+        int max = Math.max(min, manager.getConfig().condensedEssenceMaxAmount);
+        int amount = min + (max > min ? rand.nextInt(max - min + 1) : 0);
+        if (amount <= 0) return;
+
+        try {
+            var summonCfg = plugin.getSummonConfig();
+            var soulTableCfg = summonCfg != null ? summonCfg.getSoulTableConfig() : null;
+            ItemStack item = CondensedSoulEssenceItem.create(plugin, amount, soulTableCfg);
+            if (item == null || item.getType().isAir()) return;
+            var leftover = inv.addItem(item);
+            if (!leftover.isEmpty()) {
+                for (ItemStack drop : leftover.values()) {
+                    // If the chest is full, place into a random occupied slot as a bonus replacement.
+                    List<Integer> slots = new ArrayList<>();
+                    for (int i = 0; i < inv.getSize(); i++) {
+                        if (inv.getItem(i) != null) slots.add(i);
+                    }
+                    if (!slots.isEmpty()) {
+                        inv.setItem(slots.get(rand.nextInt(slots.size())), drop);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("Lootr condensed essence injection failed: " + t.getMessage());
         }
     }
 

@@ -146,6 +146,16 @@ public final class SoulInstance {
                 traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
     }
 
+    /** Same soul with a different trait set (normalized, primary trait kept consistent). */
+    public SoulInstance withTraits(List<SoulTrait> traits) {
+        return new SoulInstance(soulId, ownerId, entityType, familyKey, category, rarity, qualityScore, affixes,
+                traits, createdAt, maxHealth, favorite, baseStats, enhanceLevel, groupCapacity);
+    }
+
+    public int traitCount() {
+        return traits != null ? traits.size() : 0;
+    }
+
     /** Total rolled value for an affix type (sum). */
     public double affixValue(SoulAffixType type) {
         if (type == null) return 0.0;

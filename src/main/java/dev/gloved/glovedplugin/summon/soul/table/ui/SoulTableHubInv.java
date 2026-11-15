@@ -29,8 +29,10 @@ public final class SoulTableHubInv implements SoulTableScreen {
     private static final int SLOT_ENHANCE = 12;
     private static final int SLOT_REFORGE = 14;
     private static final int SLOT_SALVAGE = 16;
-    private static final int SLOT_GUIDE = 31;
-    private static final int SLOT_ESSENCE = 49;
+    private static final int SLOT_CONDENSE = 28;
+    private static final int SLOT_INFUSION = 34;
+    private static final int SLOT_GUIDE = 49;
+    private static final int SLOT_ESSENCE = 31;
     private static final int SLOT_CLOSE = 53;
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
@@ -80,33 +82,42 @@ public final class SoulTableHubInv implements SoulTableScreen {
 
         inventory.setItem(SLOT_COMBINE, processItem(Material.ANVIL, "§d§lCombine",
                 SoulTableUiKeys.ACTION_OPEN_COMBINE, List.of(
-                        "§7Combine 3 same-family, same-rarity souls",
+                        "§7Combine 3 souls of the same type",
                         "§7into one higher-rarity soul.",
                         "",
                         "§eClick to open")));
         inventory.setItem(SLOT_ENHANCE, processItem(Material.EXPERIENCE_BOTTLE, "§d§lEnhance",
                 SoulTableUiKeys.ACTION_OPEN_ENHANCE, List.of(
                         "§7Raise one soul's level and improve",
-                        "§7its base stats on the next summon.",
+                        "§7it's stats.",
                         "",
                         "§eClick to open")));
         inventory.setItem(SLOT_REFORGE, processItem(Material.GRINDSTONE, "§d§lReforge",
                 SoulTableUiKeys.ACTION_OPEN_REFORGE, List.of(
-                        "§7Reroll a soul's affixes, base stats,",
-                        "§7and Summons capacity at its rarity.",
+                        "§7Reroll a soul's affixes and stats.",
                         "",
                         "§eClick to open")));
         inventory.setItem(SLOT_SALVAGE, processItem(Material.HOPPER, "§d§lSalvage",
                 SoulTableUiKeys.ACTION_OPEN_SALVAGE, List.of(
                         "§7Convert selected souls into Essence.",
-                        "§7Bulk salvage with confirmation.",
+                        "",
+                        "§eClick to open")));
+
+        inventory.setItem(SLOT_CONDENSE, processItem(Material.AMETHYST_BLOCK, "§b§lCondense",
+                SoulTableUiKeys.ACTION_OPEN_CONDENSE, List.of(
+                        "§7Convert Essence ⇄ Condensed Soul Essence.",
+                        "",
+                        "§eClick to open")));
+        inventory.setItem(SLOT_INFUSION, processItem(Material.NETHER_STAR, "§5§lInfusion",
+                SoulTableUiKeys.ACTION_OPEN_INFUSION, List.of(
+                        "§7Add or replace traits",
                         "",
                         "§eClick to open")));
 
         inventory.setItem(SLOT_ESSENCE, SoulTableUiItems.infoItem(Material.AMETHYST_SHARD,
                 "§b§lSoul Essence: §f" + essence,
-                List.of("§7Used for Combine, Enhance, and Reforge.",
-                        "§7Earn Essence by salvaging souls.")));
+                List.of("§7Used for table processes including",
+                        "§7Combine, Enhance, Reforge, Salvage, Condense, and Infusion.")));
 
         inventory.setItem(SLOT_GUIDE, SoulTableUiItems.actionItem(plugin, Material.BOOK,
                 "§b§lSoul Guide", SoulTableUiKeys.ACTION_GUIDE,
@@ -154,6 +165,10 @@ public final class SoulTableHubInv implements SoulTableScreen {
                     SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.REFORGE);
             case SoulTableUiKeys.ACTION_OPEN_SALVAGE ->
                     SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.SALVAGE);
+            case SoulTableUiKeys.ACTION_OPEN_CONDENSE ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.CONDENSE);
+            case SoulTableUiKeys.ACTION_OPEN_INFUSION ->
+                    SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.INFUSION);
             case SoulTableUiKeys.ACTION_GUIDE ->
                     SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.HUB);
             case SoulTableUiKeys.ACTION_CLOSE -> player.closeInventory();

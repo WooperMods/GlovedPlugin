@@ -330,6 +330,34 @@ public final class SoulTableConfig {
     private boolean backfillLegacy = true;
     private final SoulStatConfig statConfig = new SoulStatConfig();
 
+    // --- essence condense ---------------------------------------------------
+    private boolean condenseEnabled = true;
+    private int condenseRate = 128;
+    private boolean condenseReversible = true;
+    private Material condensedMaterial = Material.AMETHYST_SHARD;
+    private String condensedName = "&bCondensed Soul Essence";
+
+    // --- catalyst -----------------------------------------------------------
+    private boolean catalystEnabled = true;
+    private Material catalystMaterial = Material.NETHER_STAR;
+    private String catalystName = "&dSoul Catalyst";
+    private boolean catalystRecipeEnabled = true;
+    private final List<String> catalystRecipePattern = new ArrayList<>(List.of("NEN", "ECE", "NEN"));
+    private final Map<Character, Material> catalystRecipeIngredients = new LinkedHashMap<>();
+    private final Map<Character, String> catalystRecipeSpecialIngredients = new LinkedHashMap<>();
+    private int catalystRecipeAmount = 1;
+
+    // --- infusion -----------------------------------------------------------
+    private boolean infusionEnabled = true;
+    private SoulRarity infusionMinRarity = SoulRarity.EPIC;
+    private int infusionMinEnhanceLevel = 5;
+    private boolean infusionStrictRollConditions = false;
+    private final EnumMap<SoulRarity, Integer> infusionTraitCaps = new EnumMap<>(SoulRarity.class);
+    private final EnumMap<SoulRarity, Integer> infusionEssenceAdd = new EnumMap<>(SoulRarity.class);
+    private final EnumMap<SoulRarity, Integer> infusionEssenceReplace = new EnumMap<>(SoulRarity.class);
+    private int infusionCatalystAdd = 2;
+    private int infusionCatalystReplace = 1;
+
     public SoulTableConfig() {
         combineCosts.put(SoulRarity.UNCOMMON, 8);
         combineCosts.put(SoulRarity.RARE, 20);
@@ -345,10 +373,35 @@ public final class SoulTableConfig {
         reforgeCosts.put(SoulRarity.MYTHIC, 275);
 
         recipeIngredients.put('S', Material.SOUL_SAND);
-        recipeIngredients.put('P', Material.POLISHED_BLACKSTONE);
-        recipeIngredients.put('L', Material.SOUL_LANTERN);
-        recipeIngredients.put('O', Material.OBSIDIAN);
-        recipeIngredients.put('N', Material.NETHERITE_SCRAP);
+        recipeIngredients.put('P', Material.COBBLESTONE);
+        recipeIngredients.put('L', Material.SOUL_TORCH);
+        recipeIngredients.put('O', Material.OAK_PLANKS);
+        recipeIngredients.put('N', Material.IRON_INGOT);
+
+        catalystRecipeIngredients.put('N', Material.NETHERITE_INGOT);
+        catalystRecipeIngredients.put('E', Material.ECHO_SHARD);
+        catalystRecipeSpecialIngredients.put('C', "CONDENSED_SOUL_ESSENCE");
+
+        infusionTraitCaps.put(SoulRarity.COMMON, 1);
+        infusionTraitCaps.put(SoulRarity.UNCOMMON, 1);
+        infusionTraitCaps.put(SoulRarity.RARE, 3);
+        infusionTraitCaps.put(SoulRarity.EPIC, 3);
+        infusionTraitCaps.put(SoulRarity.LEGENDARY, 4);
+        infusionTraitCaps.put(SoulRarity.MYTHIC, 5);
+
+        infusionEssenceAdd.put(SoulRarity.COMMON, 0);
+        infusionEssenceAdd.put(SoulRarity.UNCOMMON, 0);
+        infusionEssenceAdd.put(SoulRarity.RARE, 500);
+        infusionEssenceAdd.put(SoulRarity.EPIC, 1200);
+        infusionEssenceAdd.put(SoulRarity.LEGENDARY, 3000);
+        infusionEssenceAdd.put(SoulRarity.MYTHIC, 7000);
+
+        infusionEssenceReplace.put(SoulRarity.COMMON, 0);
+        infusionEssenceReplace.put(SoulRarity.UNCOMMON, 0);
+        infusionEssenceReplace.put(SoulRarity.RARE, 300);
+        infusionEssenceReplace.put(SoulRarity.EPIC, 750);
+        infusionEssenceReplace.put(SoulRarity.LEGENDARY, 1800);
+        infusionEssenceReplace.put(SoulRarity.MYTHIC, 4200);
     }
 
     public static SoulTableConfig load(FileConfiguration yaml) {
@@ -401,6 +454,64 @@ public final class SoulTableConfig {
             }
         }
 
+        // essence condense
+        condenseEnabled = yaml.getBoolean("souls.table.essence.condense.enabled", true);
+        condenseRate = Math.max(1, yaml.getInt("souls.table.essence.condense.rate", 128));
+        condenseReversible = yaml.getBoolean("souls.table.essence.condense.reversible", true);
+        condensedMaterial = material(yaml.getString("souls.table.essence.condense.item.material"), Material.AMETHYST_SHARD);
+        condensedName = normalizeLegacyName(yaml.getString("souls.table.essence.condense.item.name", "&bCondensed Soul Essence"));
+
+        // catalyst
+        catalystEnabled = yaml.getBoolean("souls.table.catalyst.enabled", true);
+        catalystMaterial = material(yaml.getString("souls.table.catalyst.item.material"), Material.NETHER_STAR);
+        catalystName = normalizeLegacyName(yaml.getString("souls.table.catalyst.item.name", "&dSoul Catalyst"));
+        catalystRecipeEnabled = yaml.getBoolean("souls.table.catalyst.recipe.enabled", true);
+        List<String> catPattern = yaml.getStringList("souls.table.catalyst.recipe.shape");
+        if (catPattern != null && catPattern.size() == 3) {
+            catalystRecipePattern.clear();
+            for (String row : catPattern) catalystRecipePattern.add(row == null ? "" : row);
+        }
+        catalystRecipeAmount = Math.max(1, yaml.getInt("souls.table.catalyst.recipe.amount", 1));
+        ConfigurationSection catIngredients = yaml.getConfigurationSection("souls.table.catalyst.recipe.ingredients");
+        if (catIngredients != null) {
+            Map<Character, Material> parsedMat = new LinkedHashMap<>();
+            Map<Character, String> parsedSpecial = new LinkedHashMap<>();
+            for (String key : catIngredients.getKeys(false)) {
+                if (key == null || key.isEmpty()) continue;
+                char c = key.charAt(0);
+                String raw = catIngredients.getString(key);
+                if (raw == null || raw.isBlank()) continue;
+                if ("CONDENSED_SOUL_ESSENCE".equalsIgnoreCase(raw.trim())) {
+                    parsedSpecial.put(c, "CONDENSED_SOUL_ESSENCE");
+                } else {
+                    Material mat = material(raw, null);
+                    if (mat != null) parsedMat.put(c, mat);
+                }
+            }
+            if (!parsedMat.isEmpty() || !parsedSpecial.isEmpty()) {
+                catalystRecipeIngredients.clear();
+                catalystRecipeIngredients.putAll(parsedMat);
+                catalystRecipeSpecialIngredients.clear();
+                catalystRecipeSpecialIngredients.putAll(parsedSpecial);
+            }
+        }
+
+        // infusion
+        infusionEnabled = yaml.getBoolean("souls.table.infusion.enabled", true);
+        infusionMinRarity = SoulRarity.fromString(yaml.getString("souls.table.infusion.min-rarity"), SoulRarity.EPIC);
+        infusionMinEnhanceLevel = Math.max(0, yaml.getInt("souls.table.infusion.min-enhance-level", 5));
+        infusionStrictRollConditions = yaml.getBoolean("souls.table.infusion.strict-roll-conditions", false);
+        for (SoulRarity rarity : SoulRarity.values()) {
+            infusionTraitCaps.put(rarity, Math.max(0,
+                    yaml.getInt("souls.table.infusion.trait-cap." + rarity.name(), infusionTraitCaps.getOrDefault(rarity, 0))));
+            infusionEssenceAdd.put(rarity, Math.max(0,
+                    yaml.getInt("souls.table.costs.infusion.essence.ADD." + rarity.name(), infusionEssenceAdd.getOrDefault(rarity, 0))));
+            infusionEssenceReplace.put(rarity, Math.max(0,
+                    yaml.getInt("souls.table.costs.infusion.essence.REPLACE." + rarity.name(), infusionEssenceReplace.getOrDefault(rarity, 0))));
+        }
+        infusionCatalystAdd = Math.max(0, yaml.getInt("souls.table.costs.infusion.catalysts.ADD", 2));
+        infusionCatalystReplace = Math.max(0, yaml.getInt("souls.table.costs.infusion.catalysts.REPLACE", 1));
+
         statsEnabled = yaml.getBoolean("souls.stats.enabled", true);
         backfillLegacy = yaml.getBoolean("souls.stats.backfill-legacy", true);
         java.util.logging.Logger logger = java.util.logging.Logger.getLogger("GlovedPlugin");
@@ -442,10 +553,50 @@ public final class SoulTableConfig {
             cfg.set("souls.table.recipe.pattern", List.of("SSS", "PLP", "ONO"));
         }
         set(cfg, "souls.table.recipe.ingredients.S", "SOUL_SAND");
-        set(cfg, "souls.table.recipe.ingredients.P", "POLISHED_BLACKSTONE");
-        set(cfg, "souls.table.recipe.ingredients.L", "SOUL_LANTERN");
-        set(cfg, "souls.table.recipe.ingredients.O", "OBSIDIAN");
-        set(cfg, "souls.table.recipe.ingredients.N", "NETHERITE_SCRAP");
+        set(cfg, "souls.table.recipe.ingredients.P", "COBBLESTONE");
+        set(cfg, "souls.table.recipe.ingredients.L", "SOUL_TORCH");
+        set(cfg, "souls.table.recipe.ingredients.O", "OAK_PLANKS");
+        set(cfg, "souls.table.recipe.ingredients.N", "IRON_INGOT");
+        set(cfg, "souls.table.essence.condense.enabled", true);
+        set(cfg, "souls.table.essence.condense.rate", 128);
+        set(cfg, "souls.table.essence.condense.reversible", true);
+        set(cfg, "souls.table.essence.condense.item.material", "AMETHYST_SHARD");
+        set(cfg, "souls.table.essence.condense.item.name", "&bCondensed Soul Essence");
+        set(cfg, "souls.table.catalyst.enabled", true);
+        set(cfg, "souls.table.catalyst.item.material", "NETHER_STAR");
+        set(cfg, "souls.table.catalyst.item.name", "&dSoul Catalyst");
+        set(cfg, "souls.table.catalyst.recipe.enabled", true);
+        if (!cfg.isList("souls.table.catalyst.recipe.shape")) {
+            cfg.set("souls.table.catalyst.recipe.shape", List.of("NEN", "ECE", "NEN"));
+        }
+        set(cfg, "souls.table.catalyst.recipe.ingredients.N", "NETHERITE_INGOT");
+        set(cfg, "souls.table.catalyst.recipe.ingredients.E", "ECHO_SHARD");
+        set(cfg, "souls.table.catalyst.recipe.ingredients.C", "CONDENSED_SOUL_ESSENCE");
+        set(cfg, "souls.table.catalyst.recipe.amount", 1);
+        set(cfg, "souls.table.infusion.enabled", true);
+        set(cfg, "souls.table.infusion.min-rarity", "EPIC");
+        set(cfg, "souls.table.infusion.min-enhance-level", 5);
+        set(cfg, "souls.table.infusion.strict-roll-conditions", false);
+        set(cfg, "souls.table.infusion.trait-cap.COMMON", 1);
+        set(cfg, "souls.table.infusion.trait-cap.UNCOMMON", 1);
+        set(cfg, "souls.table.infusion.trait-cap.RARE", 3);
+        set(cfg, "souls.table.infusion.trait-cap.EPIC", 3);
+        set(cfg, "souls.table.infusion.trait-cap.LEGENDARY", 4);
+        set(cfg, "souls.table.infusion.trait-cap.MYTHIC", 5);
+        set(cfg, "souls.table.costs.infusion.catalysts.ADD", 2);
+        set(cfg, "souls.table.costs.infusion.catalysts.REPLACE", 1);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.COMMON", 0);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.UNCOMMON", 0);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.RARE", 500);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.EPIC", 1200);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.LEGENDARY", 3000);
+        set(cfg, "souls.table.costs.infusion.essence.ADD.MYTHIC", 7000);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.COMMON", 0);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.UNCOMMON", 0);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.RARE", 300);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.EPIC", 750);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.LEGENDARY", 1800);
+        set(cfg, "souls.table.costs.infusion.essence.REPLACE.MYTHIC", 4200);
 
         set(cfg, "souls.stats.enabled", true);
         set(cfg, "souls.stats.backfill-legacy", true);
@@ -482,6 +633,12 @@ public final class SoulTableConfig {
         if (raw == null || raw.isBlank()) return fallback;
         Material mat = Material.matchMaterial(raw.trim().toUpperCase(Locale.ROOT));
         return mat != null ? mat : fallback;
+    }
+
+    private static String normalizeLegacyName(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        // Accept & color codes from config/admin edits and normalize to section-sign formatting.
+        return raw.replace('&', '§');
     }
 
     private static double clamp(double v, double min, double max) {
@@ -541,5 +698,56 @@ public final class SoulTableConfig {
         int next = rarity.ordinal() + 1;
         SoulRarity[] values = SoulRarity.values();
         return next >= values.length ? null : values[next];
+    }
+
+    // ------------------------------------------------------------------ condense
+
+    public boolean isCondenseEnabled() { return condenseEnabled; }
+    public int condenseRate() { return Math.max(1, condenseRate); }
+    public boolean condenseReversible() { return condenseReversible; }
+    public Material condensedMaterial() { return condensedMaterial != null ? condensedMaterial : Material.AMETHYST_SHARD; }
+    public String condensedName() { return normalizeLegacyName(condensedName != null ? condensedName : "&bCondensed Soul Essence"); }
+
+    // ------------------------------------------------------------------ catalyst
+
+    public boolean isCatalystEnabled() { return catalystEnabled; }
+    public Material catalystMaterial() { return catalystMaterial != null ? catalystMaterial : Material.NETHER_STAR; }
+    public String catalystName() { return normalizeLegacyName(catalystName != null ? catalystName : "&dSoul Catalyst"); }
+    public boolean isCatalystRecipeEnabled() { return catalystRecipeEnabled; }
+    public List<String> getCatalystRecipePattern() { return List.copyOf(catalystRecipePattern); }
+    public Map<Character, Material> getCatalystRecipeIngredients() { return Map.copyOf(catalystRecipeIngredients); }
+    public Map<Character, String> getCatalystRecipeSpecialIngredients() { return Map.copyOf(catalystRecipeSpecialIngredients); }
+    public int getCatalystRecipeAmount() { return Math.max(1, catalystRecipeAmount); }
+
+    // ------------------------------------------------------------------ infusion
+
+    public boolean isInfusionEnabled() { return infusionEnabled; }
+    public SoulRarity infusionMinRarity() { return infusionMinRarity != null ? infusionMinRarity : SoulRarity.EPIC; }
+    public int infusionMinEnhanceLevel() { return Math.max(0, infusionMinEnhanceLevel); }
+    public boolean isInfusionStrictRollConditions() { return infusionStrictRollConditions; }
+
+    public int infusionTraitCap(SoulRarity rarity) {
+        if (rarity == null) return 0;
+        Integer cap = infusionTraitCaps.get(rarity);
+        if (cap == null) return rarity.maxAffixes; // fallback to natural max
+        return Math.max(0, cap);
+    }
+
+    public int infusionEssenceCost(String action, SoulRarity rarity) {
+        if (rarity == null || action == null) return Integer.MAX_VALUE;
+        boolean replace = "REPLACE".equalsIgnoreCase(action.trim());
+        EnumMap<SoulRarity, Integer> map = replace ? infusionEssenceReplace : infusionEssenceAdd;
+        return Math.max(0, map.getOrDefault(rarity, 0));
+    }
+
+    public int infusionCatalystCost(String action) {
+        if (action == null) return 0;
+        return "REPLACE".equalsIgnoreCase(action.trim()) ? Math.max(0, infusionCatalystReplace) : Math.max(0, infusionCatalystAdd);
+    }
+
+    public boolean infusionRarityAllowed(SoulRarity rarity) {
+        if (rarity == null) return false;
+        SoulRarity min = infusionMinRarity();
+        return rarity.ordinal() >= min.ordinal();
     }
 }

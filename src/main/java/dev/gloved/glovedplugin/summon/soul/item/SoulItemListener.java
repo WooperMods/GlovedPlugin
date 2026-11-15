@@ -1,6 +1,10 @@
 package dev.gloved.glovedplugin.summon.soul.item;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
+import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
+import dev.gloved.glovedplugin.summon.soul.table.item.CondensedSoulEssenceItem;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -16,13 +20,20 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import dev.gloved.glovedplugin.summon.soul.domain.SoulInstance;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 import dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv;
 
 public class SoulItemListener implements Listener {
+    private static final long CONDENSE_REDEEM_ACCUM_WINDOW_MS = 1200L;
+
     private final GlovedPlugin plugin;
+    private final Map<UUID, RedeemAccum> condensedRedeemAccum = new ConcurrentHashMap<>();
+
+    private record RedeemAccum(long lastAtMs, int amount) {}
 
     public SoulItemListener(GlovedPlugin plugin) {
         this.plugin = plugin;
@@ -141,7 +152,8 @@ public class SoulItemListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         try {
-            if (SoulDropItem.isSoulDrop(plugin, event.getItemInHand())) {
+            ItemStack inHand = event.getItemInHand();
+            if (SoulDropItem.isSoulDrop(plugin, inHand) || CondensedSoulEssenceItem.isCondensed(plugin, inHand)) {
                 event.setCancelled(true);
             }
         } catch (Throwable ignored) {}
@@ -188,6 +200,18 @@ public class SoulItemListener implements Listener {
                     return;
                 }
                 svc.castSelected(player);
+            }
+            return;
+        }
+
+        // Right-click Condensed Soul Essence to redeem 1 at a time
+        if (CondensedSoulEssenceItem.isCondensed(plugin, item)) {
+            Action a = event.getAction();
+            if (a == Action.RIGHT_CLICK_AIR || a == Action.RIGHT_CLICK_BLOCK) {
+                event.setCancelled(true);
+                redeemCondensedEssence(player, event.getHand());
+            } else {
+                event.setCancelled(true);
             }
             return;
         }
@@ -279,5 +303,59 @@ public class SoulItemListener implements Listener {
                 }
             }
         } catch (Throwable ignored) {}
+    }
+
+    private void redeemCondensedEssence(Player player, EquipmentSlot hand) {
+        if (player == null) return;
+        SoulService svc = plugin.getSoulService();
+        if (svc == null) {
+            player.sendActionBar(Component.text("Soul system unavailable.", NamedTextColor.RED));
+            return;
+        }
+        ItemStack stack = hand == EquipmentSlot.OFF_HAND
+                ? player.getInventory().getItemInOffHand()
+                : player.getInventory().getItemInMainHand();
+        if (!CondensedSoulEssenceItem.isCondensed(plugin, stack)) return;
+
+        SoulTableConfig cfg = svc.tableConfig();
+        int rate = cfg != null ? Math.max(1, cfg.condenseRate()) : 128;
+        try {
+            svc.addEssence(player.getUniqueId(), rate);
+        } catch (Throwable t) {
+            GlovedPlugin.logDebug("[Souls] Failed to redeem condensed essence: " + t);
+            player.sendActionBar(Component.text("Could not redeem condensed essence.", NamedTextColor.RED));
+            return;
+        }
+
+        int remaining = stack.getAmount() - 1;
+        if (remaining <= 0) {
+            if (hand == EquipmentSlot.OFF_HAND) player.getInventory().setItemInOffHand(null);
+            else player.getInventory().setItemInMainHand(null);
+        } else {
+            stack.setAmount(remaining);
+            CondensedSoulEssenceItem.refreshMeta(plugin, stack, cfg);
+            if (hand == EquipmentSlot.OFF_HAND) player.getInventory().setItemInOffHand(stack);
+            else player.getInventory().setItemInMainHand(stack);
+        }
+        int displayAmount = rate;
+        long now = System.currentTimeMillis();
+        UUID pid = player.getUniqueId();
+        RedeemAccum prev = condensedRedeemAccum.get(pid);
+        if (prev != null && now - prev.lastAtMs() <= CONDENSE_REDEEM_ACCUM_WINDOW_MS) {
+            long combined = (long) prev.amount() + (long) rate;
+            displayAmount = combined > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) combined;
+        }
+        condensedRedeemAccum.put(pid, new RedeemAccum(now, displayAmount));
+        final UUID playerId = pid;
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            RedeemAccum cur = condensedRedeemAccum.get(playerId);
+            if (cur != null && System.currentTimeMillis() - cur.lastAtMs() >= CONDENSE_REDEEM_ACCUM_WINDOW_MS) {
+                condensedRedeemAccum.remove(playerId, cur);
+            }
+        }, 30L);
+
+        player.sendActionBar(Component.text("Redeemed +" + displayAmount + " Essence", NamedTextColor.AQUA));
+        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.7f, 1.5f);
+        player.updateInventory();
     }
 }

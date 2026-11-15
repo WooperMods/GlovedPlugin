@@ -34,6 +34,10 @@ public class LootrConfig {
     public int eliteRegularMaxItems;
     public double eliteUpJitterChance;
     public int eliteUpJitterMax;
+    public boolean condensedEssenceEnabled;
+    public double condensedEssenceChance;
+    public int condensedEssenceMinAmount;
+    public int condensedEssenceMaxAmount;
     public int autoSaveInterval;
 
     public static LootrConfig load(FileConfiguration cfg) {
@@ -67,6 +71,10 @@ public class LootrConfig {
         c.eliteRegularMaxItems = cfg.getInt("elite.regular-max-items", 6);
         c.eliteUpJitterChance = cfg.getDouble("elite.up-jitter-chance", 0.65);
         c.eliteUpJitterMax = cfg.getInt("elite.up-jitter-max", 3);
+        c.condensedEssenceEnabled = cfg.getBoolean("elite.condensed-essence.enabled", true);
+        c.condensedEssenceChance = cfg.getDouble("elite.condensed-essence.chance", 0.06);
+        c.condensedEssenceMinAmount = Math.max(1, cfg.getInt("elite.condensed-essence.min-amount", 1));
+        c.condensedEssenceMaxAmount = Math.max(c.condensedEssenceMinAmount, cfg.getInt("elite.condensed-essence.max-amount", 1));
         c.autoSaveInterval = cfg.getInt("storage.auto-save-interval", 5);
         return c;
     }
@@ -98,6 +106,22 @@ public class LootrConfig {
         }
         if (!lootrBackfill.isSet("elite.up-jitter-max")) {
             lootrBackfill.set("elite.up-jitter-max", 3);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.condensed-essence.enabled")) {
+            lootrBackfill.set("elite.condensed-essence.enabled", true);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.condensed-essence.chance")) {
+            lootrBackfill.set("elite.condensed-essence.chance", 0.06);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.condensed-essence.min-amount")) {
+            lootrBackfill.set("elite.condensed-essence.min-amount", 1);
+            changed = true;
+        }
+        if (!lootrBackfill.isSet("elite.condensed-essence.max-amount")) {
+            lootrBackfill.set("elite.condensed-essence.max-amount", 1);
             changed = true;
         }
         if (changed) lootrBackfill.save(lootrFile);

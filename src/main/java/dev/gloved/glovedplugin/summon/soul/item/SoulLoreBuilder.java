@@ -66,6 +66,7 @@ public final class SoulLoreBuilder {
                 }
             }
         }
+        out.add(separator());
         return out;
     }
 
@@ -93,7 +94,6 @@ public final class SoulLoreBuilder {
         out.add(header("Stats"));
         if (soul == null) {
             out.add(line("§7- None"));
-            out.add(separator());
             return out;
         }
 
@@ -281,7 +281,6 @@ public final class SoulLoreBuilder {
                 out.add(line("§a" + affixText));
             }
         }
-        out.add(separator());
         return out;
     }
 

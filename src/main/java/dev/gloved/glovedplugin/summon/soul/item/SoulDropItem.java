@@ -83,8 +83,8 @@ public final class SoulDropItem {
         String display = rarity.coloredNameLegacy() + sep + mobName + " Soul";
         meta.displayName(LegacyComponentSerializer.legacySection().deserialize(display).decoration(TextDecoration.ITALIC, false));
         List<Component> lore = new ArrayList<>();
-        lore.addAll(SoulLoreBuilder.traitsSection(soul));
         lore.addAll(SoulLoreBuilder.statsSection(plugin, soul));
+        lore.addAll(SoulLoreBuilder.traitsSection(soul));
         if (soul == null) {
             // statsSection already renders a safe empty stats block for null souls.
         }

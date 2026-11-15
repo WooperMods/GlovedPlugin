@@ -74,6 +74,8 @@ public final class SoulTablePackService {
     private byte[] buildPack() throws IOException {
         System.setProperty("java.awt.headless", "true");
         BufferedImage texture = buildTexture();
+        BufferedImage condensedTexture = buildCondensedTexture();
+        BufferedImage catalystTexture = buildCatalystTexture();
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
@@ -86,6 +88,7 @@ public final class SoulTablePackService {
                     "}\n").getBytes(StandardCharsets.UTF_8));
             put(zos, "pack.png", png(scale(texture, 64)));
 
+            // Soul Table block/item
             put(zos, "assets/gloved/items/soul_table.json", ("{\n" +
                     "  \"model\": {\n" +
                     "    \"type\": \"minecraft:model\",\n" +
@@ -97,8 +100,105 @@ public final class SoulTablePackService {
                     "  \"textures\": { \"all\": \"gloved:block/soul_table\" }\n" +
                     "}\n").getBytes(StandardCharsets.UTF_8));
             put(zos, "assets/gloved/textures/block/soul_table.png", png(texture));
+
+            // Condensed Soul Essence item
+            put(zos, "assets/gloved/items/condensed_soul_essence.json", ("{\n" +
+                    "  \"model\": {\n" +
+                    "    \"type\": \"minecraft:model\",\n" +
+                    "    \"model\": \"gloved:item/condensed_soul_essence\"\n" +
+                    "  }\n" +
+                    "}\n").getBytes(StandardCharsets.UTF_8));
+            put(zos, "assets/gloved/models/item/condensed_soul_essence.json", ("{\n" +
+                    "  \"parent\": \"minecraft:item/generated\",\n" +
+                    "  \"textures\": { \"layer0\": \"gloved:item/condensed_soul_essence\" }\n" +
+                    "}\n").getBytes(StandardCharsets.UTF_8));
+            put(zos, "assets/gloved/textures/item/condensed_soul_essence.png", png(condensedTexture));
+
+            // Soul Catalyst item
+            put(zos, "assets/gloved/items/soul_catalyst.json", ("{\n" +
+                    "  \"model\": {\n" +
+                    "    \"type\": \"minecraft:model\",\n" +
+                    "    \"model\": \"gloved:item/soul_catalyst\"\n" +
+                    "  }\n" +
+                    "}\n").getBytes(StandardCharsets.UTF_8));
+            put(zos, "assets/gloved/models/item/soul_catalyst.json", ("{\n" +
+                    "  \"parent\": \"minecraft:item/generated\",\n" +
+                    "  \"textures\": { \"layer0\": \"gloved:item/soul_catalyst\" }\n" +
+                    "}\n").getBytes(StandardCharsets.UTF_8));
+            put(zos, "assets/gloved/textures/item/soul_catalyst.png", png(catalystTexture));
         }
         return baos.toByteArray();
+    }
+
+    /** 16x16 condensed amethyst/soul crystal. */
+    private static BufferedImage buildCondensedTexture() {
+        BufferedImage image = new BufferedImage(TEXTURE_SIZE, TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Random rng = new Random(TEXTURE_SEED ^ 0x434F4E44455345L);
+        int outer = 0x3A5FA8;
+        int mid = 0x57C7FF;
+        int inner = 0xD9FBFF;
+        int edge = 0x1E2E52;
+        for (int y = 0; y < TEXTURE_SIZE; y++) {
+            for (int x = 0; x < TEXTURE_SIZE; x++) {
+                double dx = Math.abs(x - 7.5) / 7.5;
+                double dy = Math.abs(y - 7.5) / 7.5;
+                double d = dx + dy; // diamond
+                if (d > 1.05) continue;
+                int color;
+                if (d > 0.85) color = edge;
+                else if (d > 0.55) color = jitter(outer, rng.nextInt(11) - 5);
+                else if (d > 0.25) color = jitter(mid, rng.nextInt(11) - 5);
+                else color = jitter(inner, rng.nextInt(9) - 4);
+                // subtle cross highlight
+                if ((x == 7 || x == 8) && y >= 4 && y <= 11 && d <= 0.85) color = blend(color, 0xFFFFFF, 0.18);
+                if ((y == 7 || y == 8) && x >= 4 && x <= 11 && d <= 0.85) color = blend(color, 0xFFFFFF, 0.12);
+                image.setRGB(x, y, 0xFF000000 | color);
+            }
+        }
+        return image;
+    }
+
+    /** 16x16 soul catalyst core. */
+    private static BufferedImage buildCatalystTexture() {
+        BufferedImage image = new BufferedImage(TEXTURE_SIZE, TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Random rng = new Random(TEXTURE_SEED ^ 0x434154414C595354L);
+        int ring = 0xA24BFF;
+        int ringHi = 0xE0A8FF;
+        int core = 0x66FFF2;
+        int coreHi = 0xF4FFFF;
+        int dark = 0x2A1038;
+        for (int y = 0; y < TEXTURE_SIZE; y++) {
+            for (int x = 0; x < TEXTURE_SIZE; x++) {
+                double dx = x - 7.5;
+                double dy = y - 7.5;
+                double dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 7.2) continue;
+                int color = 0;
+                if (dist >= 5.2 && dist <= 6.8) {
+                    color = ((x + y) & 1) == 0 ? ringHi : ring;
+                } else if (dist <= 2.6) {
+                    color = dist <= 1.2 ? coreHi : core;
+                } else if (dist > 3.0 && dist < 4.6 && ((x + y) % 3 == 0)) {
+                    color = jitter(dark, rng.nextInt(13) - 6);
+                } else if (dist < 5.2) {
+                    // connectors/spokes
+                    if (Math.abs(dx) <= 0.8 || Math.abs(dy) <= 0.8) color = jitter(ring, rng.nextInt(11) - 5);
+                }
+                if (color == 0) continue;
+                image.setRGB(x, y, 0xFF000000 | color);
+            }
+        }
+        return image;
+    }
+
+    private static int blend(int base, int top, double amount) {
+        amount = Math.max(0.0, Math.min(1.0, amount));
+        int br = (base >> 16) & 0xFF, bg = (base >> 8) & 0xFF, bb = base & 0xFF;
+        int tr = (top >> 16) & 0xFF, tg = (top >> 8) & 0xFF, tb = top & 0xFF;
+        int r = clamp((int) Math.round(br + (tr - br) * amount));
+        int g = clamp((int) Math.round(bg + (tg - bg) * amount));
+        int b = clamp((int) Math.round(bb + (tb - bb) * amount));
+        return (r << 16) | (g << 8) | b;
     }
 
     /** 16x16 soul-sand block with an amethyst rune ring and a cyan soul glyph. */

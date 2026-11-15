@@ -36,6 +36,8 @@ public final class SoulTableNav {
             case ENHANCE -> new SoulTableEnhanceInv(plugin, player, row).open(player);
             case REFORGE -> new SoulTableReforgeInv(plugin, player, row).open(player);
             case SALVAGE -> new SoulTableSalvageInv(plugin, player, row).open(player);
+            case CONDENSE -> new SoulTableCondenseInv(plugin, player, row).open(player);
+            case INFUSION -> new SoulTableInfusionInv(plugin, player, row).open(player);
             case HUB -> new SoulTableHubInv(plugin, player, row).open(player);
         }
     }

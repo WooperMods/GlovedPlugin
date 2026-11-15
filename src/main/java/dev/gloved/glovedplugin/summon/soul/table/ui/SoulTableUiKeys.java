@@ -23,6 +23,19 @@ public final class SoulTableUiKeys {
     public static final String ACTION_OPEN_ENHANCE = "open_enhance";
     public static final String ACTION_OPEN_REFORGE = "open_reforge";
     public static final String ACTION_OPEN_SALVAGE = "open_salvage";
+    public static final String ACTION_OPEN_CONDENSE = "open_condense";
+    public static final String ACTION_OPEN_INFUSION = "open_infusion";
+
+    // Condense
+    public static final String ACTION_CONDENSE = "condense";
+    public static final String ACTION_DECONDENSE = "decondense";
+    public static final String ACTION_AMOUNT = "amount:"; // prefix + units
+
+    // Infusion
+    public static final String ACTION_MODE_ADD = "mode_add";
+    public static final String ACTION_MODE_REPLACE = "mode_replace";
+    public static final String ACTION_SELECT_TRAIT = "trait:"; // prefix + traitId
+    public static final String ACTION_SELECT_REPLACE_SLOT = "slot:"; // prefix + traitId
 
     private SoulTableUiKeys() {
     }

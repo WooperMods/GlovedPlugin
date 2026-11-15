@@ -8,7 +8,9 @@ public enum SoulTableReturnTarget {
     COMBINE,
     ENHANCE,
     REFORGE,
-    SALVAGE;
+    SALVAGE,
+    CONDENSE,
+    INFUSION;
 
     public static SoulTableReturnTarget fromNullable(String raw) {
         if (raw == null || raw.isBlank()) return HUB;

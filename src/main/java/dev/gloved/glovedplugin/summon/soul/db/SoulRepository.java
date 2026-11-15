@@ -290,6 +290,15 @@ public class SoulRepository {
         }
     }
 
+    public synchronized void updateSoulTraits(UUID soulId, List<SoulTrait> traits) throws SQLException {
+        String sql = "UPDATE souls SET trait = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(sql)) {
+            ps.setString(1, serializeTraits(traits));
+            ps.setString(2, soulId.toString());
+            ps.executeUpdate();
+        }
+    }
+
     public synchronized void setSelectedSlot(UUID owner, int slot, int defaultCapacity) throws SQLException {
         getOrCreatePlayerState(owner, defaultCapacity);
         String upd = "UPDATE soul_player_state SET selected_slot = ?, updated_at = ? WHERE owner_uuid = ?";

@@ -191,6 +191,25 @@ souls:
         MYTHIC: 275
       salvage:
         confirmation-seconds: 5
+      infusion:
+        catalysts:
+          ADD: 2
+          REPLACE: 1
+        essence:
+          ADD:
+            COMMON: 0
+            UNCOMMON: 0
+            RARE: 500
+            EPIC: 1200
+            LEGENDARY: 3000
+            MYTHIC: 7000
+          REPLACE:
+            COMMON: 0
+            UNCOMMON: 0
+            RARE: 300
+            EPIC: 750
+            LEGENDARY: 1800
+            MYTHIC: 4200
     recipe:
       enabled: true
       pattern:
@@ -199,10 +218,46 @@ souls:
         - "ONO"
       ingredients:
         S: SOUL_SAND
-        P: POLISHED_BLACKSTONE
-        L: SOUL_LANTERN
-        O: OBSIDIAN
-        N: NETHERITE_SCRAP
+        P: COBBLESTONE
+        L: SOUL_TORCH
+        O: OAK_PLANKS
+        N: IRON_INGOT
+    essence:
+      condense:
+        enabled: true
+        rate: 128
+        reversible: true
+        item:
+          material: AMETHYST_SHARD
+          name: "&bCondensed Soul Essence"
+    catalyst:
+      enabled: true
+      item:
+        material: NETHER_STAR
+        name: "&dSoul Catalyst"
+      recipe:
+        enabled: true
+        shape:
+          - "NEN"
+          - "ECE"
+          - "NEN"
+        ingredients:
+          N: NETHERITE_INGOT
+          E: ECHO_SHARD
+          C: CONDENSED_SOUL_ESSENCE
+        amount: 1
+    infusion:
+      enabled: true
+      min-rarity: EPIC
+      min-enhance-level: 5
+      strict-roll-conditions: false
+      trait-cap:
+        COMMON: 1
+        UNCOMMON: 1
+        RARE: 3
+        EPIC: 3
+        LEGENDARY: 4
+        MYTHIC: 5
 
   # Rolled soul base stats (auto-partitioned absolute bands). Follow/target range is intentionally
   # absent: it is a fixed SummonProfile AI limit, never a soul stat.

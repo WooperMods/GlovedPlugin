@@ -228,8 +228,8 @@ public class SoulVaultInv implements InventoryHolder {
                     .decoration(TextDecoration.ITALIC, false);
             meta.displayName(name);
             List<Component> lore = new ArrayList<>();
-            lore.addAll(SoulLoreBuilder.traitsSection(soul));
             lore.addAll(SoulLoreBuilder.statsSection(plugin, soul, viewerId));
+            lore.addAll(SoulLoreBuilder.traitsSection(soul));
             String flags = (soul.isFavorite() ? "§e★ Fav " : "");
             if (!flags.isBlank()) lore.add(LegacyComponentSerializer.legacySection().deserialize(flags.trim()).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());

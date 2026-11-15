@@ -31,7 +31,7 @@ import java.util.UUID;
  */
 public final class SoulTableGuideInv implements SoulTableScreen {
 
-    public enum Page { MAIN, TRAITS, AFFIXES, STATS, TABLE }
+    public enum Page { MAIN, TRAITS, AFFIXES, STATS, TABLE, CONDENSE, INFUSION, CRAFTING }
 
     private static final int SIZE = 54;
     private static final int SLOT_BACK = 45;
@@ -61,6 +61,9 @@ public final class SoulTableGuideInv implements SoulTableScreen {
             case AFFIXES -> "Soul Guide: Affixes";
             case STATS -> "Soul Guide: Stats & Rarity";
             case TABLE -> "Soul Guide: Soul Table";
+            case CONDENSE -> "Soul Guide: Condensation";
+            case INFUSION -> "Soul Guide: Infusion";
+            case CRAFTING -> "Soul Guide: Crafting";
         };
         this.inventory = Bukkit.createInventory(this, SIZE,
                 Component.text(title, NamedTextColor.DARK_AQUA));
@@ -104,6 +107,9 @@ public final class SoulTableGuideInv implements SoulTableScreen {
             case AFFIXES -> buildAffixes();
             case STATS -> buildStats();
             case TABLE -> buildTable();
+            case CONDENSE -> buildCondense();
+            case INFUSION -> buildInfusion();
+            case CRAFTING -> buildCrafting();
         }
         if (page == Page.MAIN) {
             if (isStandalone()) {
@@ -142,6 +148,20 @@ public final class SoulTableGuideInv implements SoulTableScreen {
                 "§eClick to view")));
         inventory.setItem(34, soulTableActionItem("§d§lSoul Table", "page:TABLE", List.of(
                 "§7Upgrade, reroll, and recycle souls.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(38, actionItem(Material.AMETHYST_BLOCK, "§b§lCondensation", "page:CONDENSE", List.of(
+                "§7Convert Essence ⇄ Condensed Soul Essence.",
+                "§7Craft catalysts in incremental batches.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(40, actionItem(Material.CRAFTING_TABLE, "§6§lCrafting", "page:CRAFTING", List.of(
+                "§7Recipes for soul-related items.",
+                "§7Soul Table, catalysts, traps, and more.",
+                "",
+                "§eClick to view")));
+        inventory.setItem(42, actionItem(Material.NETHER_STAR, "§5§lInfusion", "page:INFUSION", List.of(
+                "§7Add or replace traits",
                 "",
                 "§eClick to view")));
     }
@@ -327,12 +347,103 @@ public final class SoulTableGuideInv implements SoulTableScreen {
                 "§7Break down souls you don't need",
                 "§7to get §bEssence§7 back.",
                 "§7You can salvage several at once.")));
-        inventory.setItem(23, infoItem(Material.AMETHYST_SHARD, "§bEssence", List.of(
-                "§7Used to combine, enhance, and reforge.",
+        inventory.setItem(23, infoItem(Material.AMETHYST_BLOCK, "§bCondensation", List.of(
+                "§7Convert Essence ⇄ Condensed Soul Essence.",
+                "§7Use condensed essence to craft catalysts.")));
+        inventory.setItem(24, infoItem(Material.NETHER_STAR, "§5Infusion", List.of(
+                "§7Add or replace traits with chosen results",
+                "§7using Essence and Soul Catalysts.")));
+        inventory.setItem(31, infoItem(Material.AMETHYST_SHARD, "§bEssence", List.of(
+                "§7Used across table processes.",
                 "§7Earn it by salvaging souls.")));
-        inventory.setItem(24, infoItem(Material.BOOK, "§eHow to Use", List.of(
-                "§7Click souls in the grid to select them.",
-                "§7Check the button at the bottom to confirm.")));
+    }
+
+    private void buildCondense() {
+        inventory.setItem(4, infoItem(Material.AMETHYST_BLOCK, "§b§lCondensation", List.of(
+                "§7Package Essence into Condensed Soul Essence",
+                "§7and back again (if available).",
+                "§7Great for incremental progress.")));
+        inventory.setItem(20, infoItem(Material.AMETHYST_SHARD, "§bConversion", List.of(
+                "§7Convert Essence into Condensed Soul Essence",
+                "§7and back again when available.",
+                "§7Batch convert x1/x16/x64/Max.")));
+        inventory.setItem(22, infoItem(Material.CRAFTING_TABLE, "§dSoul Catalysts", List.of(
+                "§7Craft Soul Catalysts from Condensed",
+                "§7Soul Essence and other materials.",
+                "§7Use them for Infusion.")));
+        inventory.setItem(24, infoItem(Material.EMERALD, "§aEarly Taste", List.of(
+                "§7Condensation is available early to help",
+                "§7you build into the endgame economy loop.")));
+        inventory.setItem(31, infoItem(Material.BOOK, "§eNotes", List.of(
+                "§7No soul selection required.",
+                "§7You can right-click Condensed Soul Essence",
+                "§7items to redeem them for Essence.")));
+    }
+
+    private void buildInfusion() {
+        inventory.setItem(4, infoItem(Material.NETHER_STAR, "§5§lInfusion", List.of(
+                "§7Add or replace a trait on a soul with a",
+                "§7player-chosen result. High cost, high control.")));
+        inventory.setItem(19, infoItem(Material.LIME_DYE, "§aAdd Trait", List.of(
+                "§7Adds a new trait if below the rarity cap.",
+                "§7Costs more Essence/Catalysts than Replace.")));
+        inventory.setItem(20, infoItem(Material.ORANGE_DYE, "§eReplace Trait", List.of(
+                "§7Replaces one existing trait with another.",
+                "§7Cheaper to support iterative buildcraft.")));
+        inventory.setItem(21, infoItem(Material.ENCHANTED_BOOK, "§dTrait Choice", List.of(
+                "§7Choose from registered traits.",
+                "§7Preview before/after, warnings, and synergies.",
+                "§7No duplicates on the same soul.")));
+        inventory.setItem(22, infoItem(Material.COMPARATOR, "§6Prerequisites & Cost", List.of(
+                "§7Requires enough rarity and enhancement,",
+                "§7plus Essence and Soul Catalyst(s).",
+                "§7Check the infusion screen for details.")));
+        inventory.setItem(23, infoItem(Material.CLOCK, "§7Applies Next Summon", List.of(
+                "§7Trait changes apply on the next summon.",
+                "§7Active minions are not live-updated.")));
+        inventory.setItem(24, infoItem(Material.SPYGLASS, "§eSituational Traits", List.of(
+                "§7Some traits are situational (e.g. Packbound",
+                "§7is weak at low summon capacity).",
+                "§7Warnings help you choose the best fit.")));
+    }
+
+    private void buildCrafting() {
+        inventory.setItem(4, infoItem(Material.CRAFTING_TABLE, "§6§lCraftable Soul Items", List.of(
+                "§7Recipes for soul-related items and stations.",
+                "§7Some recipes may vary by server config.")));
+
+        inventory.setItem(19, infoItem(Material.BOOK, "§bSoul Guide", List.of(
+                "§7A quick in-game reference for souls.",
+                "",
+                "§eRecipe: §fShapeless",
+                "§7- Book",
+                "§7- Soul Sand")));
+        inventory.setItem(20, soulTableInfoItem("§dSoul Table", List.of(
+                "§7A station for combining, enhancing,",
+                "§7reforging, salvaging, condensing, and infusing.",
+                "",
+                "§eRecipe: §fShaped (3x3)",
+                "§7Default: Soul Sand, Cobblestone,",
+                "§7Soul Torch, Oak Planks, Iron Ingot")));
+        inventory.setItem(21, infoItem(Material.NETHER_STAR, "§dSoul Catalyst", List.of(
+                "§7Used in Soul Table Infusion.",
+                "",
+                "§eRecipe: §fShaped (3x3)",
+                "§7Crafted from Condensed Soul Essence",
+                "§7and other materials (configurable).")));
+        inventory.setItem(22, infoItem(Material.POTION, "§aSoul Traps", List.of(
+                "§7Throwable traps used to capture mob souls.",
+                "§7Higher tiers are harder to craft and can",
+                "§7capture rarer/stronger souls.",
+                "",
+                "§eSnare: §fShapeless (basic materials)",
+                "§eTrap/Cage/Chalice/Relic/Prism: §fShaped (3x3)",
+                "§7Cost and materials increase by tier.")));
+        inventory.setItem(24, infoItem(Material.AMETHYST_SHARD, "§bCondensed Soul Essence", List.of(
+                "§7Not crafted at a table directly.",
+                "§7Create it at the Soul Table via §bCondensation§7.",
+                "",
+                "§eTip: §7Right-click to redeem for Essence.")));
     }
 
     @Override
