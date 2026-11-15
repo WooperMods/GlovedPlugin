@@ -146,10 +146,14 @@ public final class UiPackService {
         int c = 0xFFEAF6FF, s = 0xFF1B3B5A;
         // shaft
         fillRect(img, 5, 7, 8, 2, c); fillRect(img, 5, 8, 8, 1, s);
-        // head
+        // head pointing left (tip at left)
         for (int i = 0; i < 4; i++) {
-            fillRect(img, 3 + i, 4 + i, 1, 8 - i * 2, c);
-            px(img, 3 + i, 3 + i, s); px(img, 3 + i, 12 - i, s);
+            int x = 3 + i;
+            int y = 4 + i;
+            int h = 8 - i * 2;
+            fillRect(img, x, y, 1, h, c);
+            px(img, x, y - 1, s);
+            px(img, x, y + h, s);
         }
         return img;
     }
@@ -157,10 +161,16 @@ public final class UiPackService {
     private static BufferedImage drawArrowRight() {
         BufferedImage img = blank();
         int c = 0xFFEAF6FF, s = 0xFF1B3B5A;
+        // shaft
         fillRect(img, 3, 7, 8, 2, c); fillRect(img, 3, 8, 8, 1, s);
+        // head pointing right (tip at right)
         for (int i = 0; i < 4; i++) {
-            fillRect(img, 12 - i, 4 + i, 1, 8 - i * 2, c);
-            px(img, 12 - i, 3 + i, s); px(img, 12 - i, 12 - i, s);
+            int x = 12 - i;
+            int y = 4 + i;
+            int h = 8 - i * 2;
+            fillRect(img, x, y, 1, h, c);
+            px(img, x, y - 1, s);
+            px(img, x, y + h, s);
         }
         return img;
     }
@@ -168,10 +178,14 @@ public final class UiPackService {
     private static BufferedImage drawBack() {
         BufferedImage img = blank();
         int c = 0xFFFFE8B0, s = 0xFF5A3A12;
-        // arrow head left
+        // arrow head pointing left
         for (int i = 0; i < 3; i++) {
-            fillRect(img, 3 + i, 5 + i, 1, 6 - i * 2, c);
-            px(img, 3 + i, 4 + i, s); px(img, 3 + i, 11 - i, s);
+            int x = 3 + i;
+            int y = 5 + i;
+            int h = 6 - i * 2;
+            fillRect(img, x, y, 1, h, c);
+            px(img, x, y - 1, s);
+            px(img, x, y + h, s);
         }
         // curved-ish shaft
         fillRect(img, 6, 7, 5, 2, c);
