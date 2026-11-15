@@ -104,6 +104,8 @@ public class SoulTeamsInv implements InventoryHolder {
         // Global controls (column 0)
         inv.setItem(0 * 9 + 0, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
                 "§7Browse, manage, extract, and salvage souls"));
+        inv.setItem(1 * 9 + 0, navItem(Material.KNOWLEDGE_BOOK, "§bSoul Codex", "codex", UiIcons.GUIDE,
+                "§7View family discoveries, progress, and claim codex rewards"));
         inv.setItem(4 * 9 + 0, navItem(Material.BARRIER, "§eRecall Active Group", "recall", UiIcons.BACK));
         inv.setItem(5 * 9 + 0, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 

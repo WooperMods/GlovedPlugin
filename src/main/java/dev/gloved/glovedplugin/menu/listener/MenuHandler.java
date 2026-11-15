@@ -40,6 +40,8 @@ import dev.gloved.glovedplugin.summon.soul.service.SoulService;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableScreen;
 import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableUiRouter;
 import dev.gloved.glovedplugin.summon.soul.ui.SoulTeamsInv;
+import dev.gloved.glovedplugin.summon.soul.codex.ui.SoulCodexInv;
+import dev.gloved.glovedplugin.summon.soul.db.SoulRepository;
 import dev.gloved.glovedplugin.summon.soul.ui.SoulVaultInv;
 
 /**
@@ -97,6 +99,10 @@ public class MenuHandler implements Listener {
         }
         if (event.getView().getTopInventory().getHolder() instanceof SoulTeamsInv teams) {
             handleSoulTeamsClick(event, teams, player);
+            return;
+        }
+        if (event.getView().getTopInventory().getHolder() instanceof SoulCodexInv codex) {
+            handleSoulCodexClick(event, codex, player);
             return;
         }
         if (SoulTableUiRouter.handleClick(event, player)) {
@@ -352,6 +358,7 @@ public class MenuHandler implements Listener {
             case "close" -> player.closeInventory();
             case "help" -> {}
             case "vault" -> new SoulVaultInv(plugin, player.getUniqueId(), 0, null, null, "default").open(player);
+            case "codex" -> new SoulCodexInv(plugin, player.getUniqueId(), 0).open(player);
             case "select_team" -> {
                 if (team != null) {
                     svc.setSelectedTeam(player.getUniqueId(), team);
@@ -682,6 +689,7 @@ public class MenuHandler implements Listener {
         if (view.getTopInventory().getHolder() instanceof MenuEditorInv
                 || view.getTopInventory().getHolder() instanceof SoulVaultInv
                 || view.getTopInventory().getHolder() instanceof SoulTeamsInv
+                || view.getTopInventory().getHolder() instanceof SoulCodexInv
                 || view.getTopInventory().getHolder() instanceof SoulTableScreen) {
             for (int rawSlot : event.getRawSlots()) {
                 if (rawSlot >= 0 && rawSlot < topSize) {
@@ -1181,6 +1189,63 @@ public class MenuHandler implements Listener {
         }
         if (removed > 0) player.updateInventory();
         return removed;
+    }
+
+    private void handleSoulCodexClick(InventoryClickEvent event, SoulCodexInv codexInv, Player player) {
+        event.setCancelled(true);
+        if (codexInv.getViewerId() != null && !codexInv.getViewerId().equals(player.getUniqueId())) {
+            player.closeInventory();
+            return;
+        }
+        int raw = event.getRawSlot();
+        if (raw < 0 || raw >= event.getView().getTopInventory().getSize()) return;
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir()) return;
+        var svc = plugin.getSoulService();
+        if (svc == null) return;
+
+        String nav = null;
+        String family = null;
+        try {
+            var meta = clicked.getItemMeta();
+            if (meta != null) {
+                var pdc = meta.getPersistentDataContainer();
+                nav = pdc.get(SoulCodexInv.navKey(plugin), org.bukkit.persistence.PersistentDataType.STRING);
+                family = pdc.get(SoulCodexInv.familyKey(plugin), org.bukkit.persistence.PersistentDataType.STRING);
+            }
+        } catch (Throwable ignored) {}
+        if (nav == null) return;
+
+        switch (nav) {
+            case "back" -> new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+            case "prev" -> new SoulCodexInv(plugin, player.getUniqueId(), Math.max(0, codexInv.getPage() - 1)).open(player);
+            case "next" -> new SoulCodexInv(plugin, player.getUniqueId(), codexInv.getPage() + 1).open(player);
+            case "entry" -> {
+                if (family == null || family.isBlank()) return;
+                var codexSvc = svc.getCodexService();
+                if (codexSvc == null) return;
+                SoulRepository.CodexEntry entry = null;
+                try { entry = svc.getRepository().getCodexEntry(player.getUniqueId(), family); } catch (Exception ignored) {}
+                if (entry == null) {
+                    new SoulCodexInv(plugin, player.getUniqueId(), codexInv.getPage()).open(player);
+                    return;
+                }
+                boolean claimedAny = false;
+                for (var tier : dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.values()) {
+                    var st = codexSvc.tierState(entry, tier);
+                    if (st.reached() && !st.claimed()) {
+                        codexSvc.claimTier(player, family, tier);
+                        claimedAny = true;
+                        break; // claim one tier per click, refresh to show next
+                    }
+                }
+                if (!claimedAny) {
+                    player.sendMessage(net.kyori.adventure.text.Component.text("§7[Codex] No claimable tier rewards for this family right now."));
+                }
+                new SoulCodexInv(plugin, player.getUniqueId(), codexInv.getPage()).open(player);
+            }
+            default -> {}
+        }
     }
 
     /**
