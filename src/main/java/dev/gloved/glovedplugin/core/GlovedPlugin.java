@@ -671,6 +671,11 @@ public final class GlovedPlugin extends JavaPlugin {
         glovedBridge.shutdown();
     } catch (Exception ignored) {
     }
+    try {
+      if (combatListener != null)
+        combatListener.shutdown();
+    } catch (Exception ignored) {
+    }
     EditSessionCache.storeAll(this);
     if (summonAbilityService != null) {
       try {

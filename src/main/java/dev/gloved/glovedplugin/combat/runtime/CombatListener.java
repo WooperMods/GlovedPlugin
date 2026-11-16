@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import dev.gloved.glovedplugin.combat.config.WeaponRegistry;
+import dev.gloved.glovedplugin.combat.db.CombatAdventureStore;
 import dev.gloved.glovedplugin.combat.fx.TrailFX;
 import dev.gloved.glovedplugin.combat.targeting.ArcHitbox;
 import dev.gloved.glovedplugin.combat.targeting.AttackStage;
@@ -47,6 +48,8 @@ public final class CombatListener implements Listener {
     private final ThreadLocal<Boolean> syntheticAttack = ThreadLocal.withInitial(() -> false);
     /** Players we switched to adventure (prior mode to restore). */
     private final Map<UUID, org.bukkit.GameMode> adventureSwitched = new HashMap<>();
+    /** Persists adventure-mode switches across restarts to avoid stuck players. */
+    private final CombatAdventureStore adventureStore;
     /** Last crosshair entity from PrePlayerAttack, so arc never loses a vanilla hit. */
     private record PrimaryHit(UUID entityId, long atMillis) {}
     private final Map<UUID, PrimaryHit> lastPrimary = new HashMap<>();
@@ -59,11 +62,31 @@ public final class CombatListener implements Listener {
     public CombatListener(GlovedPlugin plugin, WeaponRegistry registry) {
         this.plugin = plugin;
         this.registry = registry;
+        this.adventureStore = new CombatAdventureStore(plugin);
+        try {
+            this.adventureStore.init();
+        } catch (Exception e) {
+            GlovedPlugin.logWarning("[Combat] Failed to initialize combat.db (adventure state persistence disabled): " + e.getMessage());
+        }
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (Player player : Bukkit.getOnlinePlayers()) {
             applyReach(player);
             applyGameMode(player);
         }
+    }
+
+    public void shutdown() {
+        // Best-effort restore for players we actively switched this session.
+        try {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                try {
+                    restoreGameMode(player, player.getUniqueId());
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (adventureStore != null) adventureStore.close();
+        } catch (Exception ignored) {}
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -552,6 +575,23 @@ public final class CombatListener implements Listener {
         } catch (Exception e) {
             return;
         }
+
+        // Reconcile persisted state (e.g. after restart/crash) without claiming legit adventure players.
+        if (adventureStore != null) {
+            org.bukkit.GameMode persistedPrior = adventureStore.getPriorMode(id);
+            if (persistedPrior != null && !adventureSwitched.containsKey(id)) {
+                if (current == org.bukkit.GameMode.ADVENTURE) {
+                    adventureSwitched.put(id, persistedPrior);
+                } else {
+                    // No longer in adventure; stale record can be cleaned up.
+                    adventureStore.clear(id);
+                }
+            } else if (persistedPrior == null && adventureSwitched.containsKey(id)) {
+                // Memory state without persistence (e.g. DB init failed earlier): try to persist now.
+                try { adventureStore.markSwitched(id, adventureSwitched.get(id)); } catch (Exception ignored) {}
+            }
+        }
+
         if (!registry.isEnabled() || !registry.isAdventureModeWhileArmed()) {
             restoreGameMode(player, id);
             return;
@@ -570,14 +610,23 @@ public final class CombatListener implements Listener {
         } catch (Exception ignored) {}
         if (wantAdventure) {
             // Only ever switch out of survival; never claim players who are
-            // already adventure (legit adventure, other plugins, restarts).
-            if (current == org.bukkit.GameMode.SURVIVAL && !adventureSwitched.containsKey(id)) {
+            // already adventure unless we persisted the switch ourselves.
+            boolean trackedByUs = adventureSwitched.containsKey(id) || (adventureStore != null && adventureStore.isTracked(id));
+            if (current == org.bukkit.GameMode.SURVIVAL && !trackedByUs) {
                 adventureSwitched.put(id, current);
+                if (adventureStore != null) adventureStore.markSwitched(id, current);
                 try {
                     player.setGameMode(org.bukkit.GameMode.ADVENTURE);
                 } catch (Exception e) {
                     adventureSwitched.remove(id);
+                    if (adventureStore != null) adventureStore.clear(id);
                     GlovedPlugin.logWarning("Could not switch to adventure mode: " + e.getMessage());
+                }
+            } else if (current == org.bukkit.GameMode.ADVENTURE && trackedByUs) {
+                // Keep memory state consistent for players we switched previously (e.g. after restart).
+                if (!adventureSwitched.containsKey(id) && adventureStore != null) {
+                    org.bukkit.GameMode prior = adventureStore.getPriorMode(id);
+                    if (prior != null) adventureSwitched.put(id, prior);
                 }
             }
         } else {
@@ -587,7 +636,11 @@ public final class CombatListener implements Listener {
 
     private void restoreGameMode(Player player, UUID id) {
         org.bukkit.GameMode prior = adventureSwitched.remove(id);
+        if (prior == null && adventureStore != null) {
+            prior = adventureStore.getPriorMode(id);
+        }
         if (prior == null) return;
+        if (adventureStore != null) adventureStore.clear(id);
         try {
             if (player.getGameMode() == org.bukkit.GameMode.ADVENTURE) {
                 player.setGameMode(prior);
