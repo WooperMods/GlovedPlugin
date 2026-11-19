@@ -12,7 +12,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * Account/family codex progression service (MVP, extends existing basic codex).
+ * Mob soul codex progression service (MVP, extends existing basic codex).
  * Tracks tier progress and simple claimable rewards; modular for future objectives/reward types.
  */
 public final class SoulCodexService {
@@ -81,6 +81,10 @@ public final class SoulCodexService {
             if (after != null && after.masteredCount() == 1 && (before == null || before.masteredCount() <= 0)) {
                 owner.sendMessage("§b[Codex] §6Mastered tier reached: §f" + prettyFamily(soul.getFamilyKey()));
                 try { owner.playSound(owner.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.7f, 1.0f); } catch (Throwable ignored) {}
+                try {
+                    var adv = plugin.getSoulAdvancementService();
+                    if (adv != null) adv.onCodexMasteredReached(owner);
+                } catch (Throwable ignored) {}
             }
         } catch (SQLException e) {
             GlovedPlugin.logDebug("[Codex] onSoulMasteryLevelReached failed: " + e);
@@ -98,7 +102,7 @@ public final class SoulCodexService {
         };
     }
 
-    /** Claim a codex tier reward for a family. Returns true if claimed now. */
+    /** Claim a codex tier reward for a mob soul. Returns true if claimed now. */
     public boolean claimTier(Player owner, String familyKey, Tier tier) {
         if (!isEnabled() || owner == null || familyKey == null || tier == null) return false;
         try {

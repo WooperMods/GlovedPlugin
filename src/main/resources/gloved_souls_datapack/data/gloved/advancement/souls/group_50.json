@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/group_10",
+  "display": {
+    "icon": {
+      "id": "minecraft:totem_of_undying"
+    },
+    "title": {
+      "text": "Legion Leader"
+    },
+    "description": {
+      "text": "Activate soul groups 50 times.\n+750 Essence"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

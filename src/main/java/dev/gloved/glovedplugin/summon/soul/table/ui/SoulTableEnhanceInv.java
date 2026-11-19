@@ -160,15 +160,15 @@ public final class SoulTableEnhanceInv implements SoulTableScreen {
                     SoulInstance preview = soul.withEnhanceLevel(level + 1);
                     double hp = ss.computeSpawnedMaxHealth(viewerId, preview);
                     double atk = ss.estimateAverageHitDamage(viewerId, preview);
-                    double mv = ss.computeSpawnedMovementBlocksPerSecond(preview);
                     SoulBaseStats pBase = ss.effectiveBaseStats(preview);
+                    String mv = pBase.movementSpeedTierLabel();
                     double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS,
                             Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, pBase.attackSpeed()));
-                    double def = SoulBaseStats.clampDefense(pBase.defense());
+                    double def = ss.computeSpawnedDefense(preview);
                     int cap = ss.effectiveGroupCapacity(preview);
                     lore.add("§7Preview (next summon):");
                     lore.add("§e " + SoulLoreBuilder.fmt(hp, 2) + " §7HP  §9" + SoulLoreBuilder.fmt(def, 2) + " §7DEF");
-                    lore.add("§c " + SoulLoreBuilder.fmt(atk, 2) + " §7ATK  §b" + SoulLoreBuilder.fmt(mv, 2) + " bps §7MV");
+                    lore.add("§c " + SoulLoreBuilder.fmt(atk, 2) + " §7ATK  §b" + mv + " §7MV SPD");
                     lore.add("§a " + SoulLoreBuilder.fmt(aps, 2) + " §7APS  §3" + cap + " §7Summons");
                 }
                 lore.add("§7Cost: §b" + SoulTableUiItems.costLabel(cost));

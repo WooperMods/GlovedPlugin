@@ -67,14 +67,20 @@ public class SummonAutoTargetGoal extends TargetGoal {
         }
         for (UUID damagerId : SummonCombatService.getRecentDamagers(owner)) {
             org.bukkit.entity.Entity e = owner.getWorld().getEntity(damagerId);
-            if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && !CombatTargetRules.isProtected(plugin, owner, le)) {
-                if (!candidates.contains(le)) candidates.add(le);
+            if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && le.isValid()
+                    && !CombatTargetRules.isProtected(plugin, owner, le)
+                    && isRelevant(le, owner, bukkitSummon, defensive, recentDamagerIds)
+                    && !candidates.contains(le)) {
+                candidates.add(le);
             }
         }
         for (UUID damagerId : SummonCombatService.getRecentDamagers(bukkitSummon)) {
             org.bukkit.entity.Entity e = bukkitSummon.getWorld().getEntity(damagerId);
-            if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && !CombatTargetRules.isProtected(plugin, owner, le)) {
-                if (!candidates.contains(le)) candidates.add(le);
+            if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && le.isValid()
+                    && !CombatTargetRules.isProtected(plugin, owner, le)
+                    && isRelevant(le, owner, bukkitSummon, defensive, recentDamagerIds)
+                    && !candidates.contains(le)) {
+                candidates.add(le);
             }
         }
 
@@ -117,9 +123,37 @@ public class SummonAutoTargetGoal extends TargetGoal {
         }
         boolean recent = recentDamagerIds != null && recentDamagerIds.contains(le.getUniqueId());
         if (defensive) {
-            return targetsOwner || targetsSummon || recent;
+            if (!(targetsOwner || targetsSummon || recent)) return false;
+            try {
+                return le.hasLineOfSight(owner);
+            } catch (Throwable ignored) {
+                return false;
+            }
         }
         return isHostile || targetsOwner || targetsSummon || recent;
+    }
+
+    @Override
+    public boolean canContinueToUse() {
+        if (this.nmsTarget == null || !this.nmsTarget.isAlive()) return false;
+        Player owner = resolveOwner();
+        if (owner == null || !owner.isOnline()) return false;
+        try {
+            org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) this.nmsTarget.getBukkitEntity();
+            org.bukkit.entity.LivingEntity summon = (org.bukkit.entity.LivingEntity) this.mob.getBukkitEntity();
+            if (CombatTargetRules.isProtected(plugin, owner, bTarget)) return false;
+
+            String mode = "AGGRESSIVE";
+            try {
+                if (plugin.getSoulService() != null) mode = plugin.getSoulService().getSummonCombatMode(owner.getUniqueId());
+            } catch (Throwable ignored) {}
+            boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
+            Set<UUID> recentDamagerIds = new HashSet<>(SummonCombatService.getRecentDamagers(owner));
+            recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(summon));
+            return isRelevant(bTarget, owner, summon, defensive, recentDamagerIds);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override

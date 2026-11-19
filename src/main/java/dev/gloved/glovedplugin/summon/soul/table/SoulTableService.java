@@ -48,7 +48,7 @@ public final class SoulTableService {
     private static final String NO_LONGER_AVAILABLE = "Soul no longer available";
     private static final String MYTHIC_NO_COMBINE = "Mythic souls cannot be combined";
     private static final String MAX_LEVEL = "Maximum soul level reached";
-    private static final String FAMILY_MISMATCH = "Souls must share the same family and rarity";
+    private static final String FAMILY_MISMATCH = "Souls must share the same mob soul and rarity";
     private static final SoulTableConfig FALLBACK_CONFIG = new SoulTableConfig();
 
     private final GlovedPlugin plugin;
@@ -84,7 +84,7 @@ public final class SoulTableService {
 
     // ------------------------------------------------------------------ actions
 
-    /** Combines exactly three same-family, same-rarity souls into one of the next rarity. */
+    /** Combines exactly three same mob soul type, same-rarity souls into one of the next rarity. */
     public TableResult combine(UUID owner, List<UUID> soulIds, SoulRarity targetRarity) {
         if (owner == null) return TableResult.fail("Invalid player");
         List<UUID> ids = normalize(soulIds);
@@ -127,7 +127,16 @@ public final class SoulTableService {
                 return generated;
             });
 
-            for (UUID id : ids) soulService.invalidateSoul(id, owner);
+            for (UUID id : ids) {
+                try { if (plugin.getSummonRespawnService() != null) plugin.getSummonRespawnService().cancelPendingForSoul(owner, id, "soul-combined"); } catch (Throwable ignored) {}
+                try { if (plugin.getSummonTracker() != null) plugin.getSummonTracker().removeBySoulId(owner, id); } catch (Throwable ignored) {}
+                soulService.invalidateSoul(id, owner);
+            }
+            try {
+                var adv = plugin.getSoulAdvancementService();
+                var p = org.bukkit.Bukkit.getPlayer(owner);
+                if (adv != null && p != null) adv.onSoulTableActionSucceeded(p, dev.gloved.glovedplugin.summon.soul.advancement.SoulTableAction.COMBINE);
+            } catch (Throwable ignored) {}
             return TableResult.ok("Combined into " + result.getRarity().name() + " " + result.getFamilyKey() + " Soul", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
@@ -152,14 +161,19 @@ public final class SoulTableService {
                 return soul.withEnhanceLevel(level + 1);
             });
             soulService.invalidateSoul(soulId, owner);
+            org.bukkit.entity.Player player = null;
+            try { player = org.bukkit.Bukkit.getPlayer(owner); } catch (Throwable ignored) {}
             try {
                 var sc = plugin.getSummonConfig();
                 var codexCfg = sc != null ? sc.getSoulCodexConfig() : null;
                 if (codexCfg != null && codexCfg.isEnabled() && result.getEnhanceLevel() == codexCfg.getRefinedEnhanceLevel()) {
                     var codex = soulService.getCodexService();
-                    var p = org.bukkit.Bukkit.getPlayer(owner);
-                    if (codex != null && p != null) codex.onSoulRefined(p, result);
+                    if (codex != null && player != null) codex.onSoulRefined(player, result);
                 }
+            } catch (Throwable ignored) {}
+            try {
+                var adv = plugin.getSoulAdvancementService();
+                if (adv != null && player != null) adv.onSoulTableActionSucceeded(player, dev.gloved.glovedplugin.summon.soul.advancement.SoulTableAction.ENHANCE);
             } catch (Throwable ignored) {}
             return TableResult.ok("Enhanced to level " + result.getEnhanceLevel(), result);
         } catch (TableFailure failure) {
@@ -196,6 +210,11 @@ public final class SoulTableService {
                 return soul.withReforgedState(baseStats, affixes, quality, groupCapacity);
             });
             soulService.invalidateSoul(soulId, owner);
+            try {
+                var adv = plugin.getSoulAdvancementService();
+                var p = org.bukkit.Bukkit.getPlayer(owner);
+                if (adv != null && p != null) adv.onSoulTableActionSucceeded(p, dev.gloved.glovedplugin.summon.soul.advancement.SoulTableAction.REFORGE);
+            } catch (Throwable ignored) {}
             return TableResult.ok("Reforged soul stats, affixes, and capacity", result);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
@@ -222,8 +241,17 @@ public final class SoulTableService {
                 gained[0] = total;
                 return null;
             });
-            for (UUID id : ids) soulService.invalidateSoul(id, owner);
-            return TableResult.ok("Salvaged " + ids.size() + " soul(s) for " + gained[0] + " Essence", null);
+            for (UUID id : ids) {
+                try { if (plugin.getSummonRespawnService() != null) plugin.getSummonRespawnService().cancelPendingForSoul(owner, id, "soul-salvaged"); } catch (Throwable ignored) {}
+                try { if (plugin.getSummonTracker() != null) plugin.getSummonTracker().removeBySoulId(owner, id); } catch (Throwable ignored) {}
+                soulService.invalidateSoul(id, owner);
+            }
+            try {
+                var adv = plugin.getSoulAdvancementService();
+                var p = org.bukkit.Bukkit.getPlayer(owner);
+                if (adv != null && p != null) adv.onSoulTableActionSucceeded(p, dev.gloved.glovedplugin.summon.soul.advancement.SoulTableAction.SALVAGE);
+            } catch (Throwable ignored) {}
+            return TableResult.ok("Salvaged " + ids.size() + " " + (ids.size() == 1 ? "soul" : "souls") + " for " + gained[0] + " Essence", null);
         } catch (TableFailure failure) {
             return TableResult.fail(failure.getMessage());
         } catch (SQLException e) {

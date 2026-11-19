@@ -169,6 +169,22 @@ public class SoulRepository {
                     int selectedTeam = 1;
                     try { selectedTeam = rs.getInt("selected_team"); } catch (SQLException ignored) {}
                     if (selectedTeam < 1 || selectedTeam > 4) selectedTeam = 1;
+                    int soulsAcquiredTotal = 0;
+                    int groupActivationsTotal = 0;
+                    int soulTableActionsTotal = 0;
+                    int soulRespawnsTotal = 0;
+                    int soulTableCombineTotal = 0;
+                    int soulTableEnhanceTotal = 0;
+                    int soulTableReforgeTotal = 0;
+                    int soulTableSalvageTotal = 0;
+                    try { soulsAcquiredTotal = Math.max(0, rs.getInt("souls_acquired_total")); } catch (SQLException ignored) {}
+                    try { groupActivationsTotal = Math.max(0, rs.getInt("group_activations_total")); } catch (SQLException ignored) {}
+                    try { soulTableActionsTotal = Math.max(0, rs.getInt("soul_table_actions_total")); } catch (SQLException ignored) {}
+                    try { soulRespawnsTotal = Math.max(0, rs.getInt("soul_respawns_total")); } catch (SQLException ignored) {}
+                    try { soulTableCombineTotal = Math.max(0, rs.getInt("soul_table_combine_total")); } catch (SQLException ignored) {}
+                    try { soulTableEnhanceTotal = Math.max(0, rs.getInt("soul_table_enhance_total")); } catch (SQLException ignored) {}
+                    try { soulTableReforgeTotal = Math.max(0, rs.getInt("soul_table_reforge_total")); } catch (SQLException ignored) {}
+                    try { soulTableSalvageTotal = Math.max(0, rs.getInt("soul_table_salvage_total")); } catch (SQLException ignored) {}
                     return new PlayerSoulState(owner,
                             rs.getInt("essence"),
                             rs.getInt("vault_capacity"),
@@ -176,7 +192,9 @@ public class SoulRepository {
                             selectedTeam,
                             rs.getString("pity_json"),
                             mode,
-                            tableTab);
+                            tableTab,
+                            soulsAcquiredTotal, groupActivationsTotal, soulTableActionsTotal,
+                            soulRespawnsTotal, soulTableCombineTotal, soulTableEnhanceTotal, soulTableReforgeTotal, soulTableSalvageTotal);
                 }
             }
         }
@@ -195,7 +213,7 @@ public class SoulRepository {
             ps.setString(10, "COMBINE");
             ps.executeUpdate();
         }
-        return new PlayerSoulState(owner, 0, Math.max(1, defaultCapacity), 0, 1, "{}", "AGGRESSIVE", "COMBINE");
+        return new PlayerSoulState(owner, 0, Math.max(1, defaultCapacity), 0, 1, "{}", "AGGRESSIVE", "COMBINE", 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     public synchronized void setCombatMode(UUID owner, String combatMode, int defaultCapacity) throws SQLException {
@@ -555,6 +573,81 @@ public class SoulRepository {
         }
     }
 
+
+    public synchronized int incrementSoulsAcquiredTotal(UUID owner, int defaultCapacity) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String upd = "UPDATE soul_player_state SET souls_acquired_total = souls_acquired_total + 1, updated_at = ? WHERE owner_uuid = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, owner.toString());
+            ps.executeUpdate();
+        }
+        return getOrCreatePlayerState(owner, defaultCapacity).soulsAcquiredTotal();
+    }
+
+    public synchronized int incrementGroupActivationsTotal(UUID owner, int defaultCapacity) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String upd = "UPDATE soul_player_state SET group_activations_total = group_activations_total + 1, updated_at = ? WHERE owner_uuid = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, owner.toString());
+            ps.executeUpdate();
+        }
+        return getOrCreatePlayerState(owner, defaultCapacity).groupActivationsTotal();
+    }
+
+    public synchronized int incrementSoulTableActionsTotal(UUID owner, int defaultCapacity) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String upd = "UPDATE soul_player_state SET soul_table_actions_total = soul_table_actions_total + 1, updated_at = ? WHERE owner_uuid = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, owner.toString());
+            ps.executeUpdate();
+        }
+        return getOrCreatePlayerState(owner, defaultCapacity).soulTableActionsTotal();
+    }
+
+    public synchronized int incrementSoulRespawnsTotal(UUID owner, int defaultCapacity) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String upd = "UPDATE soul_player_state SET soul_respawns_total = soul_respawns_total + 1, updated_at = ? WHERE owner_uuid = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, owner.toString());
+            ps.executeUpdate();
+        }
+        return getOrCreatePlayerState(owner, defaultCapacity).soulRespawnsTotal();
+    }
+
+    /** Increments overall soul table action total and the specific action total. Returns the player state after update. */
+    public synchronized PlayerSoulState incrementSoulTableActionTotals(UUID owner, int defaultCapacity, String actionColumnSuffix) throws SQLException {
+        getOrCreatePlayerState(owner, defaultCapacity);
+        String actionCol = switch (actionColumnSuffix == null ? "" : actionColumnSuffix.toLowerCase(Locale.ROOT)) {
+            case "combine" -> "soul_table_combine_total";
+            case "enhance" -> "soul_table_enhance_total";
+            case "reforge" -> "soul_table_reforge_total";
+            case "salvage" -> "soul_table_salvage_total";
+            default -> null;
+        };
+        long now = System.currentTimeMillis();
+        if (actionCol == null) {
+            String upd = "UPDATE soul_player_state SET soul_table_actions_total = soul_table_actions_total + 1, updated_at = ? WHERE owner_uuid = ?";
+            try (PreparedStatement ps = conn().prepareStatement(upd)) {
+                ps.setLong(1, now);
+                ps.setString(2, owner.toString());
+                ps.executeUpdate();
+            }
+        } else {
+            String upd = "UPDATE soul_player_state SET soul_table_actions_total = soul_table_actions_total + 1, "
+                    + actionCol + " = " + actionCol + " + 1, updated_at = ? WHERE owner_uuid = ?";
+            try (PreparedStatement ps = conn().prepareStatement(upd)) {
+                ps.setLong(1, now);
+                ps.setString(2, owner.toString());
+                ps.executeUpdate();
+            }
+        }
+        return getOrCreatePlayerState(owner, defaultCapacity);
+    }
+
     // ---------- Team / loadout presets (soul team overhaul) ----------
 
     public synchronized int getSelectedTeam(UUID owner, int defaultCapacity) throws SQLException {
@@ -763,6 +856,58 @@ public class SoulRepository {
     }
 
     /**
+     * Re-rolls the respawnSeconds base stat for all existing souls using current rarity bands/config.
+     * Keeps all other stored base stats/fields unchanged.
+     */
+    public synchronized int rerollRespawnStatsForAll(SoulTableConfig.SoulStatConfig statCfg) throws SQLException {
+        if (statCfg == null) statCfg = new SoulTableConfig.SoulStatConfig();
+        String sel = "SELECT soul_id, rarity, base_stats_json, entity_type FROM souls";
+        String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
+        int updated = 0;
+        java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
+        try (PreparedStatement psSel = conn().prepareStatement(sel);
+             ResultSet rs = psSel.executeQuery();
+             PreparedStatement psUpd = conn().prepareStatement(upd)) {
+            while (rs.next()) {
+                String soulId = rs.getString("soul_id");
+                String rarityRaw = rs.getString("rarity");
+                String json = rs.getString("base_stats_json");
+                String entityType = rs.getString("entity_type");
+                SoulRarity rarity = SoulRarity.fromString(rarityRaw, SoulRarity.COMMON);
+                SoulBaseStats base = SoulBaseStats.fromJson(json);
+                if (base == null) {
+                    org.bukkit.entity.EntityType type = null;
+                    try { if (entityType != null) type = org.bukkit.entity.EntityType.valueOf(entityType); } catch (Throwable ignored) {}
+                    base = SoulBaseStats.defaults(type);
+                }
+                // If parsed with legacy sentinel or invalid respawn, normalize first to keep other stats sane
+                if (base.respawnSeconds() <= 0.0) {
+                    base = new SoulBaseStats(base.health(), base.attackDamage(), base.movementSpeed(), base.attackSpeed(), base.defense(),
+                            SoulBaseStats.defaultRespawnSeconds(rarity, statCfg));
+                }
+                double newRespawn = SoulBaseStats.defaultRespawnSeconds(rarity, statCfg);
+                // sample a rolled value in the band for variety (not just midpoint)
+                try {
+                    SoulBaseStats rolled = SoulBaseStats.roll(rarity, statCfg, rng);
+                    newRespawn = rolled.respawnSeconds();
+                } catch (Throwable ignored) {}
+                SoulBaseStats next = new SoulBaseStats(
+                        base.health(), base.attackDamage(), base.movementSpeed(), base.attackSpeed(), base.defense(), newRespawn
+                ).normalized().clampFinal(rarity, statCfg);
+                String nextJson = next.toJson();
+                if (nextJson != null && !nextJson.equals(json)) {
+                    psUpd.setString(1, nextJson);
+                    psUpd.setString(2, soulId);
+                    psUpd.addBatch();
+                    updated++;
+                }
+            }
+            if (updated > 0) psUpd.executeBatch();
+        }
+        return updated;
+    }
+
+    /**
      * Backfills {@code base_stats_json} for souls captured before the stat system existed.
      *
      * <p>Idempotent: only rows with a null/blank payload are touched. Stored {@code max_health} is
@@ -774,8 +919,8 @@ public class SoulRepository {
      */
     public synchronized int backfillLegacyBaseStats(SoulTableConfig.SoulStatConfig statCfg)
             throws SQLException {
-        String sel = "SELECT soul_id, entity_type, rarity, max_health FROM souls " +
-                "WHERE base_stats_json IS NULL OR base_stats_json = ''";
+        String sel = "SELECT soul_id, entity_type, rarity, max_health, base_stats_json FROM souls " +
+                "WHERE base_stats_json IS NULL OR base_stats_json = '' OR base_stats_json NOT LIKE '%\"respawnSeconds\"%'";
         List<String[]> rows = new ArrayList<>();
         try (PreparedStatement ps = conn().prepareStatement(sel);
              ResultSet rs = ps.executeQuery()) {
@@ -784,15 +929,15 @@ public class SoulRepository {
                         rs.getString("soul_id"),
                         rs.getString("entity_type"),
                         rs.getString("rarity"),
-                        String.valueOf(rs.getDouble("max_health"))
+                        String.valueOf(rs.getDouble("max_health")),
+                        rs.getString("base_stats_json")
                 });
             }
         }
         if (rows.isEmpty()) return 0;
 
         int updated = 0;
-        String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ? AND " +
-                "(base_stats_json IS NULL OR base_stats_json = '')";
+        String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
         try (PreparedStatement ps = conn().prepareStatement(upd)) {
             for (String[] row : rows) {
                 UUID soulId;
@@ -800,22 +945,31 @@ public class SoulRepository {
                 SoulRarity rarity = SoulRarity.fromString(row[2], SoulRarity.COMMON);
                 EntityType type = null;
                 try { type = EntityType.valueOf(row[1]); } catch (Exception ignored) {}
-                SoulBaseStats def = type != null ? SoulBaseStats.defaults(type) : SoulBaseStats.NEUTRAL;
-                double storedHealth = 0.0;
-                try { storedHealth = Double.parseDouble(row[3]); } catch (Exception ignored) {}
-                double healthSource = storedHealth > 0.0 ? storedHealth : def.health();
-
-                // Legacy backfill: generate stats in the new rarity bands (plan: effects appear on backfills).
-                // Deterministic per-soul seed for idempotent-ish reruns on the same row set.
-                SoulBaseStats rolled = SoulBaseStats.roll(rarity, statCfg, new Random(soulId.hashCode() * 31L));
-
-                ps.setString(1, rolled.toJson());
+                String existingJson = row.length > 4 ? row[4] : null;
+                SoulBaseStats parsed = SoulBaseStats.fromJson(existingJson);
+                SoulBaseStats result;
+                if (parsed == null) {
+                    // Legacy row before stat system: roll full stats in rarity bands (deterministic per soul id).
+                    result = SoulBaseStats.roll(rarity, statCfg, new Random(soulId.hashCode() * 31L));
+                } else if (parsed.respawnSeconds() <= 0.0) {
+                    // Existing stats payload missing respawn: preserve existing stats and backfill respawn deterministically.
+                    double respawn = SoulBaseStats.defaultRespawnSeconds(rarity, statCfg);
+                    result = new SoulBaseStats(parsed.health(), parsed.attackDamage(), parsed.movementSpeed(),
+                            parsed.attackSpeed(), parsed.defense(), respawn);
+                    // If legacy respawn key present under old name, fromJson would have read it; only missing triggers this.
+                    result = result.capped(statCfg);
+                } else {
+                    continue;
+                }
+                String newJson = result.toJson();
+                if (existingJson != null && existingJson.equals(newJson)) continue;
+                ps.setString(1, newJson);
                 ps.setString(2, soulId.toString());
                 updated += ps.executeUpdate();
             }
         }
         if (updated > 0) {
-            GlovedPlugin.logDebug("[Souls] Backfilled base_stats_json for " + updated + " legacy souls");
+            GlovedPlugin.logDebug("[Souls] Backfilled/migrated base_stats_json (respawn) for " + updated + " legacy " + (updated == 1 ? "soul" : "souls"));
         }
         return updated;
     }
@@ -883,7 +1037,7 @@ public class SoulRepository {
             }
         }
         if (updated > 0) {
-            GlovedPlugin.logDebug("[Souls] Backfilled group_capacity for " + updated + " legacy soul(s)");
+            GlovedPlugin.logDebug("[Souls] Backfilled group_capacity for " + updated + " legacy " + (updated == 1 ? "soul" : "souls"));
         }
         return updated;
     }
@@ -930,9 +1084,10 @@ public class SoulRepository {
      * Idempotent: only rows that need normalization/migration are touched.
      */
     public synchronized int stripRemovedBaseStats() throws SQLException {
-        String sel = "SELECT soul_id, base_stats_json FROM souls WHERE " +
+        String sel = "SELECT soul_id, rarity, base_stats_json FROM souls WHERE " +
                 "base_stats_json IS NULL OR base_stats_json = '' OR " +
                 "base_stats_json NOT LIKE '%\"defense\"%' OR " +
+                "base_stats_json NOT LIKE '%\"respawnSeconds\"%' OR " +
                 "base_stats_json LIKE '%\"armorToughness\"%' OR " +
                 "base_stats_json LIKE '%\"knockbackResistance\"%' OR " +
                 "base_stats_json LIKE '%\"attackKnockback\"%'";
@@ -940,18 +1095,26 @@ public class SoulRepository {
         try (PreparedStatement ps = conn().prepareStatement(sel);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                rows.add(new String[]{rs.getString("soul_id"), rs.getString("base_stats_json")});
+                rows.add(new String[]{rs.getString("soul_id"), rs.getString("rarity"), rs.getString("base_stats_json")});
             }
         }
         if (rows.isEmpty()) return 0;
 
+        SoulTableConfig.SoulStatConfig statCfg = plugin.getSummonConfig() != null && plugin.getSummonConfig().getSoulTableConfig() != null
+                ? plugin.getSummonConfig().getSoulTableConfig().getStatConfig() : new SoulTableConfig.SoulStatConfig();
         int updated = 0;
         String upd = "UPDATE souls SET base_stats_json = ? WHERE soul_id = ?";
         try (PreparedStatement ps = conn().prepareStatement(upd)) {
             for (String[] row : rows) {
-                String oldJson = row[1];
+                String oldJson = row[2];
                 SoulBaseStats stats = SoulBaseStats.fromJson(oldJson);
                 if (stats == null) continue;
+                if (stats.respawnSeconds() <= 0.0) {
+                    SoulRarity rarity = SoulRarity.fromString(row[1], SoulRarity.COMMON);
+                    double respawn = SoulBaseStats.defaultRespawnSeconds(rarity, statCfg);
+                    stats = new SoulBaseStats(stats.health(), stats.attackDamage(), stats.movementSpeed(),
+                            stats.attackSpeed(), stats.defense(), respawn);
+                }
                 String newJson = stats.toJson();
                 if (oldJson != null && oldJson.equals(newJson)) continue;
                 ps.setString(1, newJson);
@@ -960,7 +1123,43 @@ public class SoulRepository {
             }
         }
         if (updated > 0) {
-            GlovedPlugin.logDebug("[Souls] Normalized/migrated base_stats_json for " + updated + " soul(s)");
+            GlovedPlugin.logDebug("[Souls] Normalized/migrated base_stats_json for " + updated + " " + (updated == 1 ? "soul" : "souls"));
+        }
+        return updated;
+    }
+
+    /** Idempotent migration: legacy COMMANDER affixes -> REAWAKENING in stored affixes_json. */
+    public synchronized int migrateLegacyCommanderAffixes() throws SQLException {
+        String sel = "SELECT soul_id, affixes_json, quality, rarity FROM souls WHERE affixes_json LIKE '%COMMANDER%'";
+        List<String[]> rows = new ArrayList<>();
+        try (PreparedStatement ps = conn().prepareStatement(sel);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new String[]{rs.getString("soul_id"), rs.getString("affixes_json"), rs.getString("quality"), rs.getString("rarity")});
+            }
+        }
+        if (rows.isEmpty()) return 0;
+        int updated = 0;
+        String upd = "UPDATE souls SET affixes_json = ?, quality = ? WHERE soul_id = ?";
+        try (PreparedStatement ps = conn().prepareStatement(upd)) {
+            for (String[] row : rows) {
+                String oldJson = row[1];
+                List<SoulAffixRoll> affixes = deserializeAffixes(oldJson); // parse maps COMMANDER -> REAWAKENING
+                String newJson = serializeAffixes(affixes);
+                if (oldJson != null && oldJson.equals(newJson)) continue;
+                SoulRarity rarity = SoulRarity.fromString(row[3], SoulRarity.COMMON);
+                double quality;
+                try { quality = Double.parseDouble(row[2]); } catch (Exception e) { quality = SoulQuality.percent(rarity, affixes); }
+                // keep stored quality stable but recompute if parsing changed meaningfully; recompute for consistency
+                quality = SoulQuality.percent(rarity, affixes);
+                ps.setString(1, newJson);
+                ps.setDouble(2, quality);
+                ps.setString(3, row[0]);
+                updated += ps.executeUpdate();
+            }
+        }
+        if (updated > 0) {
+            GlovedPlugin.logDebug("[Souls] Migrated legacy COMMANDER affixes to REAWAKENING for " + updated + " " + (updated == 1 ? "soul" : "souls"));
         }
         return updated;
     }
@@ -1050,8 +1249,15 @@ public class SoulRepository {
         boolean favorite = rs.getInt("favorite") != 0;
         SoulBaseStats baseStats = SoulBaseStats.fromJson(rs.getString("base_stats_json"));
         if (baseStats == null) {
-            // Legacy row read before the backfill pass ran: use the type's defaults (no variance).
+            // Legacy row read before the backfill pass ran: use defaults and a deterministic rarity respawn fallback.
             baseStats = SoulBaseStats.defaults(et);
+        }
+        if (baseStats != null && baseStats.respawnSeconds() <= 0.0) {
+            SoulBaseStats fallback = SoulBaseStats.defaults(et);
+            double respawn = SoulBaseStats.defaultRespawnSeconds(rarity, plugin.getSummonConfig() != null && plugin.getSummonConfig().getSoulTableConfig() != null
+                    ? plugin.getSummonConfig().getSoulTableConfig().getStatConfig() : new SoulTableConfig.SoulStatConfig());
+            baseStats = new SoulBaseStats(baseStats.health(), baseStats.attackDamage(), baseStats.movementSpeed(),
+                    baseStats.attackSpeed(), baseStats.defense(), respawn > 0 ? respawn : fallback.respawnSeconds());
         }
         int enhanceLevel = 0;
         try { enhanceLevel = Math.max(0, rs.getInt("enhance_level")); } catch (SQLException ignored) {}
@@ -1127,7 +1333,10 @@ public class SoulRepository {
             List<SoulAffixRoll> out = new ArrayList<>();
             for (AffixDto d : dtos) {
                 if (d == null || d.type == null) continue;
-                try { out.add(new SoulAffixRoll(SoulAffixType.valueOf(d.type), d.value)); } catch (Exception ignored) {}
+                try {
+                    SoulAffixType type = SoulAffixType.parse(d.type);
+                    if (type != null) out.add(new SoulAffixRoll(type, d.value));
+                } catch (Exception ignored) {}
             }
             return out;
         } catch (Exception e) {
@@ -1169,7 +1378,9 @@ public class SoulRepository {
 
     private record AffixDto(String type, double value) {}
 
-    public record PlayerSoulState(UUID owner, int essence, int vaultCapacity, int selectedSlot, int selectedTeam, String pityJson, String combatMode, String soulTableTab) {}
+    public record PlayerSoulState(UUID owner, int essence, int vaultCapacity, int selectedSlot, int selectedTeam, String pityJson, String combatMode, String soulTableTab,
+                                   int soulsAcquiredTotal, int groupActivationsTotal, int soulTableActionsTotal,
+                                   int soulRespawnsTotal, int soulTableCombineTotal, int soulTableEnhanceTotal, int soulTableReforgeTotal, int soulTableSalvageTotal) {}
     public record CodexEntry(String familyKey, String highestRarity, int capturedCount,
                              long firstCapturedAt, int masteredCount, int refinedCount,
                              boolean discoveredClaimed, boolean collectedClaimed, boolean refinedClaimed, boolean masteredClaimed) {

@@ -41,6 +41,7 @@ public class SummonVexChargeAttackGoal extends Goal {
     public boolean canUse() {
         LivingEntity target = vex.getTarget();
         if (target == null || !target.isAlive()) return false;
+        if (!isRelevantTarget(target)) return false;
         try { return vex.getMoveControl().hasWanted() || vex.getRandom().nextInt(7) == 0; } catch (Throwable ignored) {}
         return true;
     }
@@ -48,7 +49,42 @@ public class SummonVexChargeAttackGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         LivingEntity target = vex.getTarget();
-        return target != null && target.isAlive();
+        return target != null && target.isAlive() && isRelevantTarget(target);
+    }
+
+    private boolean isRelevantTarget(LivingEntity target) {
+        Player owner = resolveOwner();
+        if (owner == null || !owner.isOnline()) return false;
+        try {
+            org.bukkit.entity.LivingEntity bTarget = (org.bukkit.entity.LivingEntity) target.getBukkitEntity();
+            org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) vex.getBukkitEntity();
+            if (CombatTargetRules.isProtected(plugin, owner, bTarget)) return false;
+            String mode = "AGGRESSIVE";
+            try {
+                if (plugin.getSoulService() != null) mode = plugin.getSoulService().getSummonCombatMode(owner.getUniqueId());
+            } catch (Throwable ignored) {}
+            boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
+            java.util.Set<java.util.UUID> recentDamagerIds = new java.util.HashSet<>(SummonCombatService.getRecentDamagers(owner));
+            recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(bSummon));
+            boolean isHostile = bTarget instanceof org.bukkit.entity.Monster
+                    || bTarget instanceof org.bukkit.entity.Slime
+                    || bTarget instanceof org.bukkit.entity.Ghast;
+            boolean targetsOwner = false;
+            boolean targetsSummon = false;
+            if (bTarget instanceof org.bukkit.entity.Mob mobEnt && mobEnt.getTarget() != null) {
+                targetsOwner = mobEnt.getTarget().getUniqueId().equals(owner.getUniqueId());
+                targetsSummon = mobEnt.getTarget().getUniqueId().equals(bSummon.getUniqueId());
+            }
+            boolean recent = recentDamagerIds.contains(bTarget.getUniqueId());
+            if (defensive) {
+                boolean hasLosToOwner = false;
+                try { hasLosToOwner = bTarget.hasLineOfSight(owner); } catch (Throwable ignored) {}
+                return (targetsOwner || targetsSummon || recent) && hasLosToOwner;
+            }
+            return (isHostile || targetsOwner || targetsSummon || recent);
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     @Override

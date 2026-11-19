@@ -70,8 +70,15 @@ public class SummonAbilityIndicator implements Listener {
                                 status += " §7(-" + String.format(Locale.ROOT, "%.1f", manaCost) + " mana)";
                             }
                         } catch (Throwable ignored) {}
-                        String base = "§dSoul Groups§7: §fSelected " + selectedTeam;
-                        if (hasActive) base += " §7| Active " + (activeTeam > 0 ? activeTeam : "?");
+                        String base = "§dSoul Group§7: §f" + selectedTeam + " Selected";
+                        if (hasActive) {
+                            String activeInfo = formatActiveTeamInfo(p, activeTeam);
+                            if (activeTeam == selectedTeam) {
+                                base += " §7| " + activeInfo;
+                            } else {
+                                base += " §7| " + (activeTeam > 0 ? "Group " + activeTeam + " " : "") + activeInfo;
+                            }
+                        }
                         try {
                             p.sendActionBar(Component.text(base + " §8| " + status));
                         } catch (Throwable ignored) {}
@@ -79,6 +86,51 @@ public class SummonAbilityIndicator implements Listener {
                 } catch (Throwable ignored) {}
             }, 2L, 2L);
         } catch (Throwable ignored) {}
+    }
+
+    private String formatActiveTeamInfo(Player player, int activeTeam) {
+        int slotsPerTeam = 4;
+        try {
+            SoulService souls = plugin.getSoulService();
+            var cfg = souls != null ? souls.soulConfig() : null;
+            if (cfg != null) slotsPerTeam = Math.max(1, Math.min(4, cfg.getTeamSlotsPerTeam()));
+        } catch (Throwable ignored) {}
+
+        int activeCount = 0;
+        try {
+            var tracker = plugin.getSummonTracker();
+            if (tracker != null && player != null && activeTeam > 0) {
+                var teamKey = new org.bukkit.NamespacedKey(plugin, "summon_team_index");
+                for (org.bukkit.entity.LivingEntity le : tracker.getActiveMinions(player.getUniqueId())) {
+                    if (le == null || le.isDead()) continue;
+                    Integer t = le.getPersistentDataContainer().get(teamKey, org.bukkit.persistence.PersistentDataType.INTEGER);
+                    if (t != null && t == activeTeam) activeCount++;
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        String info = "§aActive §f" + activeCount + "/" + slotsPerTeam;
+        try {
+            var respawn = plugin.getSummonRespawnService();
+            if (respawn != null && player != null && activeTeam > 0) {
+                double next = respawn.getNextPendingRemainingSeconds(player.getUniqueId(), activeTeam);
+                if (next >= 0.0) {
+                    info += " §d" + formatSeconds(next);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return info;
+    }
+
+    private static String formatSeconds(double seconds) {
+        double s = Math.max(0.0, seconds);
+        if (s >= 60.0) {
+            int m = (int) (s / 60.0);
+            int sec = (int) Math.ceil(s - m * 60.0);
+            if (sec >= 60) { m++; sec -= 60; }
+            return m + "m" + sec + "s";
+        }
+        return String.format(java.util.Locale.ROOT, "%.0fs", Math.ceil(s));
     }
 
     public void stop() {

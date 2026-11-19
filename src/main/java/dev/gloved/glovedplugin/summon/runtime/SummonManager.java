@@ -22,6 +22,8 @@ import org.bukkit.util.Vector;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import dev.gloved.glovedplugin.summon.combat.SummonCombatService;
 import dev.gloved.glovedplugin.summon.ai.movement.SummonMoveGoal;
 import dev.gloved.glovedplugin.summon.config.SummonConfig;
@@ -229,52 +231,65 @@ public class SummonManager {
                         : SoulBaseStats.defaults(soul.getEntityType()));
         final int groupSize = 1; // team/loadout: one summon per soul slot, full stats
 
-        double speedMult = clamp(snap.speedMultiplier(), 0.5, 1.6);
-        // Movement: base scaled by SWIFT with diminishing returns near the cap (higher speed => less affix impact).
-        double maxMove = 14.0 / 43.17; // ~14 bps global cap
-        double moveFloor = 1.0 / 43.17; // ~1 bps floor
-        double baseMove = base.movementSpeed();
-        if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
-        // Compatibility/parity: older souls may have normalized-low movement bases (~2.5 bps).
-        // Never force a summoned mob below ~90% of its vanilla/default movement speed.
+        // Movement speed is tier-based (Normal/Fast/Very Fast/Insane): tier 1 = normal mob speed,
+        // tiers 2-4 apply permanent Speed I/II/III potion effects. SWIFT/movement modifiers removed.
+        int moveTier = base.movementSpeedTier();
+        double baseMove;
         try {
-            double defMove = SoulBaseStats.defaults(mob.getType()).movementSpeed();
-            if (Double.isFinite(defMove) && defMove > 0.0) {
-                baseMove = Math.max(baseMove, defMove * 0.90);
+            baseMove = SoulBaseStats.defaults(mob.getType()).movementSpeed();
+            // defaults().movementSpeed is now tier-encoded in some cases after normalization helpers,
+            // but raw attribute defaults are needed here; fall back to live attribute base if odd.
+            if (!Double.isFinite(baseMove) || baseMove <= 0.0 || baseMove <= 4.5) {
+                var mv = mob.getAttribute(Attribute.MOVEMENT_SPEED);
+                baseMove = (mv != null && Double.isFinite(mv.getBaseValue()) && mv.getBaseValue() > 0.0)
+                        ? mv.getBaseValue() : 0.23;
+            }
+        } catch (Throwable ignored) {
+            baseMove = 0.23;
+        }
+        // Prefer mob type's vanilla/default movement attribute as "normal" base.
+        try {
+            var defAttr = mob.getType().getDefaultAttributes();
+            if (defAttr != null) {
+                var inst = defAttr.getAttribute(Attribute.MOVEMENT_SPEED);
+                if (inst != null && Double.isFinite(inst.getBaseValue()) && inst.getBaseValue() > 0.0) {
+                    baseMove = inst.getBaseValue();
+                }
             }
         } catch (Throwable ignored) {}
-        baseMove = clamp(baseMove, moveFloor, maxMove);
-        double appliedMove;
-        if (speedMult >= 1.0) {
-            double bonus = speedMult - 1.0;
-            double effectiveness = (maxMove - baseMove) / maxMove;
-            appliedMove = baseMove + baseMove * bonus * effectiveness;
-        } else {
-            double penalty = 1.0 - speedMult;
-            double effectiveness = (baseMove - moveFloor) / maxMove;
-            appliedMove = baseMove - baseMove * penalty * effectiveness;
-        }
-        appliedMove = clamp(appliedMove, moveFloor, maxMove);
-        double desiredBps = appliedMove * 43.17;
+        setBase(mob, Attribute.MOVEMENT_SPEED, baseMove);
         try {
+            int amplifier = SoulBaseStats.speedPotionAmplifierForTier(moveTier);
+            if (amplifier < 0) {
+                mob.removePotionEffect(PotionEffectType.SPEED);
+            } else {
+                mob.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, PotionEffect.INFINITE_DURATION, amplifier, false, false, false));
+            }
+        } catch (Throwable ignored) {}
+        try {
+            double desiredBps = baseMove * 43.17 * (1.0 + Math.max(0, SoulBaseStats.speedPotionAmplifierForTier(moveTier) + 1) * 0.20 * (moveTier > 1 ? 1 : 0));
+            if (moveTier <= 1) desiredBps = baseMove * 43.17;
             mob.getPersistentDataContainer().set(new NamespacedKey(plugin, "summon_move_bps"), PersistentDataType.DOUBLE, desiredBps);
         } catch (Throwable ignored) {}
-        // Set attribute to desired speed; pathfinder runs at ~1.0x (intent-adjusted) in SummonMoveGoal.
-        setBase(mob, Attribute.MOVEMENT_SPEED, appliedMove);
-        // Flying speed is not a captured soul stat: keep the mob's own base, scaled by the same multiplier.
+        // Flying speed not a soul stat/tier; keep mob's own base.
         try {
             var fly = mob.getAttribute(Attribute.FLYING_SPEED);
             if (fly != null) {
+                var defAttr = mob.getType().getDefaultAttributes();
                 double flyBase = fly.getBaseValue();
-                double flyCap = Math.min(1.0, Math.max(flyBase * 1.6, 0.4));
-                fly.setBaseValue(clamp(flyBase * speedMult, 0.05, flyCap));
+                if (defAttr != null) {
+                    var inst = defAttr.getAttribute(Attribute.FLYING_SPEED);
+                    if (inst != null && Double.isFinite(inst.getBaseValue()) && inst.getBaseValue() > 0.0) flyBase = inst.getBaseValue();
+                }
+                fly.setBaseValue(flyBase);
             }
         } catch (Throwable ignored) {}
         // Offense / defense stats: absolute rolled values (affix multipliers where they exist), full per-summon.
         setBase(mob, Attribute.ATTACK_DAMAGE, Math.max(0.0, (base.attackDamage() * clamp(snap.damageMultiplier(), 0.5, 3.0)) / groupSize));
         setBase(mob, Attribute.ATTACK_SPEED, base.attackSpeed());
-        // DEF: soul armor stat (base cap 13.75, ~55% base negation; enhancement can exceed caps).
-        setBase(mob, Attribute.ARMOR, Math.max(SoulBaseStats.MIN_DEFENSE, base.defense()));
+        // DEF: soul armor stat (base cap 13.75, ~55% base negation; enhancement can exceed caps). TENACIOUS scales DEF.
+        double defMult = 1.0 + Math.max(0.0, snap.tenacityBonus());
+        setBase(mob, Attribute.ARMOR, Math.max(SoulBaseStats.MIN_DEFENSE, base.defense() * defMult));
 
         // Slime/Magma size normalization (safety/generic rule) must happen before final health is set,
         // because changing size resets a slime's max health to its size-based vanilla value.
@@ -480,11 +495,23 @@ public class SummonManager {
             List<LivingEntity> mins = tracker.getActiveMinions(owner.getUniqueId());
             count = mins != null ? mins.size() : 0;
         } catch (Throwable ignored) {}
+        try {
+            if (plugin.getSummonRespawnService() != null) {
+                plugin.getSummonRespawnService().cancelAll(owner.getUniqueId(), "recall");
+            }
+        } catch (Throwable ignored) {}
         tracker.removeAllForPlayer(owner.getUniqueId());
         return count;
     }
 
     public int recallActiveTeam(Player owner) {
+        if (owner != null) {
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelAll(owner.getUniqueId(), "recall-team");
+                }
+            } catch (Throwable ignored) {}
+        }
         return recallAll(owner);
     }
 

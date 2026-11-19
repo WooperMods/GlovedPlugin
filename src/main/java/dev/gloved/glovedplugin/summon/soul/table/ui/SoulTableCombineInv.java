@@ -139,7 +139,7 @@ public final class SoulTableCombineInv implements SoulTableScreen {
         List<String> lore = new ArrayList<>();
         lore.add("§7Cost: §b" + SoulTableUiItems.costLabel(cost));
         lore.add("§7Target: §f" + (target != null ? target.name() : "-"));
-        lore.add("§7Select 3 souls of one family + rarity.");
+        lore.add("§7Select 3 souls of one mob soul type + rarity.");
         return SoulTableUiItems.infoItem(Material.AMETHYST_SHARD, "§b§lSoul Essence: §f" + essence, lore);
     }
 
@@ -234,7 +234,7 @@ public final class SoulTableCombineInv implements SoulTableScreen {
                 SoulInstance first = soulIndex.get(selected.iterator().next());
                 if (first != null && (first.getRarity() != soul.getRarity()
                         || !first.getFamilyKey().equals(soul.getFamilyKey()))) {
-                    SoulTableUiItems.actionBar(player, "Souls must share the same family and rarity", NamedTextColor.RED);
+                    SoulTableUiItems.actionBar(player, "Souls must share the same mob soul and rarity", NamedTextColor.RED);
                     return;
                 }
             }

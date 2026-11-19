@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/mastery_5",
+  "display": {
+    "icon": {
+      "id": "minecraft:experience_bottle"
+    },
+    "title": {
+      "text": "Master Bond"
+    },
+    "description": {
+      "text": "Reach Mastery level 10 on any soul.\n+350 Essence"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

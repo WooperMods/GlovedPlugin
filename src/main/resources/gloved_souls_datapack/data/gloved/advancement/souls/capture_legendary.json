@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_epic",
+  "display": {
+    "icon": {
+      "id": "minecraft:echo_shard"
+    },
+    "title": {
+      "text": "Legendary Bond"
+    },
+    "description": {
+      "text": "Acquire a Legendary soul.\n+350 Essence"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

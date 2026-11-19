@@ -29,8 +29,9 @@ public enum EntityCategory {
                 || n.contains("DOLPHIN") || n.contains("TURTLE") || n.contains("AXOLOTL") || n.contains("GUARDIAN")) {
             return AQUATIC;
         }
-        if (Flying.class.isAssignableFrom(cls) || n.equals("BEE") || n.equals("PARROT") || n.equals("BAT")
-                || n.equals("PHANTOM") || n.equals("ALLAY") || n.equals("VEX") || n.equals("GHAST") || n.equals("BLAZE")) {
+        if (n.equals("BEE") || n.equals("PARROT") || n.equals("BAT")
+                || n.equals("PHANTOM") || n.equals("ALLAY") || n.equals("VEX") || n.equals("BLAZE")
+                || n.contains("GHAST")) {
             return FLYING;
         }
         if (Monster.class.isAssignableFrom(cls) || Slime.class.isAssignableFrom(cls) || n.contains("SLIME") || n.contains("MAGMA")) {

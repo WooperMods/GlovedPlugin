@@ -58,6 +58,14 @@ public class LootrDatabase {
             } catch (SQLException ignored) {
                 // column already exists
             }
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS container_templates (" +
+                "container_id TEXT PRIMARY KEY," +
+                "inventory_blob BLOB," +
+                "loot_table_key TEXT," +
+                "created_at INTEGER" +
+                ");"
+            );
         }
         plugin.getLogger().info("Lootr SQLite database initialized");
     }

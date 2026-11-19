@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/mastery_5",
+  "display": {
+    "icon": {
+      "id": "minecraft:enchanted_book"
+    },
+    "title": {
+      "text": "Perfect Attunement"
+    },
+    "description": {
+      "text": "Reach Mastery level 20 on any soul.\n+750 Essence"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

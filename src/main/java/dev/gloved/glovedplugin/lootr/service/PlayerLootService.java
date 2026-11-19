@@ -154,11 +154,44 @@ public class PlayerLootService {
 
     /**
      * Clears loot and opened state for all players at a container but preserves elite_flag,
-     * matching {@code /lootr reset} semantics.
+     * matching {@code /lootr reset} semantics. Also clears any shared loot template so the
+     * container can regenerate (e.g. custom-namespace snapshot) on next open.
      */
     public void resetContainerLoot(ContainerId id) {
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE player_loot SET inventory_blob = NULL, opened = 0, first_opened = NULL WHERE container_id = ?")) {
+            ps.setString(1, id.toStringKey());
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+        clearTemplate(id);
+    }
+
+    public byte[] getTemplateBlob(ContainerId id) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT inventory_blob FROM container_templates WHERE container_id = ?")) {
+            ps.setString(1, id.toStringKey());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getBytes("inventory_blob");
+            }
+        } catch (SQLException ignored) {}
+        return null;
+    }
+
+    public void saveTemplate(ContainerId id, byte[] blob, String lootTableKey) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO container_templates(container_id, inventory_blob, loot_table_key, created_at) VALUES(?,?,?,?) " +
+                "ON CONFLICT(container_id) DO UPDATE SET inventory_blob = excluded.inventory_blob, loot_table_key = excluded.loot_table_key, created_at = excluded.created_at")) {
+            ps.setString(1, id.toStringKey());
+            ps.setBytes(2, blob);
+            ps.setString(3, lootTableKey);
+            ps.setLong(4, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+
+    public void clearTemplate(ContainerId id) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "DELETE FROM container_templates WHERE container_id = ?")) {
             ps.setString(1, id.toStringKey());
             ps.executeUpdate();
         } catch (SQLException ignored) {}

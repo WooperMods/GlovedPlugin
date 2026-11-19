@@ -6,7 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.Locale;
 
 /**
- * Config for account/family codex progression (souls.codex.*).
+ * Config for mob soul codex progression (souls.codex.*).
  * MVP: tier thresholds and simple claim rewards.
  */
 public final class SoulCodexConfig {
@@ -17,10 +17,10 @@ public final class SoulCodexConfig {
     private boolean enabled = true;
     private int refinedEnhanceLevel = 5;
     private int masteredMasteryLevel = 20;
-    private TierReward discoveredReward = new TierReward(RewardType.ESSENCE, 5, 1);
-    private TierReward collectedReward = new TierReward(RewardType.ESSENCE, 15, 10);
-    private TierReward refinedReward = new TierReward(RewardType.ESSENCE, 25, 1);
-    private TierReward masteredReward = new TierReward(RewardType.ESSENCE, 50, 1);
+    private TierReward discoveredReward = new TierReward(RewardType.ESSENCE, 50, 1);
+    private TierReward collectedReward = new TierReward(RewardType.ESSENCE, 150, 10);
+    private TierReward refinedReward = new TierReward(RewardType.ESSENCE, 250, 1);
+    private TierReward masteredReward = new TierReward(RewardType.ESSENCE, 500, 1);
 
     public static SoulCodexConfig load(FileConfiguration yaml) {
         SoulCodexConfig cfg = new SoulCodexConfig();
@@ -32,10 +32,10 @@ public final class SoulCodexConfig {
         cfg.masteredMasteryLevel = Math.max(1, s.getInt("mastered-mastery-level", 20));
         ConfigurationSection r = s.getConfigurationSection("rewards");
         if (r != null) {
-            cfg.discoveredReward = readReward(r.getConfigurationSection("discovered"), RewardType.ESSENCE, 5, 1);
-            cfg.collectedReward = readReward(r.getConfigurationSection("collected"), RewardType.ESSENCE, 15, 10);
-            cfg.refinedReward = readReward(r.getConfigurationSection("refined"), RewardType.ESSENCE, 25, 1);
-            cfg.masteredReward = readReward(r.getConfigurationSection("mastered"), RewardType.ESSENCE, 50, 1);
+            cfg.discoveredReward = readReward(r.getConfigurationSection("discovered"), RewardType.ESSENCE, 50, 1);
+            cfg.collectedReward = readReward(r.getConfigurationSection("collected"), RewardType.ESSENCE, 150, 10);
+            cfg.refinedReward = readReward(r.getConfigurationSection("refined"), RewardType.ESSENCE, 250, 1);
+            cfg.masteredReward = readReward(r.getConfigurationSection("mastered"), RewardType.ESSENCE, 500, 1);
         }
         return cfg;
     }
@@ -59,14 +59,14 @@ public final class SoulCodexConfig {
         set(cfg, "souls.codex.refined-enhance-level", 5);
         set(cfg, "souls.codex.mastered-mastery-level", 20);
         set(cfg, "souls.codex.rewards.discovered.type", "ESSENCE");
-        set(cfg, "souls.codex.rewards.discovered.amount", 5);
+        set(cfg, "souls.codex.rewards.discovered.amount", 50);
         set(cfg, "souls.codex.rewards.collected.type", "ESSENCE");
-        set(cfg, "souls.codex.rewards.collected.amount", 15);
+        set(cfg, "souls.codex.rewards.collected.amount", 150);
         set(cfg, "souls.codex.rewards.collected.min-captured", 10);
         set(cfg, "souls.codex.rewards.refined.type", "ESSENCE");
-        set(cfg, "souls.codex.rewards.refined.amount", 25);
+        set(cfg, "souls.codex.rewards.refined.amount", 250);
         set(cfg, "souls.codex.rewards.mastered.type", "ESSENCE");
-        set(cfg, "souls.codex.rewards.mastered.amount", 50);
+        set(cfg, "souls.codex.rewards.mastered.amount", 500);
     }
 
     private static void set(FileConfiguration cfg, String path, Object value) {

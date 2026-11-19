@@ -71,7 +71,7 @@ public final class SoulCatalystRecipeManager implements Listener {
                 recipe.setIngredient(c, ingredients.get(c));
             } else if ("CONDENSED_SOUL_ESSENCE".equalsIgnoreCase(special.get(c))) {
                 try {
-                    recipe.setIngredient(c, new RecipeChoice.ExactChoice(CondensedSoulEssenceItem.create(plugin, 1, cfg)));
+                    recipe.setIngredient(c, RecipeChoice.exactChoice(CondensedSoulEssenceItem.create(plugin, 1, cfg)));
                 } catch (Throwable t) {
                     // Fallback: match by material only (custom handling could be added via craft listeners if needed).
                     recipe.setIngredient(c, cfg.condensedMaterial());

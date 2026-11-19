@@ -116,24 +116,25 @@ public final class SoulLoreBuilder {
         String hpLine;
         double totalHp = service != null ? service.computeSpawnedMaxHealth(viewerId, soul) : enhancedBase.health();
         {
-            double vigorous = soul != null ? soul.affixValue(SoulAffixType.VIGOROUS) : 0.0;
             double preEnhHp = preEnhBase.health();
             double enhHpDelta = enhancedBase.health() - preEnhHp;
             double ownerHealthBonus = 0.0;
+            double affixHealthBonus = 0.0;
             if (service != null) {
                 double[] hb = service.computeSpawnedMaxHealthBreakdown(viewerId, soul);
                 ownerHealthBonus = Math.max(0.0, hb[2]);
+                affixHealthBonus = hb[1];
                 totalHp = hb[3];
             }
-            boolean showHpBreakdown = showEnh || Math.abs(ownerHealthBonus) >= 0.005 || Math.abs(vigorous) >= 0.00005;
+            boolean showHpBreakdown = showEnh || Math.abs(ownerHealthBonus) >= 0.005 || Math.abs(affixHealthBonus) >= 0.005;
             if (showHpBreakdown) {
                 StringBuilder parts = new StringBuilder();
                 parts.append("§7").append(fmt(preEnhHp + ownerHealthBonus, 2));
-                if (showEnh && Math.abs(enhHpDelta) >= 0.005) parts.append("§8+§d").append(fmt(enhHpDelta, 2));
-                if (Math.abs(vigorous) >= 0.00005) parts.append("§8+§a").append(fmtPercent(vigorous * 100.0));
-                hpLine = "§e" + fmt(totalHp, 2) + " §7HP §8(" + parts + "§8)";
+                if (showEnh && Math.abs(enhHpDelta) >= 0.005) appendSignedDelta(parts, enhHpDelta, "§d");
+                if (Math.abs(affixHealthBonus) >= 0.005) appendSignedDelta(parts, affixHealthBonus, affixHealthBonus >= 0 ? "§a" : "§c");
+                hpLine = statLine("§e", totalHp, "§7HP", parts.toString());
             } else {
-                hpLine = "§e" + fmt(totalHp, 2) + " §7HP";
+                hpLine = statLine("§e", totalHp, "§7HP", null);
             }
         }
 
@@ -160,25 +161,20 @@ public final class SoulLoreBuilder {
         double dmgMult = Math.max(0.5, Math.min(3.0, snap.damageMultiplier()));
         String dmgLine;
         {
-            boolean hasDmgMod = Math.abs(dmgMult - 1.0) >= 0.0005 || Math.abs(ownerStrengthBonus) >= 0.005 || (showEnh && Math.abs(enhAtkDelta) >= 0.005);
+            boolean showEnhPart = showEnh && Math.abs(enhAtkDelta) >= 0.005;
+            boolean showMultPart = Math.abs(dmgMult - 1.0) >= 0.0005;
+            boolean hasDmgMod = showEnhPart || showMultPart;
             if (hasDmgMod) {
                 StringBuilder parts = new StringBuilder();
                 parts.append("§7").append(fmt(preEnhAtk + ownerStrengthBonus, 2));
-                if (showEnh && Math.abs(enhAtkDelta) >= 0.005) parts.append("§8+§d").append(fmt(enhAtkDelta, 2));
-                if (Math.abs(dmgMult - 1.0) >= 0.0005) {
-                    double brutal = soul != null ? soul.affixValue(SoulAffixType.BRUTAL) : 0.0;
-                    if (Math.abs(brutal) >= 0.00005) {
-                        parts.append("§8+§a").append(fmtPercent(brutal * 100.0));
-                    } else {
-                        double atkFromAffix = baseWithOwner * (dmgMult - 1.0);
-                        String sign = atkFromAffix >= 0 ? "+" : "";
-                        String deltaColor = atkFromAffix >= 0 ? "§a" : "§c";
-                        parts.append("§8").append(sign).append(deltaColor).append(fmt(Math.abs(atkFromAffix), 2));
-                    }
+                if (showEnhPart) appendSignedDelta(parts, enhAtkDelta, "§d");
+                if (showMultPart) {
+                    double atkFromAffix = baseWithOwner * (dmgMult - 1.0);
+                    appendSignedDelta(parts, atkFromAffix, atkFromAffix >= 0 ? "§a" : "§c");
                 }
-                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG §8(" + parts + "§8)";
+                dmgLine = statLine("§c", avgDmg, "§7ATK DMG", parts.toString());
             } else {
-                dmgLine = "§c" + fmt(avgDmg, 2) + " §7ATK DMG";
+                dmgLine = statLine("§c", avgDmg, "§7ATK DMG", null);
             }
         }
 
@@ -188,57 +184,76 @@ public final class SoulLoreBuilder {
         double enhAtkSpdDelta = atkSpdAps - preAtkSpd;
         String atkSpdLine;
         if (showEnh && Math.abs(enhAtkSpdDelta) >= 0.005) {
-            atkSpdLine = "§a" + fmt(atkSpdAps, 2) + " §7ATK SPD §8(§7" + fmt(preAtkSpd, 2) + "§8+§d" + fmt(enhAtkSpdDelta, 2) + "§8)";
+            StringBuilder parts = new StringBuilder();
+            parts.append("§7").append(fmt(preAtkSpd, 2));
+            appendSignedDelta(parts, enhAtkSpdDelta, "§d");
+            atkSpdLine = statLine("§a", atkSpdAps, "§7ATK SPD", parts.toString());
         } else {
-            atkSpdLine = "§a" + fmt(atkSpdAps, 2) + " §7ATK SPD";
+            atkSpdLine = statLine("§a", atkSpdAps, "§7ATK SPD", null);
         }
 
-        // MV SPD: pre-enh + enhancement delta + affix contribution (bps)
-        double moveBps = service != null ? service.computeSpawnedMovementBlocksPerSecond(soul) : (enhancedBase.movementSpeed() * 43.17);
-        double speedMult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
-        double preEnhMoveBps = Math.max(0.0, preEnhBase.movementSpeed() * 43.17);
-        double enhMoveBps = Math.max(0.0, enhancedBase.movementSpeed() * 43.17);
-        double enhMoveDeltaBps = enhMoveBps - preEnhMoveBps;
-        String moveLine;
-        {
-            boolean hasSwift = Math.abs(speedMult - 1.0) >= 0.0005 && Math.abs(moveBps - enhMoveBps) >= 0.005;
-            boolean showMvBreakdown = (showEnh && Math.abs(enhMoveDeltaBps) >= 0.005) || hasSwift;
-            if (showMvBreakdown) {
-                StringBuilder parts = new StringBuilder();
-                parts.append("§7").append(fmt(preEnhMoveBps, 2));
-                if (showEnh && Math.abs(enhMoveDeltaBps) >= 0.005) parts.append("§8+§d").append(fmt(enhMoveDeltaBps, 2));
-                if (hasSwift) {
-                    double swift = soul != null ? soul.affixValue(SoulAffixType.SWIFT) : 0.0;
-                    if (Math.abs(swift) >= 0.00005) {
-                        parts.append("§8+§a").append(fmtPercent(swift * 100.0));
-                    } else {
-                        double affixMoveBps = moveBps - enhMoveBps;
-                        String sign = affixMoveBps >= 0 ? "+" : "";
-                        String deltaColor = affixMoveBps >= 0 ? "§a" : "§c";
-                        parts.append("§8").append(sign).append(deltaColor).append(fmt(Math.abs(affixMoveBps), 2));
-                    }
-                }
-                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD §8(" + parts + "§8)";
-            } else {
-                moveLine = "§b" + fmt(moveBps, 2) + " bps §7MV SPD";
-            }
-        }
+        // MV SPD: tier-based (Normal/Fast/Very Fast/Insane)
+        int moveTier = enhancedBase.movementSpeedTier();
+        String moveLine = "§b" + SoulBaseStats.movementSpeedTierLabel(moveTier) + " §7MV SPD";
 
         out.add(line(hpLine));
-        // DEF line (with enhancement breakdown when applicable)
+        // DEF line (with enhancement and TENACIOUS affix breakdown when applicable)
         {
             double preDef = SoulBaseStats.clampDefense(preEnhBase.defense());
-            double effDef = Math.max(SoulBaseStats.MIN_DEFENSE, enhancedBase.defense());
-            double defDelta = effDef - preDef;
-            if (showEnh && Math.abs(defDelta) >= 0.005) {
-                out.add(line("§9" + fmt(effDef, 2) + " §7DEF §8(§7" + fmt(preDef, 2) + "§8+§d" + fmt(defDelta, 2) + "§8)"));
+            double baseDef = Math.max(SoulBaseStats.MIN_DEFENSE, enhancedBase.defense());
+            double defMult = 1.0 + Math.max(0.0, snap.tenacityBonus());
+            double effDef = Math.max(SoulBaseStats.MIN_DEFENSE, baseDef * defMult);
+            double enhDefDelta = baseDef - preDef;
+            double affixDefDelta = effDef - baseDef;
+            boolean showDefEnh = showEnh && Math.abs(enhDefDelta) >= 0.005;
+            boolean showDefAffix = Math.abs(affixDefDelta) >= 0.005;
+            if (showDefEnh || showDefAffix) {
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(fmt(preDef, 2));
+                if (showDefEnh) appendSignedDelta(parts, enhDefDelta, "§d");
+                if (showDefAffix) appendSignedDelta(parts, affixDefDelta, affixDefDelta >= 0 ? "§a" : "§c");
+                out.add(line(statLine("§9", effDef, "§7DEF", parts.toString())));
             } else {
-                out.add(line("§9" + fmt(effDef, 2) + " §7DEF"));
+                out.add(line(statLine("§9", effDef, "§7DEF", null)));
             }
         }
         out.add(line(dmgLine));
         out.add(line(atkSpdLine));
         out.add(line(moveLine));
+        // Respawn timer (effective, with enhancement/affix reductions)
+        {
+            double baseRespawn = preEnhBase.respawnSeconds(); // rolled base (pre-enhancement)
+            double afterEnhRespawn = enhancedBase.respawnSeconds(); // after enhancement reduction, before affix/runtime clamping
+            double effRespawn = afterEnhRespawn;
+            double affixReduction = Math.max(0.0, Math.min(0.95, snap.respawnReduction()));
+            try {
+                if (plugin != null && plugin.getSummonRespawnService() != null) {
+                    effRespawn = plugin.getSummonRespawnService().computeEffectiveRespawnSeconds(soul, service != null ? service.soulConfig() : null);
+                } else {
+                    effRespawn = Math.max(SoulBaseStats.MIN_RESPAWN_SECONDS, afterEnhRespawn * (1.0 - affixReduction));
+                }
+            } catch (Throwable ignored) {}
+            if (Math.abs(effRespawn - baseRespawn) >= 0.05) {
+                StringBuilder parts = new StringBuilder();
+                parts.append("§7").append(fmt(baseRespawn, 1));
+                double enhDelta = baseRespawn - afterEnhRespawn; // positive = time reduced
+                if (showEnh && enhDelta >= 0.05) {
+                    parts.append("§8-§d").append(fmt(enhDelta, 1));
+                }
+                double affixDelta = afterEnhRespawn - effRespawn;
+                // If enhancement wasn't shown separately but effect exists (edge cases), fold into affix/total delta context by showing affix only when meaningful.
+                if (!showEnh && enhDelta >= 0.05) {
+                    affixDelta = baseRespawn - effRespawn; // show combined reduction after base
+                    if (affixDelta >= 0.05) parts.append("§8-§a").append(fmt(affixDelta, 1));
+                } else if (affixDelta >= 0.05) {
+                    parts.append("§8-§a").append(fmt(affixDelta, 1));
+                }
+                // If floors/clamps made effective higher than components suggest, still show final in main value; calc shows component reductions.
+                out.add(line("§d" + fmt(effRespawn, 1) + "s §7RESPAWN §8(" + parts + "§8)"));
+            } else {
+                out.add(line("§d" + fmt(effRespawn, 1) + "s §7RESPAWN"));
+            }
+        }
 
         boolean hasAffixLines = false;
         if (soul.getAffixes() == null || soul.getAffixes().isEmpty()) {
@@ -300,6 +315,20 @@ public final class SoulLoreBuilder {
             }
         } catch (Throwable ignored) {}
         return out;
+    }
+
+    /** Append a signed numeric delta to a stat breakdown (e.g. "§8+§d1.23" / "§8-§c1.23"). */
+    private static void appendSignedDelta(StringBuilder parts, double delta, String deltaColor) {
+        String sign = delta >= 0.0 ? "+" : "-";
+        parts.append("§8").append(sign).append(deltaColor).append(fmt(Math.abs(delta), 2));
+    }
+
+    /** Build a stat line, with optional "(base ± deltas)" breakdown. */
+    private static String statLine(String valueColor, double value, String label, String breakdown) {
+        if (breakdown == null || breakdown.isBlank()) {
+            return valueColor + fmt(value, 2) + " " + label;
+        }
+        return valueColor + fmt(value, 2) + " " + label + " §8(" + breakdown + "§8)";
     }
 
     public static String fmt(double value, int decimals) {

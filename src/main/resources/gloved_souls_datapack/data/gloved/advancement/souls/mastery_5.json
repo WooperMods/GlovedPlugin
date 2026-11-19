@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/root",
+  "display": {
+    "icon": {
+      "id": "minecraft:experience_bottle"
+    },
+    "title": {
+      "text": "Attuned"
+    },
+    "description": {
+      "text": "Reach Mastery level 5 on any soul.\n+200 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

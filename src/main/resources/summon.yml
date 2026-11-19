@@ -382,17 +382,17 @@ souls:
       # Per-family tier claim rewards (MVP: essence). Keep bounded.
       discovered:
         type: ESSENCE
-        amount: 5
+        amount: 50
       collected:
         type: ESSENCE
-        amount: 15
+        amount: 150
         min-captured: 10
       refined:
         type: ESSENCE
-        amount: 25
+        amount: 250
       mastered:
         type: ESSENCE
-        amount: 50
+        amount: 500
 
 progression:
   enabled: true
@@ -496,3 +496,43 @@ progression:
       debuffed-bonus-multiplier: 1.25
       per-hit-heal-cap: 2.5
       max-heal-per-minute: 40.0
+
+  respawn:
+    enabled: true
+    global-floor-seconds: 10
+    global-ceil-seconds: 120
+    enhance-reduces-respawn: true
+    enhance-per-level-reduction: 0.01
+    enhance-max-reduction: 0.20
+    retry-attempts: 3
+    retry-delay-ticks: 20
+    kill-charge:
+      enabled: true
+      flat-seconds: 3.0
+      percent-of-remaining: 0.03
+      per-kill-apply-once: true
+      credit-owner-kills: true
+      credit-summon-kills: true
+      allow-player-victim: false
+      internal-cooldown-ticks: 0
+      max-reduction-per-kill-seconds: 15.0
+      min-remaining-after-charge-seconds: 10.0
+    vfx-sfx:
+      enabled: true
+      death-cue-enabled: true
+      death-particles: true
+      death-sound: true
+      pending-cue-enabled: true
+      pending-cue-interval-ticks: 80
+      pending-cue-particles: true
+      pending-cue-sound: false
+      respawn-cue-enabled: true
+      respawn-particles: true
+      respawn-sound: true
+      kill-charge-cue-enabled: true
+      kill-charge-particles: true
+      kill-charge-sound: true
+      audible-range: 24.0
+      intensity: 1.0
+
+  stats:

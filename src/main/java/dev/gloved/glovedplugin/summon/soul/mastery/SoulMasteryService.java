@@ -28,6 +28,8 @@ public final class SoulMasteryService {
     private final ConcurrentHashMap<UUID, MinuteBucket> soulHitXpMinute = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, MinuteBucket> soulKillXpMinute = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, MinuteBucket> ownerHitXpMinute = new ConcurrentHashMap<>();
+    // Serialize mastery awards per soul to prevent duplicate level-up processing/messages from races.
+    private final ConcurrentHashMap<UUID, Object> masteryAwardLocks = new ConcurrentHashMap<>();
 
     public SoulMasteryService(GlovedPlugin plugin, SoulService soulService) {
         this.plugin = plugin;
@@ -90,43 +92,57 @@ public final class SoulMasteryService {
 
     public void awardXp(Player owner, UUID soulId, double amount, String reason) {
         if (!isEnabled() || owner == null || soulId == null || amount <= 0.0) return;
-        try {
-            SoulInstance soul = soulService.getSoulCached(soulId);
-            if (soul == null) soul = repository.getSoul(soulId);
-            if (soul == null || !owner.getUniqueId().equals(soul.getOwnerId())) return;
+        Object lock = masteryAwardLocks.computeIfAbsent(soulId, k -> new Object());
+        synchronized (lock) {
+            try {
+                SoulInstance soul = soulService.getSoulCached(soulId);
+                if (soul == null) soul = repository.getSoul(soulId);
+                if (soul == null || !owner.getUniqueId().equals(soul.getOwnerId())) return;
 
-            SoulMasteryConfig cfg = config();
-            int maxLevel = cfg.getMaxLevel();
-            int level = Math.max(0, Math.min(maxLevel, soul.getMasteryLevel()));
-            long xp = Math.max(0L, soul.getMasteryXp()) + Math.max(0L, Math.round(amount));
-            boolean leveled = false;
-            while (level < maxLevel) {
-                int need = Math.max(1, cfg.xpToNextLevel(level));
-                if (xp < need) break;
-                xp -= need;
-                level++;
-                leveled = true;
-            }
-            if (level >= maxLevel) xp = 0;
+                SoulMasteryConfig cfg = config();
+                int maxLevel = cfg.getMaxLevel();
+                int startLevel = Math.max(0, Math.min(maxLevel, soul.getMasteryLevel()));
+                int level = startLevel;
+                long xp = Math.max(0L, soul.getMasteryXp()) + Math.max(0L, Math.round(amount));
+                while (level < maxLevel) {
+                    int need = Math.max(1, cfg.xpToNextLevel(level));
+                    if (xp < need) break;
+                    xp -= need;
+                    level++;
+                }
+                if (level >= maxLevel) xp = 0;
 
-            Set<Integer> claimed = new LinkedHashSet<>(soul.getMasteryClaimedMilestones());
-            SoulInstance updated = soul.withMastery((int) Math.min(Integer.MAX_VALUE, xp), level, claimed);
-            repository.updateSoulMastery(soulId, updated.getMasteryXp(), updated.getMasteryLevel(), updated.getMasteryClaimedMilestones());
-            soulService.invalidateSoul(soulId, owner.getUniqueId());
+                boolean leveled = level > startLevel;
 
-            if (leveled) {
-                owner.sendMessage("§d[Soul Mastery] §f" + prettySoul(soul) + " §7reached §bLv " + level + " §7(" + cfg.rankName(level) + ")");
-                try { owner.playSound(owner.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.4f); } catch (Throwable ignored) {}
-                // Notify codex of mastery progression/milestone thresholds
+                // No state change (e.g. capped XP grant) - avoid unnecessary writes/notifications.
+                int newXp = (int) Math.min(Integer.MAX_VALUE, xp);
+                if (!leveled && newXp == Math.max(0, soul.getMasteryXp()) && level == startLevel) {
+                    return;
+                }
+
+                Set<Integer> claimed = new LinkedHashSet<>(soul.getMasteryClaimedMilestones());
+                SoulInstance updated = soul.withMastery(newXp, level, claimed);
+                repository.updateSoulMastery(soulId, updated.getMasteryXp(), updated.getMasteryLevel(), updated.getMasteryClaimedMilestones());
+                soulService.invalidateSoul(soulId, owner.getUniqueId());
+
+                if (leveled) {
+                    owner.sendMessage("§d[Soul Mastery] §f" + prettySoul(soul) + " §7reached §bLv " + level + " §7(" + cfg.rankName(level) + ")");
+                    try { owner.playSound(owner.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.6f, 1.4f); } catch (Throwable ignored) {}
+                    // Notify codex of mastery progression/milestone thresholds
+                    try {
+                        var codex = soulService.getCodexService();
+                        if (codex != null) codex.onSoulMasteryLevelReached(owner, updated);
+                    } catch (Throwable ignored) {}
+                }
                 try {
-                    var codex = soulService.getCodexService();
-                    if (codex != null) codex.onSoulMasteryLevelReached(owner, updated);
+                    var adv = plugin.getSoulAdvancementService();
+                    if (adv != null && level >= 5) adv.onMasteryLevelReached(owner, level);
                 } catch (Throwable ignored) {}
+            } catch (SQLException e) {
+                GlovedPlugin.logDebug("[SoulMastery] awardXp failed for soul=" + soulId + ": " + e);
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[SoulMastery] awardXp error: " + t);
             }
-        } catch (SQLException e) {
-            GlovedPlugin.logDebug("[SoulMastery] awardXp failed for soul=" + soulId + ": " + e);
-        } catch (Throwable t) {
-            GlovedPlugin.logDebug("[SoulMastery] awardXp error: " + t);
         }
     }
 

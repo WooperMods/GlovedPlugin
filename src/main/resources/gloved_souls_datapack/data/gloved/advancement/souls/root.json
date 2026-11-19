@@ -1,0 +1,23 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:soul_lantern"
+    },
+    "title": {
+      "text": "Soulbound Beginnings"
+    },
+    "description": {
+      "text": "Begin your journey with the souls of the world.\n+50 Essence"
+    },
+    "background": "gloved:gui/advancements/backgrounds/souls",
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

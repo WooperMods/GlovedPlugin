@@ -218,7 +218,6 @@ public final class SoulTableGuideInv implements SoulTableScreen {
         int slotIndex = 0;
         for (SoulAffixType type : types) {
             if (!durationEnabled && type == SoulAffixType.ENDURING) continue;
-            if (!costReductionEnabled && type == SoulAffixType.COMMANDER) continue;
             if (slotIndex >= slots.length) break;
             inventory.setItem(slots[slotIndex++], affixItem(type));
         }
@@ -260,9 +259,6 @@ public final class SoulTableGuideInv implements SoulTableScreen {
             case VIGOROUS -> {
                 lore.add("§7Gives your summons more health.");
             }
-            case SWIFT -> {
-                lore.add("§7Makes your summons move faster.");
-            }
             case PRECISE -> {
                 lore.add("§7Helps your summons land critical");
                 lore.add("§7hits more often.");
@@ -272,7 +268,7 @@ public final class SoulTableGuideInv implements SoulTableScreen {
                 lore.add("§7hits deal more damage.");
             }
             case TENACIOUS -> {
-                lore.add("§7Helps your summons take less damage.");
+                lore.add("§7Increases your summons' defense.");
             }
             case ENDURING -> {
                 lore.add("§7Lets your summons stay around longer.");
@@ -281,8 +277,9 @@ public final class SoulTableGuideInv implements SoulTableScreen {
                 lore.add("§7Makes your summons' special effects");
                 lore.add("§7stronger.");
             }
-            case COMMANDER -> {
-                lore.add("§7Makes summoning cost a bit less.");
+            case REAWAKENING -> {
+                lore.add("§7Reduces how long this soul takes");
+                lore.add("§7to respawn after dying in a group.");
             }
             case CAPACITY -> {
                 lore.add("§7Lets this soul call more summons");
@@ -310,12 +307,13 @@ public final class SoulTableGuideInv implements SoulTableScreen {
                 "§7How fast your summons move.")));
         inventory.setItem(23, infoItem(Material.CLOCK, "§aAttack Speed", List.of(
                 "§7How quickly your summons attack.")));
-        inventory.setItem(24, infoItem(Material.SLIME_BALL, "§3Summons", List.of(
-                "§7How many allies this soul calls at once.",
-                "§7Better souls and upgrades can call more.")));
+        inventory.setItem(24, infoItem(Material.CLOCK, "§dRespawn Time", List.of(
+                "§7How long a soul takes to return after",
+                "§7dying in an active Soul Group.",
+                "§7Better rolls and respawn affixes reduce it.")));
         inventory.setItem(25, infoItem(Material.EXPERIENCE_BOTTLE, "§dEnhancing", List.of(
                 "§7Enhancing a soul improves its stats",
-                "§7and can let it call more summons.",
+                "§7and can reduce respawn time.",
                 "§7Changes apply on your next summon.")));
 
         List<String> rar = new ArrayList<>();

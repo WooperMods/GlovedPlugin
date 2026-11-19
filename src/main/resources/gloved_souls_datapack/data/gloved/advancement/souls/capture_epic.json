@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_first",
+  "display": {
+    "icon": {
+      "id": "minecraft:amethyst_shard"
+    },
+    "title": {
+      "text": "Epic Find"
+    },
+    "description": {
+      "text": "Acquire an Epic soul.\n+200 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

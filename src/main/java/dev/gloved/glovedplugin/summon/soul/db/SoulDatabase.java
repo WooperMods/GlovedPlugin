@@ -84,6 +84,14 @@ public class SoulDatabase {
             addPlayerStateColumnIfMissing(stmt, "combat_mode", "ALTER TABLE soul_player_state ADD COLUMN combat_mode TEXT NOT NULL DEFAULT 'AGGRESSIVE'");
             addPlayerStateColumnIfMissing(stmt, "soul_table_tab", "ALTER TABLE soul_player_state ADD COLUMN soul_table_tab TEXT NOT NULL DEFAULT 'COMBINE'");
             addPlayerStateColumnIfMissing(stmt, "selected_team", "ALTER TABLE soul_player_state ADD COLUMN selected_team INTEGER NOT NULL DEFAULT 1");
+            addPlayerStateColumnIfMissing(stmt, "souls_acquired_total", "ALTER TABLE soul_player_state ADD COLUMN souls_acquired_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "group_activations_total", "ALTER TABLE soul_player_state ADD COLUMN group_activations_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_actions_total", "ALTER TABLE soul_player_state ADD COLUMN soul_table_actions_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_respawns_total", "ALTER TABLE soul_player_state ADD COLUMN soul_respawns_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_combine_total", "ALTER TABLE soul_player_state ADD COLUMN soul_table_combine_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_enhance_total", "ALTER TABLE soul_player_state ADD COLUMN soul_table_enhance_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_reforge_total", "ALTER TABLE soul_player_state ADD COLUMN soul_table_reforge_total INTEGER NOT NULL DEFAULT 0");
+            addPlayerStateColumnIfMissing(stmt, "soul_table_salvage_total", "ALTER TABLE soul_player_state ADD COLUMN soul_table_salvage_total INTEGER NOT NULL DEFAULT 0");
 
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS soul_codex (" +

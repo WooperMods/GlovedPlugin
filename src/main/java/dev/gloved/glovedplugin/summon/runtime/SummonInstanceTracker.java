@@ -218,6 +218,25 @@ public class SummonInstanceTracker {
         }
     }
 
+    /** Despawns active summoned minions for an owner whose summon_soul_id matches the given soul. */
+    public int removeBySoulId(UUID playerId, UUID soulId) {
+        if (playerId == null || soulId == null) return 0;
+        NamespacedKey soulKey = new NamespacedKey(plugin, "summon_soul_id");
+        int removed = 0;
+        for (LivingEntity le : getActiveMinions(playerId)) {
+            if (le == null || le.isDead()) continue;
+            String raw = le.getPersistentDataContainer().get(soulKey, PersistentDataType.STRING);
+            if (raw == null) continue;
+            try {
+                if (soulId.equals(UUID.fromString(raw))) {
+                    despawn(le.getUniqueId());
+                    removed++;
+                }
+            } catch (Exception ignored) {}
+        }
+        return removed;
+    }
+
     public void removeAll() {
         for (UUID playerId : new HashSet<>(activeByPlayer.keySet())) {
             removeAllForPlayer(playerId);

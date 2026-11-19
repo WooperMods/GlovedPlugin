@@ -109,6 +109,10 @@ public class ContainerRegistry {
                 ps.setString(1, id.toStringKey());
                 ps.executeUpdate();
             }
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM container_templates WHERE container_id = ?")) {
+                ps.setString(1, id.toStringKey());
+                ps.executeUpdate();
+            }
             cache.remove(id);
         } catch (SQLException e) {
             System.out.println("[Lootr] SQLException on unregister " + id.toStringKey() + ": " + e.getMessage());

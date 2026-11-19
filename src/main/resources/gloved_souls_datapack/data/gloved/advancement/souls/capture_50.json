@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_10",
+  "display": {
+    "icon": {
+      "id": "minecraft:amethyst_shard"
+    },
+    "title": {
+      "text": "Soul Hoarder"
+    },
+    "description": {
+      "text": "Acquire 50 souls.\n+400 Essence"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

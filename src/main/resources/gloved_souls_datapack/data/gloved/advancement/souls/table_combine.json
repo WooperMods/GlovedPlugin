@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/table_first",
+  "display": {
+    "icon": {
+      "id": "minecraft:lodestone"
+    },
+    "title": {
+      "text": "Soul Fusion"
+    },
+    "description": {
+      "text": "Combine souls at the Soul Table.\n+300 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -3,6 +3,7 @@ version: '0.1.0'
 main: dev.gloved.glovedplugin.core.GlovedPlugin
 api-version: '26.3'
 load: STARTUP
+bootstrapper: dev.gloved.glovedplugin.core.GlovedPluginBootstrap
 dependencies:
   server:
     LuckPerms:

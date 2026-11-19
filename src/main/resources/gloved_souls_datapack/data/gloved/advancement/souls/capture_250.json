@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_100",
+  "display": {
+    "icon": {
+      "id": "minecraft:soul_campfire"
+    },
+    "title": {
+      "text": "Soul Curator"
+    },
+    "description": {
+      "text": "Acquire 250 souls.\n+1500 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -118,6 +118,13 @@ abstract class BaseSummonProgressionBridge implements SummonProgressionBridge {
                 }
             } catch (Throwable ignored) {}
 
+            // Respawn kill-charge (summon-attributed kill credit), independent of AuraSkills XP enablement.
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().onQualifyingKill(credit.ownerUuid, victim, credit.soulId, true, nowTick);
+                }
+            } catch (Throwable ignored) {}
+
             if (!cfg.isProgressionEnabled() || !cfg.isProgressionKillXpEnabled() || !active()) {
                 return;
             }

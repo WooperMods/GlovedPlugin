@@ -2,6 +2,7 @@ enabled: true
 auto-convert: true
 containers: [CHEST, BARREL, SHULKER_BOX, MINECART_CHEST]
 per-player-loot: true
+custom-namespace-snapshot: true
 max-tracked-chests: 50000
 disabled-worlds: []
 protection:

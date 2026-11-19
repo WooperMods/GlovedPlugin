@@ -37,6 +37,7 @@ import dev.gloved.glovedplugin.summon.soul.mastery.SoulMasteryService;
 import dev.gloved.glovedplugin.summon.soul.trait.SoulTraitHooks;
 import dev.gloved.glovedplugin.summon.soul.trait.ctx.PreviewContext;
 import dev.gloved.glovedplugin.summon.soul.item.SoulDropItem;
+import dev.gloved.glovedplugin.summon.soul.advancement.SoulAdvancementService;
 import dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig;
 
 /**
@@ -58,6 +59,7 @@ public class SoulService {
     private final SoulRepository repository;
     private final SoulMasteryService masteryService;
     private final SoulCodexService codexService;
+    private SoulAdvancementService advancementService;
 
     // Ephemeral DR timestamps (per-player per-family) + short global DR
     private final Map<UUID, Map<String, Long>> lastCaptureAt = new ConcurrentHashMap<>();
@@ -117,6 +119,9 @@ public class SoulService {
     public SoulRepository getRepository() { return repository; }
     public SoulMasteryService getMasteryService() { return masteryService; }
     public SoulCodexService getCodexService() { return codexService; }
+
+    public SoulAdvancementService getAdvancementService() { return advancementService; }
+    public void setAdvancementService(SoulAdvancementService advancementService) { this.advancementService = advancementService; }
 
     /** Essence balance for an owner (0 when the database is unavailable). */
     public int getEssence(UUID owner) {
@@ -419,6 +424,7 @@ public class SoulService {
                     try { if (codexService != null) codexService.onSoulAcquired(player, soul, first); } catch (Throwable ignored) {}
                     try { if (masteryService != null) masteryService.onSoulCaptured(player, soul); } catch (Throwable ignored) {}
                 }
+                try { if (advancementService != null) advancementService.onSoulAcquired(player, soul); } catch (Throwable ignored) {}
                 return CollectResult.okEssence(essence);
             } else {
                 repository.insertSoul(soul);
@@ -430,6 +436,7 @@ public class SoulService {
                     try { if (masteryService != null) masteryService.onSoulCaptured(player, soul); } catch (Throwable ignored) {}
                 }
                 if (invalidateCaches) invalidateSelectedCache(player.getUniqueId());
+                try { if (advancementService != null) advancementService.onSoulAcquired(player, soul); } catch (Throwable ignored) {}
                 return CollectResult.okStored();
             }
         } catch (SQLException e) {
@@ -837,6 +844,12 @@ public class SoulService {
                     return false;
                 }
             }
+            // Slot assignment changed/replaced: cancel any pending respawn for this slot.
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelSlot(owner, teamIndex, slotIndex, "slot-changed");
+                }
+            } catch (Throwable ignored) {}
             repository.setTeamSlot(owner, teamIndex, slotIndex, soulId);
             invalidateSelectedCache(owner);
             return true;
@@ -854,6 +867,11 @@ public class SoulService {
         try {
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelSlot(owner, teamIndex, slotIndex, "slot-cleared");
+                }
+            } catch (Throwable ignored) {}
             repository.clearTeamSlot(owner, teamIndex, slotIndex);
             invalidateSelectedCache(owner);
         } catch (SQLException e) {
@@ -868,6 +886,11 @@ public class SoulService {
         try {
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             ensureTeamsSeeded(owner, cap);
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelTeam(owner, teamIndex, "team-cleared");
+                }
+            } catch (Throwable ignored) {}
             repository.clearTeam(owner, teamIndex);
             invalidateSelectedCache(owner);
         } catch (SQLException e) {
@@ -878,6 +901,11 @@ public class SoulService {
     public void clearSoulFromAllTeams(UUID owner, UUID soulId) {
         if (owner == null || soulId == null) return;
         try {
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelPendingForSoul(owner, soulId, "soul-removed-from-teams");
+                }
+            } catch (Throwable ignored) {}
             repository.clearSoulFromAllTeams(owner, soulId);
             invalidateSelectedCache(owner);
         } catch (SQLException e) {
@@ -1011,6 +1039,7 @@ public class SoulService {
         if (skippedInvalid > 0) msg.append(", skipped ").append(skippedInvalid).append(" invalid");
         msg.append(")");
         player.sendMessage(msg.toString());
+        try { if (advancementService != null) advancementService.onGroupActivated(player); } catch (Throwable ignored) {}
         return TeamActivationResult.ok(CastResult.OK, teamIndex, spawnRes.spawned, skippedInvalid);
     }
 
@@ -1069,13 +1098,24 @@ public class SoulService {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
             if (loadout.containsValue(soul.getSoulId())) return new SalvageResult(false, 0, "equipped");
         } catch (SQLException ignored) {}
+        // Salvage is allowed even when assigned to a soul group / pending respawn, but not extractable.
         int essence = essenceValueOf(soul.getRarity());
         try {
             SoulConfig cfg = soulConfig();
             int cap = cfg != null ? cfg.computeVaultCapacity(getSummoningLevel(owner)) : 30;
             // re-check existence right before delete to reduce race window
             if (repository.getSoul(soul.getSoulId()) == null) return new SalvageResult(false, 0, "not-found");
-            repository.deleteSoul(soul.getSoulId());
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelPendingForSoul(owner, soul.getSoulId(), "soul-salvaged");
+                }
+            } catch (Throwable ignored) {}
+            try {
+                if (plugin.getSummonTracker() != null) {
+                    plugin.getSummonTracker().removeBySoulId(owner, soul.getSoulId());
+                }
+            } catch (Throwable ignored) {}
+            repository.deleteSoul(soul.getSoulId()); // also clears team/loadout rows in DB
             repository.addEssence(owner, essence, cap);
             invalidateSelectedCache(owner);
             invalidateSoulCache(soul.getSoulId());
@@ -1103,10 +1143,23 @@ public class SoulService {
             Map<Integer, UUID> loadout = repository.listLoadout(owner);
             if (loadout.containsValue(soul.getSoulId())) return new ExtractResult(false, "equipped");
         } catch (SQLException ignored) {}
+        // Block if soul is assigned in any team slot (team/loadout system)
+        try {
+            for (int t = 1; t <= teamCount(soulConfig()); t++) {
+                if (repository.isSoulAssignedToTeam(owner, t, soul.getSoulId(), null)) {
+                    return new ExtractResult(false, "equipped in a soul group");
+                }
+            }
+        } catch (SQLException ignored) {}
         try {
             // re-check existence right before delete to reduce race window
             if (repository.getSoul(soul.getSoulId()) == null) return new ExtractResult(false, "not-found");
-            repository.deleteSoul(soul.getSoulId());
+            try {
+                if (plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().cancelPendingForSoul(owner, soul.getSoulId(), "soul-extracted");
+                }
+            } catch (Throwable ignored) {}
+            repository.deleteSoul(soul.getSoulId()); // also clears team/loadout rows in DB
             invalidateSelectedCache(owner);
             invalidateSoulCache(soul.getSoulId());
             return new ExtractResult(true, "ok");
@@ -1136,19 +1189,19 @@ public class SoulService {
         if (s == null) return "Soul not found.";
         StringBuilder sb = new StringBuilder();
         sb.append("§dSoul ").append(shortId(s)).append(" §7(").append(s.getSoulId()).append(")\n");
-        sb.append("§7Family: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
+        sb.append("§7Mob Soul: §f").append(s.getFamilyKey()).append(" §7Category: §f").append(s.getCategory()).append("\n");
         sb.append("§7Rarity: §f").append(s.getRarity()).append(" §7Quality: §f")
                 .append(String.format(java.util.Locale.ROOT, "%.2f%%", s.getQualityScore())).append("\n");
         SoulBaseStats base = effectiveBaseStats(s);
         double hp = computeSpawnedMaxHealth(viewerId != null ? viewerId : s.getOwnerId(), s);
         double atk = estimateAverageHitDamage(viewerId != null ? viewerId : s.getOwnerId(), s);
-        double mv = computeSpawnedMovementBlocksPerSecond(s);
+        String mv = base.movementSpeedTierLabel();
         double aps = Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, Math.min(SoulBaseStats.MAX_ATTACK_SPEED_APS, base.attackSpeed()));
-        double def = SoulBaseStats.clampDefense(base.defense());
+        double def = computeSpawnedDefense(s);
         sb.append("§7Stats: §e").append(String.format(java.util.Locale.ROOT, "%.2f", hp)).append(" HP")
                 .append(" §9").append(String.format(java.util.Locale.ROOT, "%.2f", def)).append(" DEF")
                 .append(" §c").append(String.format(java.util.Locale.ROOT, "%.2f", atk)).append(" ATK")
-                .append(" §b").append(String.format(java.util.Locale.ROOT, "%.2f", mv)).append(" bps")
+                .append(" §b").append(mv).append(" §7MV SPD")
                 .append(" §a").append(String.format(java.util.Locale.ROOT, "%.2f", aps)).append(" APS\n");
         sb.append("§7Enhancement: §fLv ").append(Math.max(0, s.getEnhanceLevel())).append("\n");
         sb.append("§7Trait: §f").append(s.getTrait() != null ? s.getTrait().displayName() : "-")
@@ -1207,10 +1260,7 @@ public class SoulService {
             SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
             if (cd != null) mult *= Math.max(0.5, Math.min(3.0, cd.costMult()));
             SoulStatSnapshot snap = getSnapshot(soul);
-            // Dampen cost-efficiency impact so it can't swing cooldown as wildly.
-            // 1.5x -> 1.25x, 0.5x -> 0.75x; centered on 1.0.
-            double eff = snap.costEfficiency();
-            mult *= 1.0 + (eff - 1.0) * 0.5;
+            // COMMANDER/cost-efficiency removed: respawn affix does not affect cast cooldown.
         }
         int computed = (int) Math.max(20, Math.round(base * mult));
         // Enforce shared GCD floor when configured
@@ -1229,75 +1279,61 @@ public class SoulService {
         SoulConfig.CategoryDefaults cd = cfg.getCategoryDefaults(soul.getCategory());
         if (cd != null) mult *= Math.max(0.5, Math.min(3.0, cd.costMult()));
         mult *= 1.0 + (soul.getRarity().ordinal() * 0.05);
-        SoulStatSnapshot snap = getSnapshot(soul);
-        mult *= Math.max(0.5, Math.min(1.5, snap.costEfficiency()));
+        // COMMANDER/cost-efficiency removed: respawn affix does not affect cast mana.
         return Math.max(0.0, base * mult);
     }
 
     /**
-     * Compute the movement speed attribute value a minion would spawn with for this soul,
-     * mirroring SummonManager.applySoulSnapshotToMinion (capped relative to mob default).
+     * Compute the base movement speed attribute value for a spawned soul (tier-based; potion effects not included).
      */
     public double computeSpawnedMovementSpeed(SoulInstance soul) {
         if (soul == null) return 0.0;
-        SoulStatSnapshot snap = getSnapshot(soul);
-        double speedMult = Math.max(0.5, Math.min(1.6, snap.speedMultiplier()));
-        return computeSpawnedMovementSpeed(soul, speedMult);
+        return resolveDefaultMovementAttribute(soul);
     }
 
-    /** Compute spawned movement speed using an explicit speed multiplier (for breakdowns). */
-    public double computeSpawnedMovementSpeed(SoulInstance soul, double speedMult) {
+    /** Effective spawned movement speed in blocks per second (estimated, tier-based with Speed potion tiers). */
+    public double computeSpawnedMovementBlocksPerSecond(SoulInstance soul) {
         if (soul == null) return 0.0;
-        SoulBaseStats base = effectiveBaseStats(soul);
-        if (!Double.isFinite(speedMult)) speedMult = 1.0;
-        speedMult = Math.max(0.5, Math.min(1.6, speedMult));
-        double maxMove = 14.0 / 43.17; // ~14 bps global cap
-        double moveFloor = 1.0 / 43.17; // ~1 bps floor
-        double baseMove = base.movementSpeed();
-        if (!Double.isFinite(baseMove)) baseMove = 2.5 / 43.17;
-        // Compatibility/parity: older souls may have normalized-low movement bases (~2.5 bps).
-        // Never estimate/apply below ~90% of the mob type's vanilla/default movement speed.
+        double baseAttr = resolveDefaultMovementAttribute(soul);
+        int tier = effectiveBaseStats(soul).movementSpeedTier();
+        int amplifier = SoulBaseStats.speedPotionAmplifierForTier(tier);
+        double mult = amplifier < 0 ? 1.0 : (1.0 + 0.20 * (amplifier + 1));
+        return baseAttr * 43.17 * mult;
+    }
+
+    private double resolveDefaultMovementAttribute(SoulInstance soul) {
         try {
             org.bukkit.entity.EntityType type = null;
             try { type = org.bukkit.entity.EntityType.valueOf(String.valueOf(soul.getEntityType())); } catch (Throwable ignored) {}
             if (type == null) {
                 try { type = org.bukkit.entity.EntityType.valueOf(String.valueOf(soul.getFamilyKey())); } catch (Throwable ignored) {}
             }
-            double defMove = type != null ? SoulBaseStats.defaults(type).movementSpeed() : 0.0;
-            if (Double.isFinite(defMove) && defMove > 0.0) {
-                baseMove = Math.max(baseMove, defMove * 0.90);
+            if (type != null && type.hasDefaultAttributes()) {
+                var defAttr = type.getDefaultAttributes();
+                if (defAttr != null) {
+                    var inst = defAttr.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+                    if (inst != null && Double.isFinite(inst.getBaseValue()) && inst.getBaseValue() > 0.0) {
+                        return inst.getBaseValue();
+                    }
+                }
             }
         } catch (Throwable ignored) {}
-        if (baseMove < moveFloor) baseMove = moveFloor;
-        if (baseMove > maxMove) baseMove = maxMove;
-        // Diminishing returns: higher base speed => affixes affect it less.
-        double applied;
-        if (speedMult >= 1.0) {
-            double bonus = speedMult - 1.0;
-            double headroom = maxMove - baseMove;
-            double effectiveness = headroom / maxMove;
-            applied = baseMove + baseMove * bonus * effectiveness;
-        } else {
-            // Slowdown effects scale down less harshly near floor in reverse manner.
-            double penalty = 1.0 - speedMult;
-            double room = baseMove - moveFloor;
-            double effectiveness = room / maxMove;
-            applied = baseMove - baseMove * penalty * effectiveness;
-        }
-        if (applied < moveFloor) applied = moveFloor;
-        if (applied > maxMove) applied = maxMove;
-        return applied;
+        return 0.23;
     }
 
-    /** Effective spawned movement speed in blocks per second (matches actual pathfinder movement at base intent). */
-    public double computeSpawnedMovementBlocksPerSecond(SoulInstance soul) {
-        return computeSpawnedMovementSpeed(soul) * 43.17;
+    /** Effective spawned DEF/armor stat (enhanced base * TENACIOUS affix multiplier). */
+    public double computeSpawnedDefense(SoulInstance soul) {
+        if (soul == null) return 0.0;
+        SoulBaseStats base = effectiveBaseStats(soul);
+        SoulStatSnapshot snap = getSnapshot(soul);
+        double defMult = 1.0 + Math.max(0.0, snap.tenacityBonus());
+        return Math.max(SoulBaseStats.MIN_DEFENSE, base.defense() * defMult);
     }
 
     /**
-     * Estimate the average melee hit damage this soul would deal (non-elite baseline),
-     * mirroring SummonCombatService.applyMinionHit/SummonAbilityService crit resolution as closely as
-     * possible without target-specific context. Packbound is omitted (ally-dependent).
+     * Estimate the effective melee hit damage this soul would deal (non-elite baseline), excluding
+     * chance-based crit/crit-damage effects. Mirrors core damage calculation as closely as possible
+     * without target-specific context. Packbound is omitted (ally-dependent).
      * Returns the soul's full (pre group-division) damage stat for display/tooltips.
      */
     public double estimateAverageHitDamage(UUID ownerId, SoulInstance soul) {
@@ -1319,7 +1355,7 @@ public class SoulService {
             }
         } catch (Throwable ignored) {}
 
-        // Soul damage multipliers/traits (packbound is situational, omitted)
+        // Soul damage multipliers/traits (packbound is situational, omitted). Crit effects are excluded (chance-based).
         SoulStatSnapshot snap = getSnapshot(soul);
         double soulDamageMult = Math.max(0.25, Math.min(4.0, snap.damageMultiplier()));
         PreviewContext preview = new PreviewContext(plugin, summonCfg, ownerId, soul, snap);
@@ -1332,34 +1368,6 @@ public class SoulService {
         } catch (Throwable ignored) {}
         soulDamageMult *= preview.outgoingDamageMult();
         baseDamage = Math.max(0.5, baseDamage * soulDamageMult);
-
-        // Expected crit multiplier (average per hit)
-        try {
-            if (summonCfg != null && summonCfg.isCritEnabled()) {
-                double chance = 0.0;
-                double multiplier = 1.0;
-                if (summonCfg.isCritSourceAuraSkills()) {
-                    if (ownerId != null && plugin.getSummonProgression() != null) {
-                        var st = plugin.getSummonProgression().resolveOwnerCombatStats(ownerId);
-                        if (st != null && st.available()) {
-                            chance = Math.max(0.0, st.critChancePercentPoints() / 100.0);
-                            multiplier = 1.0 + (Math.max(0.0, st.critDamageTrait()) / 100.0);
-                        }
-                    }
-                } else {
-                    int level = ownerId != null ? getSummoningLevel(ownerId) : 0;
-                    chance = summonCfg.getCritLegacyBaseChance() + summonCfg.getCritLegacyPerLevel() * Math.max(0, level);
-                    multiplier = summonCfg.getCritLegacyDamageMultiplier();
-                }
-                chance += Math.max(0.0, snap.critChanceBonus());
-                multiplier += Math.max(0.0, snap.critDamageBonus());
-                chance += preview.critChanceBonus();
-                multiplier += preview.critDamageBonus();
-                chance = Math.max(0.0, Math.min(summonCfg.getCritMaxChance(), chance));
-                multiplier = Math.max(summonCfg.getCritMinDamageMultiplier(), Math.min(summonCfg.getCritMaxDamageMultiplier(), multiplier));
-                baseDamage *= (1.0 + chance * (Math.max(1.0, multiplier) - 1.0));
-            }
-        } catch (Throwable ignored) {}
 
         return Math.max(0.0, baseDamage);
     }

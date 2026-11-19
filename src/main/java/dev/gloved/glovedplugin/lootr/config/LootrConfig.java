@@ -9,6 +9,7 @@ public class LootrConfig {
     public boolean enabled;
     public boolean autoConvert;
     public boolean perPlayerLoot;
+    public boolean customNamespaceSnapshot;
     public int maxTrackedChests;
     public java.util.List<String> containers;
     public java.util.List<String> disabledWorlds;
@@ -45,6 +46,7 @@ public class LootrConfig {
         c.enabled = cfg.getBoolean("enabled", true);
         c.autoConvert = cfg.getBoolean("auto-convert", true);
         c.perPlayerLoot = cfg.getBoolean("per-player-loot", true);
+        c.customNamespaceSnapshot = cfg.getBoolean("custom-namespace-snapshot", true);
         c.maxTrackedChests = cfg.getInt("max-tracked-chests", 50000);
         c.containers = cfg.getStringList("containers");
         if (c.containers.isEmpty()) c.containers = java.util.List.of("CHEST", "BARREL", "SHULKER_BOX", "MINECART_CHEST");
@@ -80,7 +82,7 @@ public class LootrConfig {
     }
 
     /**
-     * Backfills missing Lootr elite keys into an existing {@code lootr.yml} without overwriting
+     * Backfills missing Lootr keys into an existing {@code lootr.yml} without overwriting
      * admin-set values. Preserves the original bootstrap behavior and defaults.
      *
      * @return {@code true} if the file was modified and saved, {@code false} otherwise
@@ -88,6 +90,10 @@ public class LootrConfig {
     public static boolean backfillMissingEliteKeys(File lootrFile) throws Exception {
         FileConfiguration lootrBackfill = YamlConfiguration.loadConfiguration(lootrFile);
         boolean changed = false;
+        if (!lootrBackfill.isSet("custom-namespace-snapshot")) {
+            lootrBackfill.set("custom-namespace-snapshot", true);
+            changed = true;
+        }
         if (!lootrBackfill.isSet("elite.regular-chance")) {
             lootrBackfill.set("elite.regular-chance", 0.65);
             changed = true;

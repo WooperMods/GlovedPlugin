@@ -196,8 +196,8 @@ public final class SummonBrainAI {
 
         collectCandidates(plugin, owner, bSummon, owner.getNearbyEntities(scanDist, scanDist, scanDist), candidates, defensive, recentDamagerIds);
         collectCandidates(plugin, owner, bSummon, bSummon.getNearbyEntities(scanDist, scanDist, scanDist), candidates, defensive, recentDamagerIds);
-        collectRecentDamagers(plugin, owner, owner.getWorld(), SummonCombatService.getRecentDamagers(owner), candidates);
-        collectRecentDamagers(plugin, owner, bSummon.getWorld(), SummonCombatService.getRecentDamagers(bSummon), candidates);
+        collectRecentDamagers(plugin, owner, bSummon, owner.getWorld(), SummonCombatService.getRecentDamagers(owner), candidates, defensive, recentDamagerIds);
+        collectRecentDamagers(plugin, owner, bSummon, bSummon.getWorld(), SummonCombatService.getRecentDamagers(bSummon), candidates, defensive, recentDamagerIds);
 
         int beforeLeash = candidates.size();
         // Do not target enemies past 32 blocks from the owner.
@@ -254,14 +254,17 @@ public final class SummonBrainAI {
         }
     }
 
-    private static void collectRecentDamagers(GlovedPlugin plugin, Player owner, org.bukkit.World world,
-                                              Collection<UUID> ids, List<org.bukkit.entity.LivingEntity> out) {
+    private static void collectRecentDamagers(GlovedPlugin plugin, Player owner, org.bukkit.entity.LivingEntity summon,
+                                              org.bukkit.World world, Collection<UUID> ids,
+                                              List<org.bukkit.entity.LivingEntity> out,
+                                              boolean defensive, Set<UUID> recentDamagerIds) {
         if (world == null || ids == null) return;
         for (UUID id : ids) {
             try {
                 org.bukkit.entity.Entity e = world.getEntity(id);
                 if (e instanceof org.bukkit.entity.LivingEntity le && le != owner && !le.isDead() && le.isValid()
-                        && !CombatTargetRules.isProtected(plugin, owner, le) && !out.contains(le)) {
+                        && !CombatTargetRules.isProtected(plugin, owner, le) && !out.contains(le)
+                        && isRelevant(le, owner, summon, defensive, recentDamagerIds)) {
                     out.add(le);
                 }
             } catch (Throwable ignored) {}
@@ -281,7 +284,12 @@ public final class SummonBrainAI {
         }
         boolean recent = recentDamagerIds != null && recentDamagerIds.contains(le.getUniqueId());
         if (defensive) {
-            return targetsOwner || targetsSummon || recent;
+            if (!(targetsOwner || targetsSummon || recent)) return false;
+            try {
+                return le.hasLineOfSight(owner);
+            } catch (Throwable ignored) {
+                return false;
+            }
         }
         return isHostile || targetsOwner || targetsSummon || recent;
     }

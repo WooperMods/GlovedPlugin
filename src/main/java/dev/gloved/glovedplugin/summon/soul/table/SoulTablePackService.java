@@ -87,6 +87,7 @@ public final class SoulTablePackService {
                     "  }\n" +
                     "}\n").getBytes(StandardCharsets.UTF_8));
             put(zos, "pack.png", png(scale(texture, 64)));
+            put(zos, "assets/gloved/textures/gui/advancements/backgrounds/souls.png", png(buildAdvancementBackground()));
 
             // Soul Table block/item
             put(zos, "assets/gloved/items/soul_table.json", ("{\n" +
@@ -199,6 +200,31 @@ public final class SoulTablePackService {
         int g = clamp((int) Math.round(bg + (tg - bg) * amount));
         int b = clamp((int) Math.round(bb + (tb - bb) * amount));
         return (r << 16) | (g << 8) | b;
+    }
+
+    /** 16x16 tiled advancement-tab background for the Soul progression tree. */
+    private static BufferedImage buildAdvancementBackground() {
+        BufferedImage image = new BufferedImage(TEXTURE_SIZE, TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Random rng = new Random(TEXTURE_SEED ^ 0x4144564247534C4CL); // "ADVBGSL"
+        int base = 0x17111D;
+        int baseAlt = 0x1D1524;
+        int mote = 0x6B46A8;
+        int moteHi = 0x55D6D0;
+        for (int y = 0; y < TEXTURE_SIZE; y++) {
+            for (int x = 0; x < TEXTURE_SIZE; x++) {
+                int color = ((x + y) & 1) == 0 ? base : baseAlt;
+                color = jitter(color, rng.nextInt(7) - 3);
+                // subtle diagonal weave
+                if (((x + y) % 4) == 0) color = blend(color, 0x2A2033, 0.35);
+                if (((x - y + 16) % 8) == 0) color = blend(color, 0x241B2E, 0.25);
+                // sparse soul motes (deterministic)
+                int r = rng.nextInt(100);
+                if (r < 4) color = blend(color, mote, 0.35 + (r * 0.03));
+                else if (r < 6) color = blend(color, moteHi, 0.30);
+                image.setRGB(x, y, 0xFF000000 | (color & 0xFFFFFF));
+            }
+        }
+        return image;
     }
 
     /** 16x16 soul-sand block with an amethyst rune ring and a cyan soul glyph. */

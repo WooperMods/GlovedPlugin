@@ -150,7 +150,7 @@ public final class SoulTableReforgeInv implements SoulTableScreen {
             SoulInstance soul = chosen.get(0);
             int cost = svc != null ? svc.essenceCostReforge(soul.getRarity()) : cfg.reforgeCost(soul.getRarity());
             lore.add("§7Rerolls affixes, base stats, and Summons capacity at " + soul.getRarity().coloredNameLegacy() + "§7.");
-            lore.add("§7Family, rarity, enhancement level, and identity are kept.");
+            lore.add("§7Mob soul, rarity, enhancement level, and identity are kept.");
             lore.add("§eCurrent soul:");
             for (Component c : SoulLoreBuilder.statsSection(plugin, soul, viewerId, true)) {
                 lore.add(LegacyComponentSerializer.legacySection().serialize(c));

@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_250",
+  "display": {
+    "icon": {
+      "id": "minecraft:ender_eye"
+    },
+    "title": {
+      "text": "Soul Sovereign"
+    },
+    "description": {
+      "text": "Acquire 500 souls.\n+3000 Essence"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

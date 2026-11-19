@@ -94,6 +94,19 @@ public final class SummonFightBehaviors {
                     SummonBrainAI.clearAttackTarget(mob);
                     return true;
                 }
+                // Drop targets that are no longer relevant for the current combat mode
+                // (e.g. stale aggressive targets after switching to defensive, or threats that stopped).
+                try {
+                    String mode = SummonBrainAI.resolveCombatMode(plugin, mob);
+                    boolean defensive = "DEFENSIVE".equalsIgnoreCase(mode);
+                    org.bukkit.entity.LivingEntity bSummon = (org.bukkit.entity.LivingEntity) mob.getBukkitEntity();
+                    java.util.Set<java.util.UUID> recentDamagerIds = new java.util.HashSet<>(SummonCombatService.getRecentDamagers(owner));
+                    recentDamagerIds.addAll(SummonCombatService.getRecentDamagers(bSummon));
+                    if (!SummonBrainAI.isRelevant(bTarget, owner, bSummon, defensive, recentDamagerIds)) {
+                        SummonBrainAI.clearAttackTarget(mob);
+                        return true;
+                    }
+                } catch (Throwable ignored) {}
             } catch (Throwable ignored) {}
             return false;
         }));

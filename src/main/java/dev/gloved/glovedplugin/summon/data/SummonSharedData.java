@@ -4,10 +4,11 @@ import java.util.UUID;
 
 /**
  * Shared state for an NMS-backed summon entity (owner, combat mode, soul link).
+ * Combat modes are only DEFENSIVE and AGGRESSIVE (no passive mode).
  */
 public class SummonSharedData {
     private final UUID ownerId;
-    private String combatMode = "PASSIVE";
+    private String combatMode = "AGGRESSIVE";
     private UUID soulId;
     private String profileName;
 
@@ -24,7 +25,12 @@ public class SummonSharedData {
     }
 
     public void setCombatMode(String combatMode) {
-        this.combatMode = combatMode == null ? "PASSIVE" : combatMode;
+        this.combatMode = normalizeCombatMode(combatMode);
+    }
+
+    public static String normalizeCombatMode(String combatMode) {
+        if (combatMode == null) return "AGGRESSIVE";
+        return "DEFENSIVE".equalsIgnoreCase(combatMode.trim()) ? "DEFENSIVE" : "AGGRESSIVE";
     }
 
     public UUID getSoulId() {

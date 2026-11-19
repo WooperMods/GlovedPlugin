@@ -63,7 +63,8 @@ public final class SoulTableConfig {
                 SoulBaseStats.KEY_ATTACK_DAMAGE,
                 SoulBaseStats.KEY_MOVEMENT_SPEED,
                 SoulBaseStats.KEY_ATTACK_SPEED,
-                SoulBaseStats.KEY_DEFENSE
+                SoulBaseStats.KEY_DEFENSE,
+                SoulBaseStats.KEY_RESPAWN
         );
         private static final double DEFAULT_OVERLAP = 0.06;
 
@@ -83,17 +84,21 @@ public final class SoulTableConfig {
             boundsMin.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 1.0 / 43.17);
             boundsMin.put(SoulBaseStats.KEY_ATTACK_SPEED, SoulBaseStats.MIN_ATTACK_SPEED_APS);
             boundsMin.put(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MIN_DEFENSE);
+            boundsMin.put(SoulBaseStats.KEY_RESPAWN, 28.0);
 
             boundsMax.put(SoulBaseStats.KEY_HEALTH, 100.0);
             boundsMax.put(SoulBaseStats.KEY_ATTACK_DAMAGE, 30.0);
             boundsMax.put(SoulBaseStats.KEY_MOVEMENT_SPEED, 14.0 / 43.17);
             boundsMax.put(SoulBaseStats.KEY_ATTACK_SPEED, SoulBaseStats.MAX_ATTACK_SPEED_APS);
             boundsMax.put(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MAX_DEFENSE);
+            boundsMax.put(SoulBaseStats.KEY_RESPAWN, 90.0);
 
             java.util.Arrays.fill(splitWeights, 1.0);
             // HP: lower rarities get less of the range, higher rarities more, and high rolls are harder.
             setDefaultSplit(SoulBaseStats.KEY_HEALTH, new double[]{0.45, 0.55, 0.80, 1.10, 1.60, 2.50});
             rollSkewByStat.put(SoulBaseStats.KEY_HEALTH, 2.5);
+            // Respawn: higher rarities roll lower/faster respawn times.
+            setDefaultSplit(SoulBaseStats.KEY_RESPAWN, new double[]{1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
             recomputeBands();
         }
 
@@ -152,6 +157,7 @@ public final class SoulTableConfig {
             if (!Double.isFinite(min)) min = 0.0;
             if (!Double.isFinite(max) || max < min) max = min;
             double range = max - min;
+            boolean inverted = SoulBaseStats.KEY_RESPAWN.equals(key); // respawn: lower is better (Mythic fast), higher is worse (Common slow)
             double[] weights = weightsFor(key);
             double weightSum = 0.0;
             for (double w : weights) weightSum += Math.max(0.0001, w);
@@ -170,15 +176,29 @@ public final class SoulTableConfig {
             double ov = clamp(overlap, 0.0, 0.45);
             EnumMap<SoulRarity, Band> out = new EnumMap<>(SoulRarity.class);
             for (int i = 0; i < rarities.length; i++) {
-                double prevWidth = i > 0 ? Math.max(0.0, coreMax[i - 1] - coreMin[i - 1]) : 0.0;
-                double nextWidth = i + 1 < rarities.length ? Math.max(0.0, coreMax[i + 1] - coreMin[i + 1]) : 0.0;
-                double lo = coreMin[i] - (i > 0 ? prevWidth * ov : 0.0);
-                double hi = coreMax[i] + (i + 1 < rarities.length ? nextWidth * ov : 0.0);
-                // Endpoint exclusivity: only Common may be S.min, only Mythic may be S.max.
-                boolean minExclusive = (i > 0);
-                boolean maxExclusive = (i < rarities.length - 1);
+                int p = inverted ? (rarities.length - 1 - i) : i; // partition index in ascending value order
+                double prevWidth = p > 0 ? Math.max(0.0, coreMax[p - 1] - coreMin[p - 1]) : 0.0;
+                double nextWidth = p + 1 < rarities.length ? Math.max(0.0, coreMax[p + 1] - coreMin[p + 1]) : 0.0;
+                double lo = coreMin[p] - (p > 0 ? prevWidth * ov : 0.0);
+                double hi = coreMax[p] + (p + 1 < rarities.length ? nextWidth * ov : 0.0);
+
+                boolean minExclusive;
+                boolean maxExclusive;
+                if (!inverted) {
+                    // Endpoint exclusivity: only Common may be global min, only Mythic may be global max.
+                    minExclusive = (i > 0);
+                    maxExclusive = (i < rarities.length - 1);
+                } else {
+                    // Inverted (respawn): only Mythic may be global min (fastest), only Common may be global max (slowest).
+                    minExclusive = (rarities[i] != SoulRarity.MYTHIC);
+                    maxExclusive = (rarities[i] != SoulRarity.COMMON);
+                }
+
                 if (minExclusive) lo = Math.max(lo, Math.nextUp(min));
+                else lo = Math.max(lo, min);
                 if (maxExclusive) hi = Math.min(hi, Math.nextDown(max));
+                else hi = Math.min(hi, max);
+
                 lo = clamp(lo, minExclusive ? Math.nextUp(min) : min, hi);
                 hi = clamp(hi, lo, maxExclusive ? Math.nextDown(max) : max);
                 out.put(rarities[i], new Band(lo, hi, minExclusive, maxExclusive));
@@ -205,6 +225,8 @@ public final class SoulTableConfig {
                     SoulBaseStats.MIN_ATTACK_SPEED_APS, SoulBaseStats.MAX_ATTACK_SPEED_APS);
             loadBound(yaml, "souls.stats.bounds.defense", SoulBaseStats.KEY_DEFENSE,
                     SoulBaseStats.MIN_DEFENSE, SoulBaseStats.MAX_DEFENSE);
+            loadBound(yaml, "souls.stats.bounds.respawn", SoulBaseStats.KEY_RESPAWN,
+                    SoulBaseStats.MIN_RESPAWN_SECONDS, SoulBaseStats.MAX_RESPAWN_SECONDS);
 
             overlap = clamp(yaml.getDouble("souls.stats.ranges.overlap", DEFAULT_OVERLAP), 0.0, 0.45);
 
@@ -271,6 +293,12 @@ public final class SoulTableConfig {
                     SoulBaseStats.MIN_DEFENSE, SoulBaseStats.MAX_DEFENSE));
             boundsMax.put(SoulBaseStats.KEY_DEFENSE, clamp(boundsMax.getOrDefault(SoulBaseStats.KEY_DEFENSE, SoulBaseStats.MAX_DEFENSE),
                     boundsMin.get(SoulBaseStats.KEY_DEFENSE), SoulBaseStats.MAX_DEFENSE));
+
+            // Respawn base/roll bounds [10,120] seconds (effective floor/ceil enforced at runtime).
+            boundsMin.put(SoulBaseStats.KEY_RESPAWN, clamp(boundsMin.getOrDefault(SoulBaseStats.KEY_RESPAWN, 28.0),
+                    SoulBaseStats.MIN_RESPAWN_SECONDS, SoulBaseStats.MAX_RESPAWN_SECONDS));
+            boundsMax.put(SoulBaseStats.KEY_RESPAWN, clamp(boundsMax.getOrDefault(SoulBaseStats.KEY_RESPAWN, 90.0),
+                    boundsMin.get(SoulBaseStats.KEY_RESPAWN), SoulBaseStats.MAX_RESPAWN_SECONDS));
 
             for (String key : STAT_KEYS) {
                 if (boundsMax.getOrDefault(key, 0.0) < boundsMin.getOrDefault(key, 0.0)) {
@@ -611,6 +639,9 @@ public final class SoulTableConfig {
         // DEF (armor points): min 1; max 13.75 gives up to ~55% base armor damage negation (toughness 0). Enhancement can exceed caps.
         set(cfg, "souls.stats.bounds.defense.min", SoulBaseStats.MIN_DEFENSE);
         set(cfg, "souls.stats.bounds.defense.max", SoulBaseStats.MAX_DEFENSE);
+        // Respawn (seconds): Common slower / Mythic faster (overlapping rarity bands, Common max ~90s).
+        set(cfg, "souls.stats.bounds.respawn.min", 28.0);
+        set(cfg, "souls.stats.bounds.respawn.max", 90.0);
         set(cfg, "souls.stats.ranges.overlap", 0.06);
         for (SoulRarity rarity : SoulRarity.values()) {
             set(cfg, "souls.stats.ranges.split." + rarity.name(), 1.0);
@@ -623,6 +654,13 @@ public final class SoulTableConfig {
         set(cfg, "souls.stats.ranges.split.health.LEGENDARY", 1.60);
         set(cfg, "souls.stats.ranges.split.health.MYTHIC", 2.50);
         set(cfg, "souls.stats.ranges.roll-skew.health", 2.5);
+        // Respawn: even band split by default (can be tuned per-stat in config).
+        set(cfg, "souls.stats.ranges.split.respawn.COMMON", 1.0);
+        set(cfg, "souls.stats.ranges.split.respawn.UNCOMMON", 1.0);
+        set(cfg, "souls.stats.ranges.split.respawn.RARE", 1.0);
+        set(cfg, "souls.stats.ranges.split.respawn.EPIC", 1.0);
+        set(cfg, "souls.stats.ranges.split.respawn.LEGENDARY", 1.0);
+        set(cfg, "souls.stats.ranges.split.respawn.MYTHIC", 1.0);
     }
 
     private static void set(FileConfiguration cfg, String path, Object value) {

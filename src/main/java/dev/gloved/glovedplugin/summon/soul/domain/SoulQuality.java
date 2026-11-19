@@ -43,29 +43,27 @@ public final class SoulQuality {
     public static double maxFor(SoulRarity rarity, SoulAffixType type) {
         double baseMax = baseMaxForRarity(rarity);
         if (type == null) return baseMax;
-        double swiftCap = switch (rarity) {
-            case COMMON -> 0.08;
-            case UNCOMMON -> 0.12;
-            case RARE -> 0.16;
-            case EPIC -> 0.20;
-            case LEGENDARY -> 0.25;
-            case MYTHIC -> 0.30;
-            case null -> 0.08;
+        double reawakeningCap = switch (rarity) {
+            case COMMON -> 0.05;
+            case UNCOMMON -> 0.07;
+            case RARE -> 0.10;
+            case EPIC -> 0.13;
+            case LEGENDARY -> 0.17;
+            case MYTHIC -> 0.22;
         };
-        double commanderCap = switch (rarity) {
-            case COMMON -> 0.10;
-            case UNCOMMON -> 0.16;
-            case RARE -> 0.22;
-            case EPIC -> 0.30;
-            case LEGENDARY -> 0.38;
-            case MYTHIC -> 0.45;
-            case null -> 0.10;
+        double capacityCap = switch (rarity) {
+            case COMMON -> 0.08;
+            case UNCOMMON -> 0.10;
+            case RARE -> 0.12;
+            case EPIC -> 0.15;
+            case LEGENDARY -> 0.18;
+            case MYTHIC -> 0.20;
         };
         return switch (type) {
             case PRECISE -> baseMax * 0.5;
             case DEADLY, RESONANT -> baseMax * 0.8;
-            case SWIFT -> Math.min(baseMax, swiftCap);
-            case COMMANDER -> Math.min(baseMax, commanderCap);
+            case REAWAKENING -> Math.min(baseMax, reawakeningCap);
+            case CAPACITY -> Math.min(baseMax * 0.5, capacityCap);
             default -> baseMax;
         };
     }

@@ -23,16 +23,20 @@ import java.util.Random;
  *
  * <p>DEF is a soul stat (armor points) applied to summoned minions via {@code Attribute.ARMOR}.
  * With vanilla toughness 0, rolled DEF is capped at 13.75 (~55% base damage negation) but enhancement can exceed caps.</p>
+ *
+ * <p>RESPAWN is a base soul stat (seconds) rolled per rarity band; enhancement and respawn-reduction affixes
+ * reduce effective downtime with configured/global safety floors.</p>
  */
 public record SoulBaseStats(
         double health,
         double attackDamage,
         double movementSpeed,
         double attackSpeed,
-        double defense
+        double defense,
+        double respawnSeconds
 ) {
-    /** Neutral fallback used when a mob has no read-able attribute map. Attack speed is in APS. */
-    public static final SoulBaseStats NEUTRAL = new SoulBaseStats(20.0, 0.0, 0.1, 0.80, 6.0);
+    /** Neutral fallback used when a mob has no read-able attribute map. Attack speed in APS, respawn in seconds. */
+    public static final SoulBaseStats NEUTRAL = new SoulBaseStats(20.0, 0.0, 0.1, 0.80, 6.0, 60.0);
 
     private static final Gson GSON = new Gson();
 
@@ -45,12 +49,21 @@ public record SoulBaseStats(
     public static final double MIN_DEFENSE = 1.0;
     public static final double MAX_DEFENSE = 13.75;
 
+    /** Respawn time base bounds (seconds). Effective respawn is clamped by config/global floors at runtime. */
+    public static final double MIN_RESPAWN_SECONDS = 10.0;
+    public static final double MAX_RESPAWN_SECONDS = 120.0;
+
+    /** Movement speed tiers (stored in movementSpeed): 1=Normal, 2=Fast, 3=Very Fast, 4=Insane. */
+    public static final int MIN_MOVEMENT_SPEED_TIER = 1;
+    public static final int MAX_MOVEMENT_SPEED_TIER = 4;
+
     /** Stat keys used by config bounds/bands/caps. */
     public static final String KEY_HEALTH = "health";
     public static final String KEY_ATTACK_DAMAGE = "attack-damage";
     public static final String KEY_MOVEMENT_SPEED = "movement-speed";
     public static final String KEY_ATTACK_SPEED = "attack-speed";
     public static final String KEY_DEFENSE = "defense";
+    public static final String KEY_RESPAWN = "respawn";
 
     // ------------------------------------------------------------------ capture
 
@@ -63,7 +76,8 @@ public record SoulBaseStats(
                 Math.max(4.0, read(entity, Attribute.ATTACK_DAMAGE, fallback.attackDamage)),
                 read(entity, Attribute.MOVEMENT_SPEED, fallback.movementSpeed),
                 readAttackSpeedAps(entity, fallback.attackSpeed),
-                readDefense(entity, fallback.defense)
+                readDefense(entity, fallback.defense),
+                fallback.respawnSeconds
         );
     }
 
@@ -83,7 +97,8 @@ public record SoulBaseStats(
                 Math.max(4.0, read(def, Attribute.ATTACK_DAMAGE, NEUTRAL.attackDamage)),
                 read(def, Attribute.MOVEMENT_SPEED, NEUTRAL.movementSpeed),
                 readAttackSpeedAps(def, NEUTRAL.attackSpeed),
-                readDefense(def, NEUTRAL.defense)
+                readDefense(def, NEUTRAL.defense),
+                NEUTRAL.respawnSeconds
         );
     }
 
@@ -146,20 +161,31 @@ public record SoulBaseStats(
 
     /**
      * Rolls base stats within the rarity's auto-partitioned absolute band (ignores mob base values).
-     * Endpoint exclusivity is enforced: only Common may roll the global floor and only Mythic the
-     * global max. {@link #capped(SoulStatConfig)} is a no-op safety clamp under the new model.
+     * Movement speed is tier-based (1-4: Normal/Fast/Very Fast/Insane), rolled with equal chance for any rarity.
      */
     public static SoulBaseStats roll(SoulRarity rarity, SoulStatConfig cfg, Random random) {
         Random rng = random != null ? random : new Random();
         SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
         if (cfg == null) cfg = new SoulStatConfig();
+        int moveTier = MIN_MOVEMENT_SPEED_TIER + rng.nextInt(MAX_MOVEMENT_SPEED_TIER - MIN_MOVEMENT_SPEED_TIER + 1);
         return new SoulBaseStats(
                 sample(cfg, KEY_HEALTH, r, rng),
                 sample(cfg, KEY_ATTACK_DAMAGE, r, rng),
-                sample(cfg, KEY_MOVEMENT_SPEED, r, rng),
+                (double) moveTier,
                 sample(cfg, KEY_ATTACK_SPEED, r, rng),
-                sample(cfg, KEY_DEFENSE, r, rng)
+                sample(cfg, KEY_DEFENSE, r, rng),
+                sample(cfg, KEY_RESPAWN, r, rng)
         ).normalized();
+    }
+
+    /** Default respawn seconds for a rarity band midpoint (used for legacy migration fallbacks). */
+    public static double defaultRespawnSeconds(SoulRarity rarity, SoulStatConfig cfg) {
+        SoulRarity r = rarity != null ? rarity : SoulRarity.COMMON;
+        if (cfg == null) cfg = new SoulStatConfig();
+        SoulStatConfig.Band band = cfg.band(KEY_RESPAWN, r);
+        double mid = (band.min() + band.max()) / 2.0;
+        if (!Double.isFinite(mid)) mid = NEUTRAL.respawnSeconds;
+        return band.clampRolled(mid);
     }
 
     /**
@@ -191,27 +217,80 @@ public record SoulBaseStats(
         return band.clampRolled(value);
     }
 
-    /** Applies hard stat floors/APS/DEF normalization (safety). */
+    /** Normalize/migrate movement speed to tier (1-4). Legacy continuous attribute/bps-like values are mapped. */
+    public static int normalizeMovementSpeedTier(double value) {
+        if (!Double.isFinite(value)) return MIN_MOVEMENT_SPEED_TIER;
+        // Already tier-like (1..4)
+        if (value >= 0.5 && value <= 4.5) {
+            int tier = (int) Math.round(value);
+            if (tier < MIN_MOVEMENT_SPEED_TIER) tier = MIN_MOVEMENT_SPEED_TIER;
+            if (tier > MAX_MOVEMENT_SPEED_TIER) tier = MAX_MOVEMENT_SPEED_TIER;
+            // If clearly in integer tier range, treat as tier
+            if (Math.abs(value - tier) < 0.45 || (value >= 1.0 && value <= 4.0)) {
+                return tier;
+            }
+        }
+        // Legacy continuous attribute speed (e.g. 0.23) or bps-like values: map to tiers
+        double attr = value;
+        if (attr > 1.0) {
+            // Could be bps-like; convert rough bps->attr (43.17 bps per 1.0 attr) if very large
+            if (attr > 4.5) attr = attr / 43.17;
+        }
+        if (attr < 0.26) return 1;       // Normal
+        if (attr < 0.312) return 2;      // ~Speed I (+20%)
+        if (attr < 0.374) return 3;      // ~Speed II (+40%)
+        return 4;                        // Speed III+
+    }
+
+    public static String movementSpeedTierLabel(int tier) {
+        return switch (Math.max(MIN_MOVEMENT_SPEED_TIER, Math.min(MAX_MOVEMENT_SPEED_TIER, tier))) {
+            case 1 -> "Normal";
+            case 2 -> "Fast";
+            case 3 -> "Very Fast";
+            default -> "Insane";
+        };
+    }
+
+    /** Potion Speed amplifier for tier (0-based), or -1 for no speed effect. */
+    public static int speedPotionAmplifierForTier(int tier) {
+        int t = Math.max(MIN_MOVEMENT_SPEED_TIER, Math.min(MAX_MOVEMENT_SPEED_TIER, tier));
+        return t <= 1 ? -1 : (t - 2); // Tier2->0 (Speed I), Tier3->1, Tier4->2
+    }
+
+    public int movementSpeedTier() {
+        return normalizeMovementSpeedTier(movementSpeed);
+    }
+
+    public String movementSpeedTierLabel() {
+        return movementSpeedTierLabel(movementSpeedTier());
+    }
+
+    /** Applies hard stat floors/APS/DEF/respawn normalization (safety). Movement speed is tier-based (1-4). */
     public SoulBaseStats normalized() {
+        double rs = Double.isFinite(respawnSeconds) ? respawnSeconds : NEUTRAL.respawnSeconds;
+        if (rs <= 0.0) rs = NEUTRAL.respawnSeconds;
+        rs = clamp(rs, MIN_RESPAWN_SECONDS, MAX_RESPAWN_SECONDS);
         return new SoulBaseStats(
                 Math.max(0.0, health),
                 Math.max(4.0, attackDamage),
-                Math.max(0.0, movementSpeed),
+                (double) normalizeMovementSpeedTier(movementSpeed),
                 normalizeAttackSpeedAps(attackSpeed),
-                clampDefense(defense)
+                clampDefense(defense),
+                rs
         );
     }
 
-    /** Legacy safety clamp; bands already bound values, but keep hard floors/global caps respected. */
+    /** Legacy safety clamp; bands already bound values, but keep hard floors/global caps respected. Movement speed is tier-based. */
     public SoulBaseStats capped(SoulStatConfig cfg) {
         SoulBaseStats n = normalized();
         if (cfg == null) return n;
         return new SoulBaseStats(
                 clamp(n.health, cfg.globalMin(KEY_HEALTH), cfg.globalMax(KEY_HEALTH)),
                 Math.max(4.0, clamp(n.attackDamage, cfg.globalMin(KEY_ATTACK_DAMAGE), cfg.globalMax(KEY_ATTACK_DAMAGE))),
-                clamp(n.movementSpeed, cfg.globalMin(KEY_MOVEMENT_SPEED), cfg.globalMax(KEY_MOVEMENT_SPEED)),
+                (double) n.movementSpeedTier(),
                 clamp(n.attackSpeed, cfg.globalMin(KEY_ATTACK_SPEED), cfg.globalMax(KEY_ATTACK_SPEED)),
-                clamp(n.defense, cfg.globalMin(KEY_DEFENSE), cfg.globalMax(KEY_DEFENSE))
+                clamp(n.defense, cfg.globalMin(KEY_DEFENSE), cfg.globalMax(KEY_DEFENSE)),
+                clamp(n.respawnSeconds, cfg.globalMin(KEY_RESPAWN), cfg.globalMax(KEY_RESPAWN))
         );
     }
 
@@ -234,9 +313,10 @@ public record SoulBaseStats(
     }
 
     /**
-     * Applies enhancement to all base stats. Enhancement is allowed to exceed rarity/global caps
-     * (including DEF's base cap); base/rolled stats remain capped when not enhanced.
+     * Applies enhancement to base stats (movement speed is tier-based and not enhanced).
+     * Enhancement is allowed to exceed rarity/global caps (including DEF's base cap); base/rolled stats remain capped when not enhanced.
      * Attack speed uses diminishing returns toward the rarity's ceiling and is not hard-clamped above it.
+     * Respawn time is improved (reduced) by enhancement with diminishing/bounded effect and never below global floor.
      */
     public SoulBaseStats enhanced(int enhanceLevel, double perLevelBonus, SoulRarity rarity, SoulStatConfig cfg) {
         int level = Math.max(0, enhanceLevel);
@@ -253,12 +333,17 @@ public record SoulBaseStats(
         if (attackSpeed >= maxAtkSpd - 1.0e-9) {
             boostedAtkSpd = normalizeAttackSpeedAps(attackSpeed * factor);
         }
+        // Respawn: enhancement reduces downtime (bounded), never below global floor.
+        double respawnReduction = Math.min(0.20, Math.max(0.0, perLevelBonus) * level); // configurable cap mirrored in runtime logic
+        double respawnFloor = Math.max(MIN_RESPAWN_SECONDS, cfg.globalMin(KEY_RESPAWN));
+        double enhancedRespawn = Math.max(respawnFloor, respawnSeconds * (1.0 - respawnReduction));
         return new SoulBaseStats(
                 Math.max(0.0, health * factor),
                 Math.max(4.0, attackDamage * factor),
-                Math.max(0.0, movementSpeed * factor),
+                (double) movementSpeedTier(),
                 Math.max(SoulBaseStats.MIN_ATTACK_SPEED_APS, boostedAtkSpd),
-                Math.max(MIN_DEFENSE, defense * factor)
+                Math.max(MIN_DEFENSE, defense * factor),
+                enhancedRespawn
         );
     }
 
@@ -272,9 +357,10 @@ public record SoulBaseStats(
         return new SoulBaseStats(
                 cfg.band(KEY_HEALTH, rarity).clampFinal(stats.health),
                 cfg.band(KEY_ATTACK_DAMAGE, rarity).clampFinal(Math.max(4.0, stats.attackDamage)),
-                cfg.band(KEY_MOVEMENT_SPEED, rarity).clampFinal(stats.movementSpeed),
+                (double) stats.movementSpeedTier(), // tier-based; not clamped by continuous movement bands
                 cfg.band(KEY_ATTACK_SPEED, rarity).clampFinal(normalizeAttackSpeedAps(stats.attackSpeed)),
-                cfg.band(KEY_DEFENSE, rarity).clampFinal(clampDefense(stats.defense))
+                cfg.band(KEY_DEFENSE, rarity).clampFinal(clampDefense(stats.defense)),
+                cfg.band(KEY_RESPAWN, rarity).clampFinal(clamp(stats.respawnSeconds, cfg.globalMin(KEY_RESPAWN), cfg.globalMax(KEY_RESPAWN)))
         );
     }
 
@@ -309,6 +395,7 @@ public record SoulBaseStats(
         dto.movementSpeed = movementSpeed;
         dto.attackSpeed = attackSpeed;
         dto.defense = defense;
+        dto.respawnSeconds = respawnSeconds;
         return GSON.toJson(dto);
     }
 
@@ -316,7 +403,8 @@ public record SoulBaseStats(
      * Parses stored stats. Unknown fields are ignored, so rows written before retired/new stats were
      * added still load cleanly. Missing defense defaults to the soul minimum (6.0). Accepts legacy
      * "armor" as an alias for defense. Legacy attack speed values (vanilla attribute scale) are
-     * converted to APS.
+     * converted to APS. Legacy payloads missing respawnSeconds parse with a sentinel (<= 0) so callers
+     * can backfill a rarity-band/default value.
      */
     public static SoulBaseStats fromJson(String json) {
         if (json == null || json.isBlank()) return null;
@@ -326,22 +414,34 @@ public record SoulBaseStats(
             double atkSpd = normalizeAttackSpeedAps(dto.attackSpeed);
             double atkDmg = Double.isFinite(dto.attackDamage) ? Math.max(4.0, dto.attackDamage) : 4.0;
             double def = dto.defense;
-            // Accept legacy "armor" key if "defense" is absent/invalid (Gson maps primitives to 0.0 when missing).
-            if (!Double.isFinite(def) || def <= 0.0) {
-                try {
-                    com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
-                    if (obj.has("armor")) def = obj.get("armor").getAsDouble();
-                } catch (Throwable ignored) {}
+            double respawn = dto.respawnSeconds;
+            // Accept legacy "armor" key / detect missing respawn from raw JSON for migration backfill.
+            try {
+                com.google.gson.JsonObject obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+                if ((!Double.isFinite(def) || def <= 0.0) && obj.has("armor")) def = obj.get("armor").getAsDouble();
+                if (!obj.has("respawnSeconds") && !obj.has("respawn")) {
+                    respawn = -1.0; // sentinel: missing respawn stat (legacy row/item), needs backfill
+                } else if (obj.has("respawn") && !obj.has("respawnSeconds")) {
+                    respawn = obj.get("respawn").getAsDouble();
+                }
+            } catch (Throwable ignored) {
+                if (!Double.isFinite(respawn) || respawn == 0.0) respawn = -1.0;
             }
             if (!Double.isFinite(def) || def <= 0.0) def = MIN_DEFENSE;
             def = clampDefense(def);
-            return new SoulBaseStats(dto.health, atkDmg, dto.movementSpeed, atkSpd, def);
+            // Keep respawn sentinel/invalid as-is here for migration detection; valid values are normalized.
+            if (Double.isFinite(respawn) && respawn > 0.0) {
+                respawn = clamp(respawn, MIN_RESPAWN_SECONDS, MAX_RESPAWN_SECONDS);
+            } else if (!Double.isFinite(respawn)) {
+                respawn = -1.0;
+            }
+            return new SoulBaseStats(dto.health, atkDmg, normalizeMovementSpeedTier(dto.movementSpeed), atkSpd, def, respawn);
         } catch (Throwable ignored) {
             return null;
         }
     }
 
     private static class StatsDto {
-        double health, attackDamage, movementSpeed, attackSpeed, defense;
+        double health, attackDamage, movementSpeed, attackSpeed, defense, respawnSeconds;
     }
 }

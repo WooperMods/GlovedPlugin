@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/root",
+  "display": {
+    "icon": {
+      "id": "minecraft:knowledge_book"
+    },
+    "title": {
+      "text": "Soul Archivist"
+    },
+    "description": {
+      "text": "Reach the Mastered tier in the Soul Codex.\n+5000 Essence"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

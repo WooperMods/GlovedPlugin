@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_first",
+  "display": {
+    "icon": {
+      "id": "minecraft:nether_star"
+    },
+    "title": {
+      "text": "Mythic Resonance"
+    },
+    "description": {
+      "text": "Acquire a Mythic soul.\n+500 Essence"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

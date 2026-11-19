@@ -38,6 +38,7 @@ import dev.gloved.glovedplugin.summon.soul.item.SoulItemListener;
 import dev.gloved.glovedplugin.summon.soul.service.SoulCaptureListener;
 import dev.gloved.glovedplugin.summon.soul.service.SoulPickupListener;
 import dev.gloved.glovedplugin.summon.soul.service.SoulService;
+import dev.gloved.glovedplugin.summon.soul.advancement.SoulAdvancementService;
 import dev.gloved.glovedplugin.core.bootstrap.CommandBootstrap;
 import dev.gloved.glovedplugin.core.bootstrap.LootrBootstrap;
 import dev.gloved.glovedplugin.damagehologram.DamageHologramModule;
@@ -85,8 +86,10 @@ public final class GlovedPlugin extends JavaPlugin {
   private SummonAbilityService summonAbilityService;
   private SoulDatabase soulDatabase;
   private SoulService soulService;
+  private SoulAdvancementService soulAdvancementService;
   private SummonAbilityIndicator summonAbilityIndicator;
   private DamageHologramModule damageHologramModule;
+  private dev.gloved.glovedplugin.summon.runtime.SummonRespawnService summonRespawnService;
   private SoulTrapRecipeManager trapRecipeManager;
   private SoulTrapListener trapListener;
   private SoulTableManager soulTableManager;
@@ -193,19 +196,46 @@ public final class GlovedPlugin extends JavaPlugin {
       getLogger().severe("Failed to init soul database (souls.db): " + e);
     }
     this.soulService = new SoulService(this, this.soulDatabase);
+    this.soulAdvancementService = new SoulAdvancementService(this, this.soulService);
+    this.soulService.setAdvancementService(this.soulAdvancementService);
+    getServer().getPluginManager().registerEvents(this.soulAdvancementService, this);
     // Backfill max_health for existing captured souls that predate this field.
     try {
       this.soulService.getRepository().backfillMissingMaxHealth();
     } catch (Exception e) {
       getLogger().warning("[Souls] Failed to backfill missing max_health: " + e);
     }
-    // Drop stat fields that are no longer part of the soul system from stored rows.
+    // Normalize/migrate soul base stats (retired fields, DEF migration, respawn backfill).
     try {
       int stripped = this.soulService.getRepository().stripRemovedBaseStats();
       if (stripped > 0)
-        logInfo("Removed retired stat fields from " + stripped + " soul(s)");
+        logInfo("Normalized/migrated soul base stats for " + stripped + " " + (stripped == 1 ? "soul" : "souls"));
     } catch (Exception e) {
-      getLogger().warning("[Souls] Failed to strip retired soul stats: " + e);
+      getLogger().warning("[Souls] Failed to normalize/migrate soul base stats: " + e);
+    }
+    // Migrate legacy COMMANDER affixes to REAWAKENING (respawn reduction).
+    try {
+      int migrated = this.soulService.getRepository().migrateLegacyCommanderAffixes();
+      if (migrated > 0)
+        logInfo("Migrated legacy COMMANDER affixes to REAWAKENING for " + migrated + " " + (migrated == 1 ? "soul" : "souls"));
+    } catch (Exception e) {
+      getLogger().warning("[Souls] Failed to migrate legacy COMMANDER affixes: " + e);
+    }
+    // One-time fix: respawn stat bands were previously inverted; reroll respawn for all existing souls.
+    try {
+      java.io.File marker = new java.io.File(getDataFolder(), "souls_respawn_reroll_v1.marker");
+      if (!marker.exists()) {
+        var tableCfg = this.summonConfig.getSoulTableConfig();
+        var statCfg = tableCfg != null ? tableCfg.getStatConfig() : new dev.gloved.glovedplugin.summon.soul.table.SoulTableConfig.SoulStatConfig();
+        int rerolled = this.soulService.getRepository().rerollRespawnStatsForAll(statCfg);
+        if (!getDataFolder().exists()) getDataFolder().mkdirs();
+        try (java.io.FileWriter fw = new java.io.FileWriter(marker)) {
+          fw.write("rerolled=" + rerolled + " at=" + System.currentTimeMillis() + "\n");
+        } catch (Exception ignored) {}
+        logInfo("Re-rolled respawn stat for " + rerolled + " existing " + (rerolled == 1 ? "soul" : "souls") + " (inverted-band fix)");
+      }
+    } catch (Exception e) {
+      getLogger().warning("[Souls] Failed to re-roll respawn stats for existing souls: " + e);
     }
     // Soul Table station (block registry, overlay entities, GUI, pack, recipe) +
     // stat backfill.
@@ -245,7 +275,7 @@ public final class GlovedPlugin extends JavaPlugin {
       if (tableCfg.isStatsEnabled() && tableCfg.isBackfillLegacy()) {
         int updated = this.soulService.getRepository().backfillLegacyBaseStats(tableCfg.getStatConfig());
         if (updated > 0)
-          logInfo("Backfilled base stats for " + updated + " legacy soul(s)");
+          logInfo("Backfilled base stats for " + updated + " legacy " + (updated == 1 ? "soul" : "souls"));
       }
     } catch (Exception e) {
       getLogger().warning("[Souls] Failed to backfill legacy base stats: " + e);
@@ -253,7 +283,7 @@ public final class GlovedPlugin extends JavaPlugin {
     try {
       int capUpdated = this.soulService.getRepository().backfillLegacyGroupCapacity();
       if (capUpdated > 0)
-        logInfo("Backfilled group capacity for " + capUpdated + " legacy soul(s)");
+        logInfo("Backfilled group capacity for " + capUpdated + " legacy " + (capUpdated == 1 ? "soul" : "souls"));
     } catch (Exception e) {
       getLogger().warning("[Souls] Failed to backfill legacy group capacity: " + e);
     }
@@ -274,6 +304,8 @@ public final class GlovedPlugin extends JavaPlugin {
     this.summonTracker = new SummonInstanceTracker(this);
     this.summonCombatService = new SummonCombatService(this, this.summonTracker);
     this.summonManager = new SummonManager(this, this.summonConfig, this.summonTracker, this.summonCombatService);
+    this.summonRespawnService = new dev.gloved.glovedplugin.summon.runtime.SummonRespawnService(this, this.summonTracker);
+    this.summonRespawnService.start();
     this.summonCombatService.setSummon(this.summonConfig, this.summonManager);
     this.summonProgression = createSummonProgressionBridge();
     this.summonCombatService.setProgression(this.summonProgression);
@@ -368,6 +400,9 @@ public final class GlovedPlugin extends JavaPlugin {
       // values.
       this.summonConfig.reload();
     }
+    if (this.summonRespawnService != null) {
+      try { this.summonRespawnService.reload(); } catch (Throwable ignored) {}
+    }
     if (this.soulTableRecipeManager != null) {
       this.soulTableRecipeManager.registerRecipes();
     }
@@ -458,6 +493,10 @@ public final class GlovedPlugin extends JavaPlugin {
     return soulService;
   }
 
+  public SoulAdvancementService getSoulAdvancementService() {
+    return soulAdvancementService;
+  }
+
   public SoulTableManager getSoulTableManager() {
     return soulTableManager;
   }
@@ -496,6 +535,10 @@ public final class GlovedPlugin extends JavaPlugin {
 
   public SummonAbilityService getSummonAbilityService() {
     return summonAbilityService;
+  }
+
+  public dev.gloved.glovedplugin.summon.runtime.SummonRespawnService getSummonRespawnService() {
+    return summonRespawnService;
   }
 
   public DamageHologramModule getDamageHologramModule() {
@@ -695,6 +738,12 @@ public final class GlovedPlugin extends JavaPlugin {
       } catch (Exception ignored) {
       }
     }
+    if (summonRespawnService != null) {
+      try {
+        summonRespawnService.shutdown();
+      } catch (Exception ignored) {
+      }
+    }
     // Cleanup summoned minions
     if (summonTracker != null) {
       summonTracker.removeAll();
@@ -750,6 +799,7 @@ public final class GlovedPlugin extends JavaPlugin {
   private final class StartupListener implements Listener {
     @EventHandler
     public void onServerLoad(ServerLoadEvent event) {
+      deploySoulAdvancementsDatapack(event.getType() == ServerLoadEvent.LoadType.STARTUP);
       if (soulTablePackService != null) {
         try {
           var result = soulTablePackService.generateAndDeploy();
@@ -771,6 +821,131 @@ public final class GlovedPlugin extends JavaPlugin {
       if (soulTableManager != null) {
         soulTableManager.loadAll();
       }
+    }
+  }
+
+  /**
+   * Verifies bundled Soul advancements are loaded. The datapack is registered via
+   * {@link GlovedPluginBootstrap} (Paper lifecycle datapack discovery) as
+   * {@code GlovedPlugin/soul_advancements}. Attempts to enable it automatically if discovered
+   * but not enabled, since some server states keep plugin-discovered datapacks disabled on startup.
+   */
+  private void deploySoulAdvancementsDatapack(boolean startup) {
+    try {
+      org.bukkit.NamespacedKey rootKey = dev.gloved.glovedplugin.summon.soul.advancement.SoulAdvancementKeys.ROOT;
+      boolean loaded = Bukkit.getAdvancement(rootKey) != null;
+      if (loaded) {
+        logInfo("[SoulAdvancements] Soul advancements loaded (" + rootKey + ").");
+        return;
+      }
+
+      // Diagnostics: check for any gloved:souls/* advancements already known to Bukkit.
+      int found = 0;
+      java.util.Iterator<org.bukkit.advancement.Advancement> it = Bukkit.advancementIterator();
+      while (it.hasNext()) {
+        org.bukkit.advancement.Advancement adv = it.next();
+        try {
+          if (adv != null && adv.getKey() != null
+              && "gloved".equals(adv.getKey().getNamespace())
+              && adv.getKey().getKey().startsWith("souls/")) {
+            found++;
+            if (found <= 3) {
+              logDebug("[SoulAdvancements] Found loaded advancement: " + adv.getKey());
+            }
+          }
+        } catch (Throwable ignored) {}
+      }
+      if (found > 0) {
+        logInfo("[SoulAdvancements] Detected " + found + " loaded gloved:souls/* advancement(s), but root key lookup failed for " + rootKey + ".");
+        return;
+      }
+
+      // Try to locate and enable the bundled datapack via Paper's DatapackManager.
+      String packName = getPluginMeta().getName() + "/soul_advancements";
+      boolean attemptedEnable = false;
+      try {
+        io.papermc.paper.datapack.DatapackManager dm = Bukkit.getDatapackManager();
+        try {
+          dm.refreshPacks();
+        } catch (Throwable ignored) {}
+        io.papermc.paper.datapack.Datapack pack = dm.getPack(packName);
+        if (pack == null) {
+          // Fallback scan in case of naming differences.
+          for (io.papermc.paper.datapack.Datapack candidate : dm.getPacks()) {
+            if (candidate == null) continue;
+            String name = String.valueOf(candidate.getName());
+            if ("soul_advancements".equals(name)
+                || packName.equalsIgnoreCase(name)
+                || name.endsWith("/soul_advancements")
+                || name.contains("soul_advancements")) {
+              pack = candidate;
+              packName = name;
+              break;
+            }
+          }
+        }
+        if (pack != null) {
+          boolean enabled = false;
+          try { enabled = pack.isEnabled(); } catch (Throwable ignored) {}
+          if (!enabled) {
+            logInfo("[SoulAdvancements] Enabling discovered datapack '" + packName + "' (startup=" + startup + ")...");
+            try {
+              pack.setEnabled(true);
+              attemptedEnable = true;
+              // setEnabled triggers a data reload when state changes; give it a moment and re-check.
+              getServer().getScheduler().runTaskLater(this, () -> {
+                try {
+                  if (Bukkit.getAdvancement(rootKey) != null) {
+                    logInfo("[SoulAdvancements] Soul advancements loaded after enabling datapack.");
+                  } else {
+                    logWarning("[SoulAdvancements] Datapack enabled but advancements still not loaded (root: " + rootKey + "). Check for advancement parse errors.");
+                  }
+                } catch (Throwable t) {
+                  logDebug("[SoulAdvancements] Post-enable verification failed: " + t);
+                }
+              }, 20L);
+            } catch (Throwable t) {
+              logWarning("[SoulAdvancements] Failed to enable datapack '" + packName + "': " + t);
+            }
+          } else {
+            logWarning("[SoulAdvancements] Datapack '" + packName + "' is enabled but advancements are not loaded. A restart or /minecraft:reload may be required; check for advancement parse errors.");
+          }
+        } else {
+          logWarning("[SoulAdvancements] Bundled datapack not found in DatapackManager (expected '" + packName + "'). Ensure bootstrap datapack discovery ran at startup.");
+        }
+      } catch (Throwable t) {
+        logDebug("[SoulAdvancements] DatapackManager enable attempt failed: " + t);
+      }
+      if (attemptedEnable) return;
+
+      // Fallback: if a previous runtime-deployed world datapack exists, a reload may help enable it.
+      // Avoid triggering extra reload loops during non-startup server reload events.
+      if (startup) {
+        boolean hasLegacyWorldPack = false;
+        try {
+          for (org.bukkit.World world : Bukkit.getWorlds()) {
+            if (world == null) continue;
+            java.io.File legacy = new java.io.File(new java.io.File(world.getWorldFolder(), "datapacks"), "gloved_souls_advancements");
+            if (legacy.exists()) { hasLegacyWorldPack = true; break; }
+          }
+        } catch (Throwable ignored) {}
+        if (hasLegacyWorldPack) {
+          try {
+            Bukkit.reloadData();
+            loaded = Bukkit.getAdvancement(rootKey) != null;
+          } catch (Throwable t) {
+            logDebug("[SoulAdvancements] reloadData fallback failed: " + t);
+          }
+        }
+      }
+      if (!loaded) {
+        logWarning("[SoulAdvancements] Soul advancements are not loaded (expected datapack: " + packName + ", root: " + rootKey + "). "
+            + "Run /datapack list to verify the datapack is enabled, and check startup logs for advancement parse errors.");
+      } else {
+        logInfo("[SoulAdvancements] Soul advancements loaded (after fallback).");
+      }
+    } catch (Throwable t) {
+      logWarning("[SoulAdvancements] Failed to verify soul advancement datapack: " + t);
     }
   }
 }

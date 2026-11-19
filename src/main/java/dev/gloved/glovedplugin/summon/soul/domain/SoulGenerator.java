@@ -53,12 +53,11 @@ public final class SoulGenerator {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
-        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
         String typeKey = type != null ? type.name() : null;
         // Team/loadout overhaul: summons count/group capacity retired from gameplay (compat value only).
         int groupCapacity = 1;
         boolean allowCapacityAffix = false;
-        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCapacityAffix, allowCommander);
+        List<SoulAffixRoll> affixes = rollAffixes(rarity, affixCount, rng, allowDuration, allowCapacityAffix, true);
         dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext traitCtx =
                 new dev.gloved.glovedplugin.summon.soul.trait.SoulTraitRollContext(
                         owner, type, typeKey, cat, rarity, groupCapacity, affixes, cfg, summonCfg);
@@ -154,18 +153,18 @@ public final class SoulGenerator {
         return rollAffixesForRarity(rarity, cfg, null, type);
     }
 
-    /** Rerolls the affix list for a rarity, optionally excluding Duration/Commander based on config and soul type. */
+    /** Rerolls the affix list for a rarity, optionally excluding Duration based on config and soul type. */
     public static List<SoulAffixRoll> rollAffixesForRarity(SoulRarity rarity, SoulConfig cfg,
                                                            dev.gloved.glovedplugin.summon.config.SummonConfig summonCfg,
                                                            EntityType type) {
         if (rarity == null) return List.of();
         boolean allowDuration = cfg == null || cfg.getLifetimeTicks() > 0;
-        boolean allowCommander = isCostReductionRelevant(cfg, summonCfg);
         // Team/loadout overhaul: Summons count (CAPACITY) retired from gameplay.
         boolean allowCount = false;
         ThreadLocalRandom rng = ThreadLocalRandom.current();
         int affixCount = rng.nextInt(rarity.minAffixes, rarity.maxAffixes + 1);
-        return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, allowCommander);
+        // REAWAKENING (respawn reduction) is always rollable; COMMANDER/cost-reduction relevance removed.
+        return rollAffixes(rarity, affixCount, rng, allowDuration, allowCount, true);
     }
 
     /** Rerolls affixes (compat overload): CAPACITY/summons-count affix retired by team/loadout overhaul. */
@@ -280,11 +279,11 @@ public final class SoulGenerator {
         return rollAffixes(rarity, count, rng, allowDuration, allowCount, true);
     }
 
-    private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng, boolean allowDuration, boolean allowCount, boolean allowCommander) {
+    private static List<SoulAffixRoll> rollAffixes(SoulRarity rarity, int count, ThreadLocalRandom rng, boolean allowDuration, boolean allowCount, boolean allowReawakening) {
         List<SoulAffixType> pool = new ArrayList<>(Arrays.asList(SoulAffixType.values()));
         if (!allowDuration) pool.remove(SoulAffixType.ENDURING);
         if (!allowCount) pool.remove(SoulAffixType.CAPACITY);
-        if (!allowCommander) pool.remove(SoulAffixType.COMMANDER);
+        if (!allowReawakening) pool.remove(SoulAffixType.REAWAKENING);
         Collections.shuffle(pool, new Random(rng.nextLong()));
         int n = Math.min(count, pool.size());
         List<SoulAffixRoll> out = new ArrayList<>(n);
@@ -298,21 +297,13 @@ public final class SoulGenerator {
         };
         double baseMin = baseMax * 0.35;
         // Per-type caps scale with rarity so higher tiers can roll meaningfully stronger affixes.
-        double swiftCap = switch (rarity) {
-            case COMMON -> 0.08;
-            case UNCOMMON -> 0.12;
-            case RARE -> 0.16;
-            case EPIC -> 0.20;
-            case LEGENDARY -> 0.25;
-            case MYTHIC -> 0.30;
-        };
-        double commanderCap = switch (rarity) {
-            case COMMON -> 0.10;
-            case UNCOMMON -> 0.16;
-            case RARE -> 0.22;
-            case EPIC -> 0.30;
-            case LEGENDARY -> 0.38;
-            case MYTHIC -> 0.45;
+        double reawakeningCap = switch (rarity) {
+            case COMMON -> 0.05;
+            case UNCOMMON -> 0.07;
+            case RARE -> 0.10;
+            case EPIC -> 0.13;
+            case LEGENDARY -> 0.17;
+            case MYTHIC -> 0.22;
         };
         // Group capacity affix: mild % bonus (rarity-bounded). Can roll on all souls, including types with hard cap overrides.
         double capacityCap = switch (rarity) {
@@ -330,8 +321,7 @@ public final class SoulGenerator {
             val = switch (t) {
                 case PRECISE -> val * 0.5; // crit chance points fraction is smaller
                 case DEADLY, RESONANT -> val * 0.8;
-                case SWIFT -> Math.min(val, swiftCap); // speed safety
-                case COMMANDER -> Math.min(val, commanderCap); // cost/cd efficiency
+                case REAWAKENING -> Math.min(val, reawakeningCap); // respawn time reduction
                 case CAPACITY -> Math.min(val * 0.5, capacityCap); // mild % group capacity bonus
                 default -> val;
             };

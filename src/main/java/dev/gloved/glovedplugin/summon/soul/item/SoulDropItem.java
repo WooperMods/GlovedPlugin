@@ -249,7 +249,10 @@ public final class SoulDropItem {
         if (dto.affixes != null) {
             for (AffixDto a : dto.affixes) {
                 if (a == null || a.type == null) continue;
-                try { affixes.add(new SoulAffixRoll(SoulAffixType.valueOf(a.type), a.value)); } catch (Exception ignored) {}
+                try {
+                    SoulAffixType type = SoulAffixType.parse(a.type);
+                    if (type != null) affixes.add(new SoulAffixRoll(type, a.value));
+                } catch (Exception ignored) {}
             }
         }
         int groupCapacity = dto.groupCapacity > 0 ? dto.groupCapacity : 1;
@@ -267,7 +270,14 @@ public final class SoulDropItem {
 
     private static SoulBaseStats baseStatsOrFallback(String json, EntityType type, String familyKey) {
         SoulBaseStats parsed = SoulBaseStats.fromJson(json);
-        if (parsed != null) return parsed;
+        if (parsed != null) {
+            if (parsed.respawnSeconds() <= 0.0) {
+                SoulBaseStats def = type != null ? SoulBaseStats.defaults(type) : SoulBaseStats.defaults(null);
+                return new SoulBaseStats(parsed.health(), parsed.attackDamage(), parsed.movementSpeed(),
+                        parsed.attackSpeed(), parsed.defense(), def.respawnSeconds());
+            }
+            return parsed;
+        }
         if (type != null) return SoulBaseStats.defaults(type);
         // Legacy item with an unresolvable entity type: neutral defaults.
         return SoulBaseStats.defaults(null);

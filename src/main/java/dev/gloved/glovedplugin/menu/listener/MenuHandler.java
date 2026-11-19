@@ -380,6 +380,18 @@ public class MenuHandler implements Listener {
             }
             case "slot" -> {
                 if (team == null || slot == null) return;
+                boolean pendingRespawn = false;
+                try {
+                    var respawn = plugin.getSummonRespawnService();
+                    pendingRespawn = respawn != null && respawn.hasPending(player.getUniqueId(), team, slot);
+                } catch (Throwable ignored) {}
+                if (pendingRespawn) {
+                    double remain = 0.0;
+                    try { remain = plugin.getSummonRespawnService().getRemainingSeconds(player.getUniqueId(), team, slot); } catch (Throwable ignored) {}
+                    player.sendMessage(Component.text("§c[Souls] That slot can't be changed while respawning (" + String.format(java.util.Locale.ROOT, "%.1fs", Math.max(0.0, remain)) + " left)."));
+                    new SoulTeamsInv(plugin, player.getUniqueId()).open(player);
+                    return;
+                }
                 if (event.getClick() == org.bukkit.event.inventory.ClickType.RIGHT) {
                     java.util.UUID existing = null;
                     try {
@@ -1240,7 +1252,7 @@ public class MenuHandler implements Listener {
                     }
                 }
                 if (!claimedAny) {
-                    player.sendMessage(net.kyori.adventure.text.Component.text("§7[Codex] No claimable tier rewards for this family right now."));
+                    player.sendMessage(net.kyori.adventure.text.Component.text("§7[Codex] No claimable tier rewards for this mob soul right now."));
                 }
                 new SoulCodexInv(plugin, player.getUniqueId(), codexInv.getPage()).open(player);
             }

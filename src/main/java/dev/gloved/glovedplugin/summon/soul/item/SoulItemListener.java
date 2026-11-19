@@ -6,7 +6,9 @@ import dev.gloved.glovedplugin.summon.soul.table.item.CondensedSoulEssenceItem;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Sound;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -177,6 +179,7 @@ public class SoulItemListener implements Listener {
     public void onInteract(PlayerInteractEvent event) {
         if (event.getHand() == null) return;
         Player player = event.getPlayer();
+        Action action = event.getAction();
         ItemStack item = event.getItem();
         if (item == null || item.getType().isAir()) {
             // fallback
@@ -185,38 +188,51 @@ public class SoulItemListener implements Listener {
                     : player.getInventory().getItemInOffHand();
         }
 
-        // Soul Focus item behavior
-        if (SoulItem.isSoulItem(item)) {
-            if (event.getHand() != EquipmentSlot.HAND) { event.setCancelled(true); return; }
-            Action a = event.getAction();
-            if (a == Action.RIGHT_CLICK_AIR || a == Action.RIGHT_CLICK_BLOCK) {
-                event.setCancelled(true);
+        // Soul Focus item behavior (main hand)
+        if (event.getHand() == EquipmentSlot.HAND && SoulItem.isSoulItem(item)) {
+            if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+                if (shouldInteractWithBlockInsteadOfMenu(event, player)) {
+                    // Interact with the targeted block instead of opening the Soul Groups menu.
+                    // Offhand use follows vanilla behavior in this case.
+                    event.setUseInteractedBlock(Event.Result.ALLOW);
+                    event.setUseItemInHand(Event.Result.DENY);
+                    return;
+                }
+                // Open menu and suppress offhand use while doing so.
+                event.setUseInteractedBlock(Event.Result.DENY);
+                event.setUseItemInHand(Event.Result.DENY);
                 SoulItem.openTeams(plugin, player);
                 return;
             }
-            if (a == Action.LEFT_CLICK_AIR || a == Action.LEFT_CLICK_BLOCK) {
-                event.setCancelled(true);
-                long now = System.currentTimeMillis();
-                Long prev = lastSoulFocusCastAt.put(player.getUniqueId(), now);
-                if (prev != null && now - prev < SOUL_FOCUS_CAST_DEBOUNCE_MS) {
-                    return;
-                }
-                SoulService svc = plugin.getSoulService();
-                if (svc == null) {
-                    player.sendMessage("§cSoul system unavailable.");
-                    return;
-                }
-                // Quick team activation/recall (selected team)
-                svc.castSelected(player);
-                try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+            if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+                event.setUseInteractedBlock(Event.Result.DENY);
+                event.setUseItemInHand(Event.Result.DENY);
+                triggerSoulFocusQuickAction(player);
             }
+            return;
+        }
+
+        // Any Soul Focus interaction outside the main-hand behavior above is not allowed.
+        if (SoulItem.isSoulItem(item)) {
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
+            return;
+        }
+
+        // Cancel offhand right-click use when Soul Focus in main hand would open the menu.
+        // (Interactable-block, no-sneak case follows vanilla behavior.)
+        if (event.getHand() == EquipmentSlot.OFF_HAND
+                && (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK)
+                && SoulItem.isSoulItem(player.getInventory().getItemInMainHand())
+                && !shouldInteractWithBlockInsteadOfMenu(event, player)) {
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
             return;
         }
 
         // Right-click Condensed Soul Essence to redeem 1 at a time
         if (CondensedSoulEssenceItem.isCondensed(plugin, item)) {
-            Action a = event.getAction();
-            if (a == Action.RIGHT_CLICK_AIR || a == Action.RIGHT_CLICK_BLOCK) {
+            if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
                 event.setCancelled(true);
                 redeemCondensedEssence(player, event.getHand());
             } else {
@@ -234,8 +250,7 @@ public class SoulItemListener implements Listener {
                 else player.getInventory().setItemInOffHand(item);
             } catch (Throwable ignored) {}
 
-            Action a = event.getAction();
-            if (a != Action.RIGHT_CLICK_AIR && a != Action.RIGHT_CLICK_BLOCK) {
+            if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) {
                 // still prevent accidental use/placement interactions
                 event.setCancelled(true);
                 return;
@@ -267,6 +282,48 @@ public class SoulItemListener implements Listener {
                 player.sendMessage("§c[Soul] Could not add that soul to your vault.");
             }
             player.updateInventory();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPreAttack(io.papermc.paper.event.player.PrePlayerAttackEntityEvent event) {
+        Player player = event.getPlayer();
+        if (player == null || !SoulItem.isSoulItem(player.getInventory().getItemInMainHand())) return;
+        // Left-click on entity: trigger quick activate/recall but allow the attack to proceed.
+        triggerSoulFocusQuickAction(player);
+    }
+
+    private void triggerSoulFocusQuickAction(Player player) {
+        if (player == null) return;
+        long now = System.currentTimeMillis();
+        Long prev = lastSoulFocusCastAt.put(player.getUniqueId(), now);
+        if (prev != null && now - prev < SOUL_FOCUS_CAST_DEBOUNCE_MS) {
+            return;
+        }
+        SoulService svc = plugin.getSoulService();
+        if (svc == null) {
+            player.sendMessage("§cSoul system unavailable.");
+            return;
+        }
+        // Quick team activation/recall (selected team)
+        svc.castSelected(player);
+        try { SoulItem.refresh(player, plugin); } catch (Throwable ignored) {}
+    }
+
+    private boolean shouldInteractWithBlockInsteadOfMenu(PlayerInteractEvent event, Player player) {
+        if (event == null || player == null) return false;
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return false;
+        if (player.isSneaking()) return false;
+        Block block = event.getClickedBlock();
+        return block != null && isInteractableBlock(block);
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isInteractableBlock(Block block) {
+        try {
+            return block.getType().isInteractable();
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 

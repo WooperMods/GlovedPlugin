@@ -294,7 +294,7 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
         lore.add("§7Rarity: " + soul.getRarity().coloredNameLegacy());
         lore.add("§7Enhance: §f" + soul.getEnhanceLevel());
         lore.add("§7Traits: §f" + soul.traitCount() + "§7/§f" + cfg().infusionTraitCap(soul.getRarity()));
-        lore.add("§7Family: §f" + SoulLoreBuilder.pretty(soul.getFamilyKey()));
+        lore.add("§7Mob Soul: §f" + SoulLoreBuilder.pretty(soul.getFamilyKey()));
         if (chosenTraitId != null) lore.add("§7Chosen: §d" + prettyTrait(chosenTraitId));
         return SoulTableUiItems.infoItem(Material.NAME_TAG, "§dTarget Soul", lore);
     }

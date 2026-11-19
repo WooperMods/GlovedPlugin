@@ -96,7 +96,15 @@ public class SoulTeamsInv implements InventoryHolder {
                 int invSlot = (1 + s) * 9 + col; // rows 1..4
                 UUID soulId = slots.get(s);
                 SoulInstance soul = soulId != null && svc != null ? svc.getSoul(soulId) : null;
-                inv.setItem(invSlot, teamSlotItem(t, s, soul, svc));
+                boolean pending = false;
+                double pendingRemain = 0.0;
+                try {
+                    if (plugin.getSummonRespawnService() != null) {
+                        pending = plugin.getSummonRespawnService().hasPending(viewerId, t, s);
+                        pendingRemain = pending ? plugin.getSummonRespawnService().getRemainingSeconds(viewerId, t, s) : 0.0;
+                    }
+                } catch (Throwable ignored) {}
+                inv.setItem(invSlot, teamSlotItem(t, s, soul, svc, pending, pendingRemain));
             }
             inv.setItem(5 * 9 + col, activateTeamItem(t, sel, act)); // row 5
         }
@@ -105,7 +113,7 @@ public class SoulTeamsInv implements InventoryHolder {
         inv.setItem(0 * 9 + 0, navItem(Material.CHEST, "§dSoul Vault", "vault", UiIcons.VAULT,
                 "§7Browse, manage, extract, and salvage souls"));
         inv.setItem(1 * 9 + 0, navItem(Material.KNOWLEDGE_BOOK, "§bSoul Codex", "codex", UiIcons.GUIDE,
-                "§7View family discoveries, progress, and claim codex rewards"));
+                "§7View mob soul discoveries, progress, and claim codex rewards"));
         inv.setItem(4 * 9 + 0, navItem(Material.BARRIER, "§eRecall Active Group", "recall", UiIcons.BACK));
         inv.setItem(5 * 9 + 0, navItem(Material.OAK_DOOR, "§cClose", "close", UiIcons.CLOSE));
 
@@ -141,7 +149,7 @@ public class SoulTeamsInv implements InventoryHolder {
         return UiIcons.apply(it, active ? UiIcons.BACK : UiIcons.TEAMS);
     }
 
-    private ItemStack teamSlotItem(int team, int slot, SoulInstance soul, SoulService svc) {
+    private ItemStack teamSlotItem(int team, int slot, SoulInstance soul, SoulService svc, boolean pendingRespawn, double pendingRemainSeconds) {
         if (soul == null) {
             ItemStack it = new ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE);
             ItemMeta meta = it.getItemMeta();
@@ -158,7 +166,7 @@ public class SoulTeamsInv implements InventoryHolder {
             }
             return it;
         }
-        ItemStack it = new ItemStack(SoulDropItem.materialFor(soul.getEntityType()));
+        ItemStack it = new ItemStack(pendingRespawn ? Material.SOUL_LANTERN : SoulDropItem.materialFor(soul.getEntityType()));
         ItemMeta meta = it.getItemMeta();
         if (meta != null) {
             String mobName = prettyMobName(soul.getFamilyKey());
@@ -166,13 +174,27 @@ public class SoulTeamsInv implements InventoryHolder {
             Component rest = (soul.getRarity() == SoulRarity.MYTHIC)
                     ? Component.text(" " + mobName + " Soul", net.kyori.adventure.text.format.NamedTextColor.RED).decoration(TextDecoration.BOLD, false)
                     : Component.text(" " + mobName + " Soul", soul.getRarity().getColor());
-            meta.displayName(Component.empty().append(rarityName).append(rest).decoration(TextDecoration.ITALIC, false));
+            Component display = Component.empty().append(rarityName).append(rest);
+            if (pendingRespawn) {
+                display = display.append(Component.text(" §d(Respawning)", net.kyori.adventure.text.format.NamedTextColor.LIGHT_PURPLE));
+            }
+            meta.displayName(display.decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
+            if (pendingRespawn) {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§dRespawn Timer: §f" + String.format(Locale.ROOT, "%.1fs", Math.max(0.0, pendingRemainSeconds)) + " left").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§cThis slot can't be changed while respawning.").decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.empty());
+            }
             lore.addAll(SoulLoreBuilder.statsSection(plugin, soul, viewerId));
             lore.addAll(SoulLoreBuilder.traitsSection(soul));
             lore.add(Component.empty());
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft-click: replace").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§eRight-click: clear").decoration(TextDecoration.ITALIC, false));
+            if (pendingRespawn) {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§8Left-click: replace (unavailable)").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§8Right-click: clear (unavailable)").decoration(TextDecoration.ITALIC, false));
+            } else {
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft-click: replace").decoration(TextDecoration.ITALIC, false));
+                lore.add(LegacyComponentSerializer.legacySection().deserialize("§eRight-click: clear").decoration(TextDecoration.ITALIC, false));
+            }
             meta.lore(lore);
             meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
             meta.getPersistentDataContainer().set(navKey(plugin), PersistentDataType.STRING, "slot");

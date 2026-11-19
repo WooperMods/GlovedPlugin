@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/group_activate",
+  "display": {
+    "icon": {
+      "id": "minecraft:goat_horn"
+    },
+    "title": {
+      "text": "Pack Caller"
+    },
+    "description": {
+      "text": "Activate soul groups 10 times.\n+250 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

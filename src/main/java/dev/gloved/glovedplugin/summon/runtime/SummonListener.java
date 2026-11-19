@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -43,11 +44,26 @@ public class SummonListener implements Listener {
             try { if (plugin.getSummonProgression() != null) plugin.getSummonProgression().onPlayerQuit(id); } catch (Throwable ignored) {}
             try { if (plugin.getSummonAbilityService() != null) plugin.getSummonAbilityService().onPlayerQuit(id); } catch (Throwable ignored) {}
             try { if (plugin.getSoulService() != null) plugin.getSoulService().onPlayerQuit(id); } catch (Throwable ignored) {}
+            try { if (plugin.getSummonRespawnService() != null) plugin.getSummonRespawnService().onPlayerQuit(id); } catch (Throwable ignored) {}
             if (tracker == null) return;
             tracker.removeAllForPlayer(id);
             GlovedPlugin.logDebug("[Summon] Removed minions/state for quitting player " + event.getPlayer().getName());
         } catch (Throwable t) {
             plugin.getLogger().log(Level.WARNING, "[Summon] Error cleaning up minions on quit", t);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityDamage(EntityDamageEvent event) {
+        try {
+            if (tracker == null) return;
+            if (!(event.getEntity() instanceof LivingEntity victim)) return;
+            if (!tracker.isSummoned(victim.getUniqueId())) return;
+            if (event.getCause() == EntityDamageEvent.DamageCause.SUFFOCATION) {
+                event.setCancelled(true);
+            }
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.WARNING, "[Summon] Error in onEntityDamage (suppressed)", t);
         }
     }
 
@@ -87,7 +103,7 @@ public class SummonListener implements Listener {
                 }
             }
 
-            // Damage reduction for summoned minions: owner's toughness + soul TENACIOUS affix + BULWARK trait
+            // Damage reduction for summoned minions: owner's toughness + trait mitigation hooks (e.g. BULWARK)
             if (tracker != null && event.getEntity() instanceof LivingEntity victim
                     && tracker.isSummoned(victim.getUniqueId())) {
                 double totalReduction = 0.0;
@@ -108,7 +124,7 @@ public class SummonListener implements Listener {
                     }
                 }
 
-                // TENACIOUS soul affix (damage reduction/defense) + trait mitigation hooks (e.g. BULWARK)
+                // Trait mitigation hooks (e.g. BULWARK). TENACIOUS now affects DEF/armor stat instead of separate damage reduction.
                 try {
                     String soulIdStr = victim.getPersistentDataContainer()
                             .get(new org.bukkit.NamespacedKey(plugin, "summon_soul_id"),
@@ -119,8 +135,6 @@ public class SummonListener implements Listener {
                         if (soulService != null) {
                             var soul = soulService.getSoulCached(soulId);
                             var snap = soulService.getSnapshot(soulId);
-                            double tenacity = Math.max(0.0, Math.min(0.6, snap.tenacityBonus()));
-                            if (tenacity > 0.0) totalReduction += tenacity;
                             if (soul != null) {
                                 UUID ownerId = tracker.getOwner(victim.getUniqueId());
                                 IncomingDamageContext ctx = new IncomingDamageContext(
@@ -196,11 +210,17 @@ public class SummonListener implements Listener {
         try {
             if (tracker == null) return;
             LivingEntity entity = event.getEntity();
-            if (tracker.isSummoned(entity.getUniqueId())) {
-                UUID owner = tracker.getOwner(entity.getUniqueId());
-                tracker.despawn(entity.getUniqueId());
-                GlovedPlugin.logDebug("[Summon] Minion died and was cleaned up: " + entity.getUniqueId());
+            if (!tracker.isSummoned(entity.getUniqueId())) return;
+            UUID owner = tracker.getOwner(entity.getUniqueId());
+            try {
+                if (owner != null && plugin.getSummonRespawnService() != null) {
+                    plugin.getSummonRespawnService().scheduleFromDeath(entity, owner);
+                }
+            } catch (Throwable t) {
+                GlovedPlugin.logDebug("[SummonRespawn] Failed to schedule respawn on death: " + t);
             }
+            tracker.despawn(entity.getUniqueId());
+            GlovedPlugin.logDebug("[Summon] Minion died and was cleaned up: " + entity.getUniqueId());
         } catch (Throwable t) {
             plugin.getLogger().log(Level.WARNING, "[Summon] Error in onEntityDeath (suppressed)", t);
         }

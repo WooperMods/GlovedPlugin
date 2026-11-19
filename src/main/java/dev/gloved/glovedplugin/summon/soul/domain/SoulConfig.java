@@ -92,6 +92,42 @@ public final class SoulConfig {
     // telemetry/debug
     private boolean debugTelemetry = true;
 
+    // respawn (soul group slot auto-respawn + kill-charge)
+    private boolean respawnEnabled = true;
+    private double respawnGlobalFloorSeconds = 10.0;
+    private double respawnGlobalCeilSeconds = 120.0;
+    private boolean respawnEnhanceReduces = true;
+    private double respawnEnhancePerLevelReduction = 0.01;
+    private double respawnEnhanceMaxReduction = 0.20;
+    private int respawnRetryAttempts = 3;
+    private int respawnRetryDelayTicks = 20;
+    private boolean respawnKillChargeEnabled = true;
+    private double respawnKillChargeFlatSeconds = 3.0;
+    private double respawnKillChargePercentOfRemaining = 0.03;
+    private boolean respawnKillChargePerKillApplyOnce = true;
+    private boolean respawnKillChargeCreditOwnerKills = true;
+    private boolean respawnKillChargeCreditSummonKills = true;
+    private boolean respawnKillChargeAllowPlayerVictim = false;
+    private int respawnKillChargeInternalCooldownTicks = 0;
+    private double respawnKillChargeMaxReductionPerKillSeconds = 15.0;
+    private double respawnKillChargeMinRemainingAfterChargeSeconds = 10.0;
+    private boolean respawnVfxEnabled = true;
+    private boolean respawnDeathCueEnabled = true;
+    private boolean respawnDeathParticles = true;
+    private boolean respawnDeathSound = true;
+    private boolean respawnPendingCueEnabled = true;
+    private int respawnPendingCueIntervalTicks = 80;
+    private boolean respawnPendingCueParticles = true;
+    private boolean respawnPendingCueSound = false;
+    private boolean respawnCompleteCueEnabled = true;
+    private boolean respawnCompleteParticles = true;
+    private boolean respawnCompleteSound = true;
+    private boolean respawnKillChargeCueEnabled = true;
+    private boolean respawnKillChargeParticles = true;
+    private boolean respawnKillChargeSound = true;
+    private double respawnVfxAudibleRange = 24.0;
+    private double respawnVfxIntensity = 1.0;
+
     public record CategoryDefaults(int maxActivePerType, double costMult, double hpMult, boolean enabled) {}
 
     public SoulConfig() {
@@ -287,6 +323,50 @@ public final class SoulConfig {
 
         cfg.debugTelemetry = s.getBoolean("debug-telemetry", true);
 
+        ConfigurationSection respawn = s.getConfigurationSection("respawn");
+        if (respawn != null) {
+            cfg.respawnEnabled = respawn.getBoolean("enabled", true);
+            cfg.respawnGlobalFloorSeconds = Math.max(1.0, respawn.getDouble("global-floor-seconds", 10.0));
+            cfg.respawnGlobalCeilSeconds = Math.max(cfg.respawnGlobalFloorSeconds, respawn.getDouble("global-ceil-seconds", 120.0));
+            cfg.respawnEnhanceReduces = respawn.getBoolean("enhance-reduces-respawn", true);
+            cfg.respawnEnhancePerLevelReduction = clamp(respawn.getDouble("enhance-per-level-reduction", 0.01), 0.0, 1.0);
+            cfg.respawnEnhanceMaxReduction = clamp(respawn.getDouble("enhance-max-reduction", 0.20), 0.0, 0.95);
+            cfg.respawnRetryAttempts = Math.max(0, respawn.getInt("retry-attempts", 3));
+            cfg.respawnRetryDelayTicks = Math.max(1, respawn.getInt("retry-delay-ticks", 20));
+            ConfigurationSection kc = respawn.getConfigurationSection("kill-charge");
+            if (kc != null) {
+                cfg.respawnKillChargeEnabled = kc.getBoolean("enabled", true);
+                cfg.respawnKillChargeFlatSeconds = Math.max(0.0, kc.getDouble("flat-seconds", 3.0));
+                cfg.respawnKillChargePercentOfRemaining = clamp(kc.getDouble("percent-of-remaining", 0.03), 0.0, 1.0);
+                cfg.respawnKillChargePerKillApplyOnce = kc.getBoolean("per-kill-apply-once", true);
+                cfg.respawnKillChargeCreditOwnerKills = kc.getBoolean("credit-owner-kills", true);
+                cfg.respawnKillChargeCreditSummonKills = kc.getBoolean("credit-summon-kills", true);
+                cfg.respawnKillChargeAllowPlayerVictim = kc.getBoolean("allow-player-victim", false);
+                cfg.respawnKillChargeInternalCooldownTicks = Math.max(0, kc.getInt("internal-cooldown-ticks", 0));
+                cfg.respawnKillChargeMaxReductionPerKillSeconds = Math.max(0.0, kc.getDouble("max-reduction-per-kill-seconds", 15.0));
+                cfg.respawnKillChargeMinRemainingAfterChargeSeconds = Math.max(0.0, kc.getDouble("min-remaining-after-charge-seconds", 10.0));
+            }
+            ConfigurationSection vfx = respawn.getConfigurationSection("vfx-sfx");
+            if (vfx != null) {
+                cfg.respawnVfxEnabled = vfx.getBoolean("enabled", true);
+                cfg.respawnDeathCueEnabled = vfx.getBoolean("death-cue-enabled", true);
+                cfg.respawnDeathParticles = vfx.getBoolean("death-particles", true);
+                cfg.respawnDeathSound = vfx.getBoolean("death-sound", true);
+                cfg.respawnPendingCueEnabled = vfx.getBoolean("pending-cue-enabled", true);
+                cfg.respawnPendingCueIntervalTicks = Math.max(10, vfx.getInt("pending-cue-interval-ticks", 80));
+                cfg.respawnPendingCueParticles = vfx.getBoolean("pending-cue-particles", true);
+                cfg.respawnPendingCueSound = vfx.getBoolean("pending-cue-sound", false);
+                cfg.respawnCompleteCueEnabled = vfx.getBoolean("respawn-cue-enabled", true);
+                cfg.respawnCompleteParticles = vfx.getBoolean("respawn-particles", true);
+                cfg.respawnCompleteSound = vfx.getBoolean("respawn-sound", true);
+                cfg.respawnKillChargeCueEnabled = vfx.getBoolean("kill-charge-cue-enabled", true);
+                cfg.respawnKillChargeParticles = vfx.getBoolean("kill-charge-particles", true);
+                cfg.respawnKillChargeSound = vfx.getBoolean("kill-charge-sound", true);
+                cfg.respawnVfxAudibleRange = Math.max(4.0, vfx.getDouble("audible-range", 24.0));
+                cfg.respawnVfxIntensity = clamp(vfx.getDouble("intensity", 1.0), 0.0, 5.0);
+            }
+        }
+
         return cfg;
     }
 
@@ -376,6 +456,41 @@ public final class SoulConfig {
         setIfMissing(cfg, "souls.caps.global-max-active-per-level", 0.15);
         setIfMissing(cfg, "souls.caps.global-max-active-max", 8);
         setIfMissing(cfg, "souls.debug-telemetry", true);
+        // respawn defaults (soul group slot auto-respawn)
+        setIfMissing(cfg, "souls.respawn.enabled", true);
+        setIfMissing(cfg, "souls.respawn.global-floor-seconds", 10.0);
+        setIfMissing(cfg, "souls.respawn.global-ceil-seconds", 120.0);
+        setIfMissing(cfg, "souls.respawn.enhance-reduces-respawn", true);
+        setIfMissing(cfg, "souls.respawn.enhance-per-level-reduction", 0.01);
+        setIfMissing(cfg, "souls.respawn.enhance-max-reduction", 0.20);
+        setIfMissing(cfg, "souls.respawn.retry-attempts", 3);
+        setIfMissing(cfg, "souls.respawn.retry-delay-ticks", 20);
+        setIfMissing(cfg, "souls.respawn.kill-charge.enabled", true);
+        setIfMissing(cfg, "souls.respawn.kill-charge.flat-seconds", 3.0);
+        setIfMissing(cfg, "souls.respawn.kill-charge.percent-of-remaining", 0.03);
+        setIfMissing(cfg, "souls.respawn.kill-charge.per-kill-apply-once", true);
+        setIfMissing(cfg, "souls.respawn.kill-charge.credit-owner-kills", true);
+        setIfMissing(cfg, "souls.respawn.kill-charge.credit-summon-kills", true);
+        setIfMissing(cfg, "souls.respawn.kill-charge.allow-player-victim", false);
+        setIfMissing(cfg, "souls.respawn.kill-charge.internal-cooldown-ticks", 0);
+        setIfMissing(cfg, "souls.respawn.kill-charge.max-reduction-per-kill-seconds", 15.0);
+        setIfMissing(cfg, "souls.respawn.kill-charge.min-remaining-after-charge-seconds", 10.0);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.enabled", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.death-cue-enabled", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.death-particles", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.death-sound", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.pending-cue-enabled", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.pending-cue-interval-ticks", 80);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.pending-cue-particles", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.pending-cue-sound", false);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.respawn-cue-enabled", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.respawn-particles", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.respawn-sound", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.kill-charge-cue-enabled", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.kill-charge-particles", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.kill-charge-sound", true);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.audible-range", 24.0);
+        setIfMissing(cfg, "souls.respawn.vfx-sfx.intensity", 1.0);
         // rarity weights and min levels
         for (SoulRarity r : SoulRarity.values()) {
             setIfMissing(cfg, "souls.rarity.weights." + r.name(), r.defaultWeight);
@@ -538,4 +653,40 @@ public final class SoulConfig {
     public int getLifetimeTicks() { return lifetimeTicks; }
     /** Delay after engaging a target before a Warden summon can start charging sonic boom (ticks). */
     public int getWardenSonicEngageDelayTicks() { return wardenSonicEngageDelayTicks; }
+
+    // --- respawn config getters ---
+    public boolean isRespawnEnabled() { return respawnEnabled; }
+    public double getRespawnGlobalFloorSeconds() { return respawnGlobalFloorSeconds; }
+    public double getRespawnGlobalCeilSeconds() { return respawnGlobalCeilSeconds; }
+    public boolean isRespawnEnhanceReduces() { return respawnEnhanceReduces; }
+    public double getRespawnEnhancePerLevelReduction() { return respawnEnhancePerLevelReduction; }
+    public double getRespawnEnhanceMaxReduction() { return respawnEnhanceMaxReduction; }
+    public int getRespawnRetryAttempts() { return respawnRetryAttempts; }
+    public int getRespawnRetryDelayTicks() { return respawnRetryDelayTicks; }
+    public boolean isRespawnKillChargeEnabled() { return respawnKillChargeEnabled; }
+    public double getRespawnKillChargeFlatSeconds() { return respawnKillChargeFlatSeconds; }
+    public double getRespawnKillChargePercentOfRemaining() { return respawnKillChargePercentOfRemaining; }
+    public boolean isRespawnKillChargePerKillApplyOnce() { return respawnKillChargePerKillApplyOnce; }
+    public boolean isRespawnKillChargeCreditOwnerKills() { return respawnKillChargeCreditOwnerKills; }
+    public boolean isRespawnKillChargeCreditSummonKills() { return respawnKillChargeCreditSummonKills; }
+    public boolean isRespawnKillChargeAllowPlayerVictim() { return respawnKillChargeAllowPlayerVictim; }
+    public int getRespawnKillChargeInternalCooldownTicks() { return respawnKillChargeInternalCooldownTicks; }
+    public double getRespawnKillChargeMaxReductionPerKillSeconds() { return respawnKillChargeMaxReductionPerKillSeconds; }
+    public double getRespawnKillChargeMinRemainingAfterChargeSeconds() { return respawnKillChargeMinRemainingAfterChargeSeconds; }
+    public boolean isRespawnVfxEnabled() { return respawnVfxEnabled; }
+    public boolean isRespawnDeathCueEnabled() { return respawnDeathCueEnabled; }
+    public boolean isRespawnDeathParticles() { return respawnDeathParticles; }
+    public boolean isRespawnDeathSound() { return respawnDeathSound; }
+    public boolean isRespawnPendingCueEnabled() { return respawnPendingCueEnabled; }
+    public int getRespawnPendingCueIntervalTicks() { return respawnPendingCueIntervalTicks; }
+    public boolean isRespawnPendingCueParticles() { return respawnPendingCueParticles; }
+    public boolean isRespawnPendingCueSound() { return respawnPendingCueSound; }
+    public boolean isRespawnCompleteCueEnabled() { return respawnCompleteCueEnabled; }
+    public boolean isRespawnCompleteParticles() { return respawnCompleteParticles; }
+    public boolean isRespawnCompleteSound() { return respawnCompleteSound; }
+    public boolean isRespawnKillChargeCueEnabled() { return respawnKillChargeCueEnabled; }
+    public boolean isRespawnKillChargeParticles() { return respawnKillChargeParticles; }
+    public boolean isRespawnKillChargeSound() { return respawnKillChargeSound; }
+    public double getRespawnVfxAudibleRange() { return respawnVfxAudibleRange; }
+    public double getRespawnVfxIntensity() { return respawnVfxIntensity; }
 }

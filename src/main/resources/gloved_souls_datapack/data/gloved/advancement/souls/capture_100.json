@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/capture_50",
+  "display": {
+    "icon": {
+      "id": "minecraft:recovery_compass"
+    },
+    "title": {
+      "text": "Centurion of Souls"
+    },
+    "description": {
+      "text": "Acquire 100 souls.\n+1000 Essence"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

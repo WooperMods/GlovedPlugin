@@ -26,7 +26,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * Paginated account/family codex menu (MVP): shows discovered families, tier progress,
+ * Paginated mob soul codex menu (MVP): shows discovered mob souls, tier progress,
  * and allows claiming reached tier rewards.
  */
 public class SoulCodexInv implements InventoryHolder {
@@ -176,7 +176,7 @@ public class SoulCodexInv implements InventoryHolder {
         if (meta != null) {
             meta.displayName(LegacyComponentSerializer.legacySection().deserialize("§bSoul Codex").decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Discovered families: §f" + total).decoration(TextDecoration.ITALIC, false));
+            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Discovered mob " + (total == 1 ? "soul" : "souls") + ": §f" + total).decoration(TextDecoration.ITALIC, false));
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Tiers: §fDiscovered §8/ §fCollected §8/ §fRefined §8/ §fMastered").decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§7Progress updates from captures, refining, and mastery.").decoration(TextDecoration.ITALIC, false));
@@ -193,8 +193,6 @@ public class SoulCodexInv implements InventoryHolder {
         if (meta != null) {
             List<Component> lore = new ArrayList<>();
             lore.add(LegacyComponentSerializer.legacySection().deserialize("§aLeft-click entry§7: claim next reached tier").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§7You can also claim via:").decoration(TextDecoration.ITALIC, false));
-            lore.add(LegacyComponentSerializer.legacySection().deserialize("§b/gloved soul codex claim <FAMILY> <tier>").decoration(TextDecoration.ITALIC, false));
             meta.lore(lore);
             it.setItemMeta(meta);
         }

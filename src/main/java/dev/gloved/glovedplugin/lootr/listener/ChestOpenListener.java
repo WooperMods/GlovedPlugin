@@ -91,7 +91,6 @@ public class ChestOpenListener implements Listener {
     private void openPerPlayerInventory(Player player, Block block, Container containerState, ContainerId id, boolean justRegistered) {
         GlovedPlugin.logDebug("Lootr openPerPlayerInventory start id=" + id.toStringKey() + " justRegistered=" + justRegistered);
         String baseTitle = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().inventoryTitle);
-        String suffix = org.bukkit.ChatColor.translateAlternateColorCodes('&', manager.getConfig().eliteTitleSuffix);
         UUID uuid = player.getUniqueId();
         byte[] blob = lootService.getInventoryBlob(id, uuid);
         int eliteFlag = lootService.getEliteFlag(id, uuid);
@@ -103,12 +102,21 @@ public class ChestOpenListener implements Listener {
         final long REROLL_MS = 24L * 60 * 60 * 1000;
         long now = System.currentTimeMillis();
         boolean expired = firstOpened == null || now - firstOpened >= REROLL_MS;
+        boolean customSnapshot = isCustomNamespaceSnapshot(id);
         boolean eliteChest = eliteAvailable && (eliteFlag == 1 || containerElite);
         String title = eliteChest ? "§6Elite Chest" : baseTitle;
+        int size = containerState.getInventory().getSize();
         Inventory inv;
-        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey() + " blobExists=" + (blob != null && blob.length > 0) + " firstOpened=" + firstOpened + " expired=" + expired + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
-        if (blob != null && blob.length > 0 && !expired) {
-            inv = Bukkit.createInventory(null, containerState.getInventory().getSize(), title);
+        GlovedPlugin.logDebug("Lootr open check: player=" + player.getName() + " container=" + id.toStringKey()
+                + " blobExists=" + (blob != null && blob.length > 0) + " firstOpened=" + firstOpened
+                + " expired=" + expired + " eliteFlag=" + eliteFlag + " containerElite=" + containerElite
+                + " customSnapshot=" + customSnapshot
+                + " eliteEnabled=" + manager.getConfig().eliteEnabled + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
+
+        // Serve existing per-player loot. For custom-namespace snapshots there is no timed reroll
+        // (only reset/recreate clears), so keep the player's existing copy even if "expired".
+        if (blob != null && blob.length > 0 && (!expired || customSnapshot)) {
+            inv = Bukkit.createInventory(null, size, title);
             ItemStack[] items = InventorySerializer.deserialize(blob);
             for (int i = 0; i < Math.min(items.length, inv.getSize()); i++) {
                 if (items[i] != null) inv.setItem(i, items[i]);
@@ -148,7 +156,6 @@ public class ChestOpenListener implements Listener {
         GlovedPlugin.logDebug("Lootr isElite final=" + isElite + " eliteFlag=" + eliteFlag + " eliteMobsAvailable=" + EliteMobsIntegration.isAvailable());
 
         title = isElite ? "§6Elite Chest" : baseTitle;
-        int size = containerState.getInventory().getSize();
         if (isElite) {
             inv = Bukkit.createInventory(null, size, title);
             int combatLevel = EliteMobsIntegration.getCombatLevel(player);
@@ -168,41 +175,33 @@ public class ChestOpenListener implements Listener {
             GlovedPlugin.logDebug("Lootr elite chest generated " + inv.getSize() + " slots, " + count + " requested for " + player.getName());
         } else {
             inv = Bukkit.createInventory(null, size, title);
-            String lootTableKeyStr = manager.getRegistry().getLootTable(id);
-            GlovedPlugin.logDebug("Lootr open: container=" + id.toStringKey() + " lootTableKey=" + lootTableKeyStr);
-            if (lootTableKeyStr != null && !lootTableKeyStr.isEmpty()) {
-                try {
-                    org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
-                    if (key != null) {
-                        org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
-                        if (table != null) {
-                            // Provide the killer (player) and their luck so loot
-                            // tables that reference the opener behave correctly.
-                            LootContext.Builder ctxBuilder = new LootContext.Builder(block.getLocation())
-                                    .killer(player);
-                            if (player.getAttribute(Attribute.LUCK) != null) {
-                                ctxBuilder = ctxBuilder.luck((float) player.getAttribute(Attribute.LUCK).getValue());
-                            }
-                            LootContext ctx = ctxBuilder.build();
-                            table.fillInventory(inv, new Random(), ctx);
-                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " success items=" + countItems(inv));
-                        } else {
-                            GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " not found");
-                        }
+            if (customSnapshot) {
+                // Custom (non-minecraft namespace): generate base loot once as a shared template,
+                // then give each player their own copy. Bonuses are rolled per player on copy.
+                byte[] templateBlob = lootService.getTemplateBlob(id);
+                if (templateBlob == null || templateBlob.length == 0) {
+                    String lootTableKeyStr = manager.getRegistry().getLootTable(id);
+                    GlovedPlugin.logDebug("Lootr custom snapshot: creating template for " + id.toStringKey() + " lootTableKey=" + lootTableKeyStr);
+                    Inventory templateInv = Bukkit.createInventory(null, size, title);
+                    boolean filled = fillLootTableBase(templateInv, id, lootTableKeyStr, player, block, containerState);
+                    templateBlob = InventorySerializer.serialize(templateInv);
+                    if (filled) {
+                        lootService.saveTemplate(id, templateBlob, lootTableKeyStr);
                     } else {
-                        GlovedPlugin.logDebug("Lootr fillInventory: invalid key " + lootTableKeyStr);
+                        GlovedPlugin.logDebug("Lootr custom snapshot: template not saved (loot table unresolved) for " + id.toStringKey());
                     }
-                } catch (Exception e) {
-                    GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
+                } else {
+                    GlovedPlugin.logDebug("Lootr custom snapshot: reusing template for " + id.toStringKey());
                 }
+                copyInventoryContents(templateBlob, inv);
             } else {
-                GlovedPlugin.logDebug("Lootr fillInventory: no loot table key for " + id.toStringKey());
+                String lootTableKeyStr = manager.getRegistry().getLootTable(id);
+                GlovedPlugin.logDebug("Lootr open: container=" + id.toStringKey() + " lootTableKey=" + lootTableKeyStr);
+                fillLootTableBase(inv, id, lootTableKeyStr, player, block, containerState);
             }
             // Elite items can also hide in regular chests: a coin-toss roll per item
             // using elite.regular-chance. One success = 1 elite item, each further
-            // success = another item, capped at elite.regular-max-items. With the
-            // default 50% chance, at-least-one lands 50% of the time and longer
-            // streaks halve per coin toss.
+            // success = another item, capped at elite.regular-max-items. Rolled per player.
             double regularChance = manager.getConfig().eliteRegularChance;
             if (eliteAvailable && regularChance > 0) {
                 int maxItems = Math.max(1, manager.getConfig().eliteRegularMaxItems);
@@ -219,6 +218,7 @@ public class ChestOpenListener implements Listener {
             }
         }
 
+        // Condensed essence bonus: rolled per player (including per-player copies of custom snapshots).
         tryAddCondensedSoulEssence(inv);
 
         lootService.setFirstOpened(id, uuid, now);
@@ -228,6 +228,70 @@ public class ChestOpenListener implements Listener {
         player.openInventory(inv);
         if (manager.getConfig().playSound) {
             player.playSound(block.getLocation(), org.bukkit.Sound.BLOCK_CHEST_OPEN, 0.6f, 1.0f);
+        }
+    }
+
+    private boolean isCustomNamespaceSnapshot(ContainerId id) {
+        if (!manager.getConfig().customNamespaceSnapshot) return false;
+        String lootTableKeyStr = manager.getRegistry().getLootTable(id);
+        return isNonMinecraftNamespace(lootTableKeyStr);
+    }
+
+    private boolean isNonMinecraftNamespace(String lootTableKeyStr) {
+        if (lootTableKeyStr == null || lootTableKeyStr.isEmpty()) return false;
+        try {
+            org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
+            return key != null && !"minecraft".equals(key.getNamespace());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Fills the base loot table contents into an inventory (no elite injection, no condensed essence).
+     * Used for normal non-elite generation and for creating custom-namespace snapshot templates.
+     *
+     * @return {@code true} if a loot table was resolved and fill was attempted, {@code false} otherwise
+     */
+    private boolean fillLootTableBase(Inventory inv, ContainerId id, String lootTableKeyStr, Player player, Block block, Container containerState) {
+        if (lootTableKeyStr == null || lootTableKeyStr.isEmpty()) {
+            GlovedPlugin.logDebug("Lootr fillInventory: no loot table key for " + id.toStringKey());
+            return false;
+        }
+        try {
+            org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(lootTableKeyStr);
+            if (key == null) {
+                GlovedPlugin.logDebug("Lootr fillInventory: invalid key " + lootTableKeyStr);
+                return false;
+            }
+            org.bukkit.loot.LootTable table = Bukkit.getLootTable(key);
+            if (table == null && containerState instanceof org.bukkit.loot.Lootable lootable) {
+                table = lootable.getLootTable();
+            }
+            if (table == null) {
+                GlovedPlugin.logDebug("Lootr fillInventory: table=" + key + " not found for " + id.toStringKey());
+                return false;
+            }
+            LootContext.Builder ctxBuilder = new LootContext.Builder(block.getLocation())
+                    .killer(player);
+            if (player.getAttribute(Attribute.LUCK) != null) {
+                ctxBuilder = ctxBuilder.luck((float) player.getAttribute(Attribute.LUCK).getValue());
+            }
+            LootContext ctx = ctxBuilder.build();
+            table.fillInventory(inv, new Random(), ctx);
+            GlovedPlugin.logDebug("Lootr fillInventory: table=" + table.getKey() + " success items=" + countItems(inv));
+            return true;
+        } catch (Exception e) {
+            GlovedPlugin.logDebug("Lootr fillInventory exception: " + e);
+            return false;
+        }
+    }
+
+    private void copyInventoryContents(byte[] templateBlob, Inventory inv) {
+        ItemStack[] items = InventorySerializer.deserialize(templateBlob);
+        for (int i = 0; i < Math.min(items.length, inv.getSize()); i++) {
+            ItemStack item = items[i];
+            if (item != null) inv.setItem(i, item.clone());
         }
     }
 

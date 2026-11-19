@@ -132,7 +132,7 @@ public final class SoulTableSalvageInv implements SoulTableScreen {
             total += ss != null ? ss.essenceValueOf(soul.getRarity()) : SoulService.essenceValue(soul.getRarity());
         }
         List<String> lore = new ArrayList<>();
-        lore.add("§7Selected: §f" + chosen.size() + " §7soul(s)");
+        lore.add("§7Selected: §f" + chosen.size() + " §7" + (chosen.size() == 1 ? "soul" : "souls"));
         lore.add("§7Value: §b" + total + " Essence");
         return SoulTableUiItems.infoItem(Material.AMETHYST_SHARD, "§b§lSoul Essence: §f" + essence, lore);
     }
@@ -155,13 +155,13 @@ public final class SoulTableSalvageInv implements SoulTableScreen {
             if (armed) {
                 enabled = true;
                 name = "§c§lClick again to confirm";
-                lore.add("§7Converts §f" + chosen.size() + "§7 soul(s) into §b" + total + " Essence§7.");
+                lore.add("§7Converts §f" + chosen.size() + "§7 " + (chosen.size() == 1 ? "soul" : "souls") + " into §b" + total + " Essence§7.");
                 long seconds = Math.max(0, (salvageArmedUntil - System.currentTimeMillis() + 999) / 1000);
                 lore.add("§cExpires in " + seconds + "s");
             } else {
                 enabled = true;
                 name = "§e§lConfirm Salvage";
-                lore.add("§7Converts §f" + chosen.size() + "§7 soul(s) into §b" + total + " Essence§7.");
+                lore.add("§7Converts §f" + chosen.size() + "§7 " + (chosen.size() == 1 ? "soul" : "souls") + " into §b" + total + " Essence§7.");
                 lore.add("§cClick twice to confirm.");
             }
         }

@@ -1,0 +1,23 @@
+{
+  "parent": "gloved:souls/root",
+  "display": {
+    "icon": {
+      "id": "minecraft:totem_of_undying"
+    },
+    "title": {
+      "text": "Unbroken Bond"
+    },
+    "description": {
+      "text": "Complete your first soul respawn.\n+100 Essence"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "impossible": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -383,7 +383,7 @@ private void handleSoulCodex(CommandSourceStack source, String[] args, SoulServi
         dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier tier;
         try { tier = dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService.Tier.valueOf(tierRaw.trim().toUpperCase(Locale.ROOT)); }
         catch (Exception e) {
-            source.getSender().sendMessage(Component.text("Usage: /gloved soul codex claim <FAMILY_KEY> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.RED));
+            source.getSender().sendMessage(Component.text("Usage: /gloved soul codex claim <MOB_SOUL> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.RED));
             return;
         }
         codex.claimTier(player, family, tier);
@@ -398,7 +398,7 @@ private void handleSoulCodex(CommandSourceStack source, String[] args, SoulServi
     }
     if (args.length >= 4) { try { limit = Integer.parseInt(args[3]); } catch (Exception ignored) {} }
     if (target == null && source.getSender() instanceof Player p) target = p;
-    if (target == null) { source.getSender().sendMessage(Component.text("Usage: /gloved soul codex [player] [limit] | /gloved soul codex claim <FAMILY_KEY> <tier>")); return; }
+    if (target == null) { source.getSender().sendMessage(Component.text("Usage: /gloved soul codex [player] [limit] | /gloved soul codex claim <MOB_SOUL> <tier>")); return; }
     limit = Math.max(1, Math.min(100, limit));
     var entries = svc.listCodex(target.getUniqueId(), limit);
     int total = svc.countCodex(target.getUniqueId());
@@ -426,7 +426,7 @@ private void handleSoulCodex(CommandSourceStack source, String[] args, SoulServi
                 + " §7mastered §f" + e.masteredCount()
                 + tiers));
     }
-    source.getSender().sendMessage(Component.text("Claim: /gloved soul codex claim <FAMILY_KEY> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
+    source.getSender().sendMessage(Component.text("Claim: /gloved soul codex claim <MOB_SOUL> <discovered|collected|refined|mastered>", net.kyori.adventure.text.format.NamedTextColor.DARK_AQUA));
 }
 
 private static String tierBadge(dev.gloved.glovedplugin.summon.soul.codex.SoulCodexService codex, dev.gloved.glovedplugin.summon.soul.db.SoulRepository.CodexEntry e,

@@ -381,6 +381,109 @@ public final class SummonVfx {
         } catch (Throwable ignored) {}
     }
 
+    // --- Respawn timer / kill-charge presets (subtle, non-UI) ---
+
+    public static VfxEffect.Builder summonPendingDeathBuilder(dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        double intensity = cfg != null ? Math.max(0.0, cfg.getRespawnVfxIntensity()) : 1.0;
+        int s = Math.max(0, (int) Math.round(6 * intensity));
+        VfxEffect.Builder b = VfxEffect.builder();
+        if (cfg == null || cfg.isRespawnDeathParticles()) {
+            b.step(ParticleStep.builder(Particle.SOUL).count(Math.max(4, s)).offset(0.25, 0.35, 0.25).extra(0.01).build());
+            b.step(ParticleStep.builder(Particle.SOUL_FIRE_FLAME).count(Math.max(3, s / 2)).offset(0.2, 0.25, 0.2).extra(0.01).build());
+            b.step(ParticleStep.builder(Particle.ASH).count(Math.max(2, s / 2)).offset(0.2, 0.2, 0.2).extra(0.0).build());
+        }
+        if (cfg == null || cfg.isRespawnDeathSound()) {
+            b.sound(Sound.PARTICLE_SOUL_ESCAPE, 0.35f, 1.3f);
+            b.sound(Sound.BLOCK_BEACON_DEACTIVATE, 0.18f, 1.8f);
+        }
+        return b;
+    }
+
+    public static void playSummonPendingDeath(@Nullable LivingEntity dead, @Nullable Player owner, @Nullable dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        if (dead == null || dead.getWorld() == null) return;
+        try {
+            if (cfg != null && (!cfg.isRespawnVfxEnabled() || !cfg.isRespawnDeathCueEnabled())) return;
+            Location at = dead.getLocation().add(0, Math.max(0.4, dead.getHeight() * 0.5), 0);
+            summonPendingDeathBuilder(cfg).build().play(dead.getWorld(), at);
+        } catch (Throwable ignored) {}
+    }
+
+    public static VfxEffect.Builder respawnCompleteBuilder(dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        double intensity = cfg != null ? Math.max(0.0, cfg.getRespawnVfxIntensity()) : 1.0;
+        int s = Math.max(0, (int) Math.round(8 * intensity));
+        VfxEffect.Builder b = VfxEffect.builder();
+        if (cfg == null || cfg.isRespawnCompleteParticles()) {
+            b.step(ParticleStep.builder(Particle.REVERSE_PORTAL).count(Math.max(4, s)).offset(0.35, 0.45, 0.35).extra(0.02).build());
+            b.step(ParticleStep.builder(Particle.SOUL).count(Math.max(3, s / 2)).offset(0.25, 0.35, 0.25).extra(0.01).build());
+            b.step(ParticleStep.builder(Particle.END_ROD).count(Math.max(2, s / 3)).offset(0.2, 0.3, 0.2).extra(0.01).atOffset(0, 0.4, 0).build());
+        }
+        if (cfg == null || cfg.isRespawnCompleteSound()) {
+            b.sound(Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.22f, 1.9f);
+            b.sound(Sound.ENTITY_ILLUSIONER_MIRROR_MOVE, 0.28f, 1.4f);
+        }
+        return b;
+    }
+
+    public static void playRespawnComplete(@Nullable Location at, @Nullable Player owner, @Nullable dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        if (at == null || at.getWorld() == null) return;
+        try {
+            if (cfg != null && (!cfg.isRespawnVfxEnabled() || !cfg.isRespawnCompleteCueEnabled())) return;
+            Location fx = at.clone().add(0, 0.7, 0);
+            respawnCompleteBuilder(cfg).build().play(at.getWorld(), fx, owner);
+        } catch (Throwable ignored) {}
+    }
+
+    public static VfxEffect.Builder respawnKillChargeBuilder(dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        double intensity = cfg != null ? Math.max(0.0, cfg.getRespawnVfxIntensity()) : 1.0;
+        int s = Math.max(0, (int) Math.round(6 * intensity));
+        VfxEffect.Builder b = VfxEffect.builder();
+        if (cfg == null || cfg.isRespawnKillChargeParticles()) {
+            b.step(ParticleStep.builder(Particle.SCULK_SOUL).count(Math.max(3, s / 2)).offset(0.2, 0.3, 0.2).extra(0.01).build());
+            b.step(ParticleStep.builder(Particle.SOUL_FIRE_FLAME).count(Math.max(2, s / 3)).offset(0.18, 0.25, 0.18).extra(0.01).build());
+            b.step(ParticleStep.builder(Particle.ENCHANT).count(Math.max(4, s)).offset(0.3, 0.4, 0.3).extra(0.2).build());
+        }
+        if (cfg == null || cfg.isRespawnKillChargeSound()) {
+            b.sound(Sound.BLOCK_SCULK_CATALYST_BLOOM, 0.18f, 1.8f);
+            b.sound(Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.16f, 1.9f);
+        }
+        return b;
+    }
+
+    public static void playRespawnKillCharge(@Nullable Player owner, @Nullable LivingEntity victim, @Nullable dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        if (owner == null || owner.getWorld() == null) return;
+        try {
+            if (cfg != null && (!cfg.isRespawnVfxEnabled() || !cfg.isRespawnKillChargeCueEnabled())) return;
+            Location at = owner.getLocation().add(0, 1.0, 0);
+            respawnKillChargeBuilder(cfg).build().play(owner.getWorld(), at, owner);
+            if (victim != null && victim.getWorld() == owner.getWorld()) {
+                VfxEffect.builder()
+                        .step(ParticleStep.builder(Particle.SOUL).count(2).offset(0.15, 0.2, 0.15).extra(0.01).build())
+                        .build().play(victim.getWorld(), victim.getLocation().add(0, 1.0, 0));
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    public static VfxEffect.Builder respawnPendingAmbientBuilder(dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        double intensity = cfg != null ? Math.max(0.0, cfg.getRespawnVfxIntensity()) : 1.0;
+        int s = Math.max(0, (int) Math.round(3 * intensity));
+        VfxEffect.Builder b = VfxEffect.builder();
+        if (cfg == null || cfg.isRespawnPendingCueParticles()) {
+            b.step(ParticleStep.builder(Particle.SOUL).count(Math.max(1, s)).offset(0.25, 0.35, 0.25).extra(0.005).atOffset(0, 0.8, 0).build());
+        }
+        if (cfg != null && cfg.isRespawnPendingCueSound()) {
+            b.sound(Sound.PARTICLE_SOUL_ESCAPE, 0.08f, 1.7f);
+        }
+        return b;
+    }
+
+    public static void playRespawnPendingAmbient(@Nullable Player owner, @Nullable dev.gloved.glovedplugin.summon.soul.domain.SoulConfig cfg) {
+        if (owner == null || owner.getWorld() == null) return;
+        try {
+            if (cfg != null && (!cfg.isRespawnVfxEnabled() || !cfg.isRespawnPendingCueEnabled())) return;
+            respawnPendingAmbientBuilder(cfg).build().play(owner.getWorld(), owner.getLocation().add(0, 0.2, 0), owner);
+        } catch (Throwable ignored) {}
+    }
+
     /** ECHO_STEP trait: reposition/shield blink cue + stunned-target accent. */
     public static VfxEffect.Builder echoStepProcBuilder(boolean empowered) {
         VfxEffect.Builder b = VfxEffect.builder()
