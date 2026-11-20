@@ -1,7 +1,6 @@
 package dev.gloved.glovedplugin.summon.soul.guide;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
-import dev.gloved.glovedplugin.summon.soul.table.ui.SoulTableGuideInv;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -75,7 +74,7 @@ public final class SoulGuideListener implements Listener {
         }
 
         event.setCancelled(true);
-        Bukkit.getScheduler().runTask(plugin, () ->
-                new SoulTableGuideInv(plugin, player, null, SoulTableGuideInv.Page.MAIN).open(player));
+        SoulGuideBook book = new SoulGuideBook(plugin);
+        Bukkit.getScheduler().runTask(plugin, () -> book.open(player));
     }
 }

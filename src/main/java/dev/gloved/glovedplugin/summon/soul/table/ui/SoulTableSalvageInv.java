@@ -210,7 +210,7 @@ public final class SoulTableSalvageInv implements SoulTableScreen {
             }
             case SoulTableUiKeys.ACTION_CLEAR -> { selected.clear(); salvageArmedUntil = 0L; refresh(); }
             case SoulTableUiKeys.ACTION_GUIDE ->
-                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.SALVAGE);
+                    SoulTableNav.openGuide(plugin, player);
             case SoulTableUiKeys.ACTION_CONFIRM -> confirm(player);
             default -> { }
         }

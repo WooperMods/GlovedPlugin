@@ -26,6 +26,9 @@ public final class SoulTableUiKeys {
     public static final String ACTION_OPEN_CONDENSE = "open_condense";
     public static final String ACTION_OPEN_INFUSION = "open_infusion";
 
+    public static final String ACTION_RECIPES = "recipes";
+    public static final String ACTION_RECIPE_DETAIL = "recipe:";
+
     // Condense
     public static final String ACTION_CONDENSE = "condense";
     public static final String ACTION_DECONDENSE = "decondense";

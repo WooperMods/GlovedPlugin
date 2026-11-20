@@ -26,15 +26,15 @@ import java.util.UUID;
 public final class SoulTableHubInv implements SoulTableScreen {
 
     private static final int SIZE = 54;
-    private static final int SLOT_COMBINE = 10;
-    private static final int SLOT_ENHANCE = 12;
-    private static final int SLOT_REFORGE = 14;
-    private static final int SLOT_SALVAGE = 16;
-    private static final int SLOT_CONDENSE = 28;
-    private static final int SLOT_INFUSION = 34;
+    private static final int SLOT_COMBINE = 19;
+    private static final int SLOT_ENHANCE = 21;
+    private static final int SLOT_REFORGE = 23;
+    private static final int SLOT_SALVAGE = 25;
+    private static final int SLOT_CONDENSE = 29;
+    private static final int SLOT_INFUSION = 33;
     private static final int SLOT_GUIDE = 49;
-    private static final int SLOT_ESSENCE = 31;
-    private static final int SLOT_CLOSE = 53;
+    private static final int SLOT_RECIPES = 31;
+    private static final int SLOT_ESSENCE = 4;
     private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.legacySection();
 
     private final GlovedPlugin plugin;
@@ -126,8 +126,13 @@ public final class SoulTableHubInv implements SoulTableScreen {
                         "§7and what each table action does.",
                         "",
                         "§eClick to open")));
-        inventory.setItem(SLOT_CLOSE, SoulTableUiItems.actionItem(plugin, Material.BARRIER,
-                "§cClose", SoulTableUiKeys.ACTION_CLOSE, List.of("§7Close the Soul Table.")));
+        inventory.setItem(SLOT_RECIPES, SoulTableUiItems.actionItem(plugin, Material.CRAFTING_TABLE,
+                "§6§lSoul Recipes", SoulTableUiKeys.ACTION_RECIPES,
+                List.of("§7View crafting recipes for soul items.",
+                        "§7Soul Guide, Soul Table, Catalyst,",
+                        "§7Soul Traps, and Condensed Essence.",
+                        "",
+                        "§eClick to open")));
     }
 
     private ItemStack processItem(Material material, String name, String action, List<String> lore) {
@@ -180,8 +185,9 @@ public final class SoulTableHubInv implements SoulTableScreen {
             case SoulTableUiKeys.ACTION_OPEN_INFUSION ->
                     SoulTableNav.openProcess(plugin, player, tableId, SoulTableReturnTarget.INFUSION);
             case SoulTableUiKeys.ACTION_GUIDE ->
-                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.HUB);
-            case SoulTableUiKeys.ACTION_CLOSE -> player.closeInventory();
+                    SoulTableNav.openGuide(plugin, player);
+            case SoulTableUiKeys.ACTION_RECIPES ->
+                    new SoulTableRecipeInv(plugin, player, tableId).open(player);
             default -> {
             }
         }

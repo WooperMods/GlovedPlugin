@@ -210,7 +210,7 @@ public final class SoulTableCombineInv implements SoulTableScreen {
             }
             case SoulTableUiKeys.ACTION_CLEAR -> { selected.clear(); refresh(); }
             case SoulTableUiKeys.ACTION_GUIDE ->
-                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.COMBINE);
+                    SoulTableNav.openGuide(plugin, player);
             case SoulTableUiKeys.ACTION_CONFIRM -> confirm(player);
             default -> { }
         }

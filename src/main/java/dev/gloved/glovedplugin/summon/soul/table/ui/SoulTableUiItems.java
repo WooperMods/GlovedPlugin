@@ -38,6 +38,31 @@ public final class SoulTableUiItems {
         return item;
     }
 
+    /** Creates a recipe result item showing the actual material texture with a display name. */
+    public static ItemStack recipeResultItem(Material material, int amount, String displayName) {
+        ItemStack item = new ItemStack(material != null ? material : Material.AIR, amount);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LEGACY.deserialize(displayName).decoration(TextDecoration.ITALIC, false));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    /** Creates a recipe grid slot item showing the actual material texture. Null/air returns filler. */
+    public static ItemStack recipeGridItem(Material material) {
+        if (material == null || material == Material.AIR) return filler();
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LEGACY.deserialize("§f" + SoulTableRecipe.materialName(material)).decoration(TextDecoration.ITALIC, false));
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
     public static ItemStack actionItem(GlovedPlugin plugin, Material material, String name, String action, List<String> lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
@@ -97,6 +122,22 @@ public final class SoulTableUiItems {
         return UiIcons.apply(item, UiIcons.HOME);
     }
 
+    /** Generic back button with custom name/lore — used by screens that go back to a non-hub parent. */
+    public static ItemStack backButton(GlovedPlugin plugin, String displayName, String loreLine) {
+        ItemStack item = SoulTableItem.createDisplayStack();
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(LEGACY.deserialize(displayName).decoration(TextDecoration.ITALIC, false));
+            List<Component> components = new ArrayList<>();
+            components.add(LEGACY.deserialize(loreLine).decoration(TextDecoration.ITALIC, false));
+            meta.lore(components);
+            meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            SoulTableUiKeys.tagAction(meta, plugin, SoulTableUiKeys.ACTION_BACK_HUB);
+            item.setItemMeta(meta);
+        }
+        return UiIcons.apply(item, UiIcons.BACK);
+    }
+
     private static String iconForAction(String action) {
         if (action == null) return null;
         return switch (action) {
@@ -111,6 +152,7 @@ public final class SoulTableUiItems {
             case SoulTableUiKeys.ACTION_OPEN_SALVAGE -> UiIcons.SALVAGE;
             case SoulTableUiKeys.ACTION_OPEN_CONDENSE -> UiIcons.CONDENSE;
             case SoulTableUiKeys.ACTION_OPEN_INFUSION -> UiIcons.INFUSION;
+            case SoulTableUiKeys.ACTION_RECIPES -> UiIcons.GUIDE;
             default -> null;
         };
     }

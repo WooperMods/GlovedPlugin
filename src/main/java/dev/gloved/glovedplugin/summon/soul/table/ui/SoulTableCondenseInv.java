@@ -97,8 +97,6 @@ public final class SoulTableCondenseInv implements SoulTableScreen {
                 "§b§lSoul Essence: §f" + essence,
                 List.of("§7Use Condense to package Essence into",
                         "§7Condensed Soul Essence for catalysts.")));
-        inventory.setItem(53, SoulTableUiItems.actionItem(plugin, Material.BARRIER, "§cClose",
-                SoulTableUiKeys.ACTION_CLOSE, List.of("§7Close the Soul Table.")));
 
         // Condense buttons (essence -> condensed)
         int maxCondense = rate > 0 ? Math.max(0, essence / rate) : 0;
@@ -174,9 +172,8 @@ public final class SoulTableCondenseInv implements SoulTableScreen {
         if (action == null) return;
         switch (action) {
             case SoulTableUiKeys.ACTION_BACK_HUB -> SoulTableNav.openHub(plugin, player, tableId);
-            case SoulTableUiKeys.ACTION_CLOSE -> player.closeInventory();
             case SoulTableUiKeys.ACTION_GUIDE ->
-                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.CONDENSE);
+                    SoulTableNav.openGuide(plugin, player);
             default -> {
                 if (action.startsWith("condense:")) runCondense(player, action.substring(9), false);
                 else if (action.startsWith("decondense:")) runCondense(player, action.substring(11), true);

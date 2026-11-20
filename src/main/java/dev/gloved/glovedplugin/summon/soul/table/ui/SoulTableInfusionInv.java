@@ -529,7 +529,7 @@ public final class SoulTableInfusionInv implements SoulTableScreen {
         switch (action) {
             case SoulTableUiKeys.ACTION_BACK_HUB -> SoulTableNav.openHub(plugin, player, tableId);
             case SoulTableUiKeys.ACTION_GUIDE ->
-                    SoulTableNav.openGuide(plugin, player, tableId, SoulTableGuideInv.Page.MAIN, SoulTableReturnTarget.INFUSION);
+                    SoulTableNav.openGuide(plugin, player);
             case SoulTableUiKeys.ACTION_PREV -> {
                 if (pickingTrait) { if (traitPage > 0) traitPage--; }
                 else if (page > 0) page--;

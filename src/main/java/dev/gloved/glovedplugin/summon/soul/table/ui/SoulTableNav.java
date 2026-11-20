@@ -2,6 +2,7 @@ package dev.gloved.glovedplugin.summon.soul.table.ui;
 
 import dev.gloved.glovedplugin.core.GlovedPlugin;
 import dev.gloved.glovedplugin.summon.soul.db.SoulTableRepository.SoulTableRow;
+import dev.gloved.glovedplugin.summon.soul.guide.SoulGuideBook;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -42,10 +43,10 @@ public final class SoulTableNav {
         }
     }
 
-    public static void openGuide(GlovedPlugin plugin, Player player, UUID tableId, SoulTableGuideInv.Page page, SoulTableReturnTarget returnTarget) {
+    /** Opens the Soul Guide as a read-only written book (standalone reference; no table-context return). */
+    public static void openGuide(GlovedPlugin plugin, Player player) {
         if (plugin == null || player == null) return;
-        new SoulTableGuideInv(plugin, player, tableId, page != null ? page : SoulTableGuideInv.Page.MAIN,
-                returnTarget != null ? returnTarget : SoulTableReturnTarget.HUB).open(player);
+        new SoulGuideBook(plugin).open(player);
     }
 
     public static void returnToTarget(GlovedPlugin plugin, Player player, UUID tableId, SoulTableReturnTarget target) {
